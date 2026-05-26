@@ -3,41 +3,146 @@
  * https://developers.cloudflare.com/workers/wrangler/configuration/
  */
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "seisan",
-	"main": "worker/index.ts",
-	"compatibility_date": "2026-05-25",
-	"assets": {
-		"not_found_handling": "single-page-application"
-	},
-	"observability": {
-		"enabled": true
-	},
-	"upload_source_maps": true,
-	"compatibility_flags": [
-		"nodejs_compat"
-	]
-	/**
-	 * Smart Placement
-	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
-	 */
-	// "placement": {  "mode": "smart" }
-	/**
-	 * Bindings
-	 * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
-	 * databases, object storage, AI inference, real-time communication and more.
-	 * https://developers.cloudflare.com/workers/runtime-apis/bindings/
-	 */
-	/**
-	 * Environment Variables
-	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
-	 * Note: Use secrets to store sensitive data.
-	 * https://developers.cloudflare.com/workers/configuration/secrets/
-	 */
-	// "vars": {  "MY_VARIABLE": "production_value" }
-	/**
-	 * Service Bindings (communicate between multiple Workers)
-	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
-	 */
-	// "services": [  {   "binding": "MY_SERVICE",   "service": "my-service"  } ]
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "seisan",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-05-25",
+  "assets": {
+    "not_found_handling": "single-page-application",
+  },
+  "observability": {
+    "enabled": true,
+  },
+  "upload_source_maps": true,
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "ALLOWED_LOGIN_EMAILS": "yehvd9bbu@mozmail.com",
+  },
+  "secrets": {
+    "required": ["AUTH_SECRET", "LOGIN_EMAIL_FROM"],
+  },
+  "kv_namespaces": [
+    {
+      "binding": "REVOKED_TOKENS",
+      "id": "66d9e9077c76445da3615c8f81130d62",
+      "preview_id": "b69eac2649404af0b4264c87899cbb70",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "LOGIN_ATTEMPT_STORE",
+        "class_name": "LoginAttemptStore",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["LoginAttemptStore"],
+    },
+  ],
+  "send_email": [
+    {
+      "name": "SEND_EMAIL",
+    },
+  ],
+  "env": {
+    "dev": {
+      "preview_urls": false,
+      "workers_dev": false,
+      "routes": [{ "pattern": "dev.seisan.waga.me", "custom_domain": true }],
+      "vars": {
+        "ALLOWED_LOGIN_EMAILS": "yehvd9bbu@mozmail.com",
+      },
+      "secrets": {
+        "required": ["AUTH_SECRET", "LOGIN_EMAIL_FROM"],
+      },
+      "kv_namespaces": [
+        {
+          "binding": "REVOKED_TOKENS",
+          "id": "66d9e9077c76445da3615c8f81130d62",
+          "preview_id": "b69eac2649404af0b4264c87899cbb70",
+        },
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "LOGIN_ATTEMPT_STORE",
+            "class_name": "LoginAttemptStore",
+          },
+        ],
+      },
+      "migrations": [
+        {
+          "tag": "v1",
+          "new_sqlite_classes": ["LoginAttemptStore"],
+        },
+      ],
+      "send_email": [
+        {
+          "name": "SEND_EMAIL",
+          "remote": true,
+        },
+      ],
+    },
+    "production": {
+      "vars": {
+        "ALLOWED_LOGIN_EMAILS": "yehvd9bbu@mozmail.com",
+      },
+      "secrets": {
+        "required": ["AUTH_SECRET", "LOGIN_EMAIL_FROM"],
+      },
+      "kv_namespaces": [
+        {
+          "binding": "REVOKED_TOKENS",
+          "id": "e0a15436bd8244e2910bf4ccdda8ddb7",
+          "preview_id": "b69eac2649404af0b4264c87899cbb70",
+        },
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "LOGIN_ATTEMPT_STORE",
+            "class_name": "LoginAttemptStore",
+          },
+        ],
+      },
+      "migrations": [
+        {
+          "tag": "v1",
+          "new_sqlite_classes": ["LoginAttemptStore"],
+        },
+      ],
+      "send_email": [
+        {
+          "name": "SEND_EMAIL",
+          "remote": true,
+        },
+      ],
+    },
+  },
+  /**
+   * Smart Placement
+   * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
+   */
+  // "placement": {  "mode": "smart" }
+  /**
+   * Bindings
+   * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
+   * databases, object storage, AI inference, real-time communication and more.
+   * https://developers.cloudflare.com/workers/runtime-apis/bindings/
+   */
+  /**
+   * Environment Variables
+   * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
+   * Note: Use secrets to store sensitive data.
+   * https://developers.cloudflare.com/workers/configuration/secrets/
+   */
+  // "vars": {  "MY_VARIABLE": "production_value" }
+  /**
+   * Service Bindings (communicate between multiple Workers)
+   * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
+   */
+  // "services": [  {   "binding": "MY_SERVICE",   "service": "my-service"  } ]
 }

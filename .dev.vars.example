@@ -1,0 +1,2 @@
+AUTH_SECRET=replace-with-at-least-32-random-bytes
+LOGIN_EMAIL_FROM=no-reply@dev.seisan.waga.me

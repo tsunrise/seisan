@@ -6,17 +6,29 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "typecheck": "pnpm run typecheck:frontend && pnpm run typecheck:worker && pnpm run typecheck:test && pnpm run typecheck:node",
+    "typecheck:frontend": "tsc -p tsconfig.app.json --noEmit",
+    "typecheck:worker": "tsc -p tsconfig.worker.json --noEmit",
+    "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
+    "typecheck:node": "tsc -p tsconfig.node.json --noEmit",
     "lint": "eslint .",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "test": "vitest run",
+    "api": "node --experimental-strip-types scripts/client-cli.ts",
     "preview": "pnpm run build && vite preview",
     "deploy": "pnpm run build && wrangler deploy",
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
+    "hono": "^4.12.22",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.38.0",
+    "@cloudflare/vitest-pool-workers": "^0.16.9",
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.12.4",
     "@types/react": "^19.2.14",
@@ -26,9 +38,11 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
+    "prettier": "^3.8.3",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12",
+    "vitest": "^4.1.7",
     "wrangler": "^4.92.0"
   }
 }
