@@ -2,7 +2,7 @@ import { getCookie } from "hono/cookie";
 import type { Context, MiddlewareHandler } from "hono";
 import { z } from "zod";
 
-import { SESSION_COOKIE_NAME, WHOAMI_EXPIRY_GRACE_SECONDS } from "./constants";
+import { SESSION_COOKIE_NAME } from "./constants";
 import { sha256Hex, verifySessionToken } from "./crypto";
 
 export const loginAttemptSchema = z.object({
@@ -61,9 +61,7 @@ export async function authenticate(context: AppContext): Promise<Identity | null
     return null;
   }
 
-  const payload = await verifySessionToken(token, context.env.AUTH_SECRET, {
-    expirationGraceSeconds: WHOAMI_EXPIRY_GRACE_SECONDS,
-  });
+  const payload = await verifySessionToken(token, context.env.AUTH_SECRET);
   if (!payload) {
     return null;
   }

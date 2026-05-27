@@ -96,25 +96,25 @@ app.post("/login/attempt", async (context) => {
   });
 
   if (!attempt.ok) {
-    context.header("Retry-After", String(attempt.retryAfterSeconds));
-    return context.json({ error: "rate_limited" }, 429);
+    return context.json({ ok: true }, 202);
   }
 
   const emailMessage = buildLoginEmail({ code });
-  try {
-    await context.env.SEND_EMAIL.send({
+  context.executionCtx.waitUntil(
+    context.env.SEND_EMAIL.send({
       from: context.env.LOGIN_EMAIL_FROM,
       to: email,
       subject: emailMessage.subject,
       text: emailMessage.text,
       html: emailMessage.html,
-    });
-  } catch (error) {
-    console.error("failed to send login email", error);
-    return context.json({ error: "email_delivery_failed" }, 502);
-  }
-
-  console.log("email sent");
+    })
+      .then(() => {
+        console.log("email sent");
+      })
+      .catch((error: unknown) => {
+        console.error("failed to send login email", error);
+      }),
+  );
 
   return context.json({ ok: true }, 202);
 });
@@ -147,10 +147,6 @@ app.post("/login/verify", async (context) => {
   return context.json({ ok: true });
 });
 
-app.get("/whoami", requireAuth, (context) => {
-  return context.json(context.get("identity"));
-});
-
 app.post("/logout", async (context) => {
   const token = getSessionToken(context);
   if (token) {
@@ -164,6 +160,11 @@ app.post("/logout", async (context) => {
 
   clearSessionCookie(context);
   return context.body(null, 204);
+});
+
+// Reminder: add an Origin/CSRF check before introducing cookie-authenticated mutation routes.
+app.get("/whoami", requireAuth, (context) => {
+  return context.json(context.get("identity"));
 });
 
 export default {

@@ -92,7 +92,7 @@ export async function signSessionToken(
 export async function verifySessionToken(
   token: string,
   secret: string,
-  options: { nowMs?: number; expirationGraceSeconds?: number; ignoreExpiration?: boolean } = {},
+  options: { nowMs?: number; ignoreExpiration?: boolean } = {},
 ): Promise<SessionPayload | null> {
   const parts = token.split(".");
   if (parts.length !== 3) {
@@ -139,8 +139,7 @@ export async function verifySessionToken(
 
   if (!options.ignoreExpiration) {
     const nowSeconds = Math.floor((options.nowMs ?? Date.now()) / 1000);
-    const grace = options.expirationGraceSeconds ?? 0;
-    if (payload.exp + grace < nowSeconds) {
+    if (payload.exp <= nowSeconds) {
       return null;
     }
   }

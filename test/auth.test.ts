@@ -6,12 +6,7 @@ import {
 } from "cloudflare:test";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  LOGIN_CODE_TTL_MS,
-  SESSION_COOKIE_NAME,
-  SESSION_TTL_SECONDS,
-  WHOAMI_EXPIRY_GRACE_SECONDS,
-} from "../worker/constants";
+import { LOGIN_CODE_TTL_MS, SESSION_COOKIE_NAME, SESSION_TTL_SECONDS } from "../worker/constants";
 import { hashLoginCode, sha256Hex, signSessionToken } from "../worker/crypto";
 import worker from "../worker/index";
 
@@ -163,16 +158,19 @@ describe("auth worker", () => {
     });
   });
 
-  it("rate limits repeated login attempts during the resend cooldown", async () => {
+  it("returns generic success without sending during the resend cooldown", async () => {
     const email = uniqueEmail();
-    const { env: testEnv } = makeEnv(email);
+    const { env: testEnv, sentEmails } = makeEnv(email);
 
     const first = await dispatch("/login/attempt", testEnv, jsonPost({ email }));
     expect(first.status).toBe(202);
+    expect(sentEmails).toHaveLength(1);
 
     const second = await dispatch("/login/attempt", testEnv, jsonPost({ email }));
-    expect(second.status).toBe(429);
-    expect(second.headers.get("retry-after")).toBe("60");
+    expect(second.status).toBe(202);
+    expect(await second.json()).toEqual({ ok: true });
+    expect(second.headers.get("retry-after")).toBeNull();
+    expect(sentEmails).toHaveLength(1);
   });
 
   it("rejects wrong, expired, and over-attempted verification codes", async () => {
@@ -244,7 +242,7 @@ describe("auth worker", () => {
     );
   });
 
-  it("whoami accepts valid and recently expired tokens unless KV-revoked", async () => {
+  it("whoami accepts valid tokens unless KV-revoked and rejects expired tokens", async () => {
     const email = uniqueEmail();
     const { env: testEnv } = makeEnv(email);
     const validToken = await createVerifiedSession(testEnv, email);
@@ -255,15 +253,15 @@ describe("auth worker", () => {
     expect(valid.status).toBe(200);
     expect(await valid.json()).toEqual({ email });
 
-    const recentExpired = await signSessionToken(
+    const expiredToken = await signSessionToken(
       email,
       AUTH_SECRET,
-      Date.now() - (SESSION_TTL_SECONDS + WHOAMI_EXPIRY_GRACE_SECONDS - 30) * 1000,
+      Date.now() - (SESSION_TTL_SECONDS + 10) * 1000,
     );
-    const recent = await dispatch("/whoami", testEnv, {
-      headers: { Cookie: `${SESSION_COOKIE_NAME}=${recentExpired.token}` },
+    const expired = await dispatch("/whoami", testEnv, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${expiredToken.token}` },
     });
-    expect(recent.status).toBe(200);
+    expect(expired.status).toBe(401);
 
     const tokenHash = await sha256Hex(validToken);
     await testEnv.REVOKED_TOKENS.put(tokenHash, "", { expirationTtl: SESSION_TTL_SECONDS });
