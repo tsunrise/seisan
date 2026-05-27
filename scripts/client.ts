@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-export const DEFAULT_API_BASE_URL = "http://localhost:5173";
+export const DEFAULT_API_BASE_URL = "http://dev.seisan.waga.me";
 export const SESSION_COOKIE_NAME = "__Host-seisan_session";
 
 export interface SessionStore {

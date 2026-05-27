@@ -3,13 +3,14 @@ import { setCookie } from "hono/cookie";
 
 import { LOGIN_CODE_TTL_MS, SESSION_COOKIE_NAME, SESSION_TTL_SECONDS } from "./constants";
 import {
+  type AppEnv,
   type AppContext,
-  authenticate,
   getSessionToken,
   isEmailAllowed,
   loginAttemptSchema,
   loginVerifySchema,
   parseJson,
+  requireAuth,
 } from "./auth";
 import {
   generateLoginCode,
@@ -23,7 +24,7 @@ import { LoginAttemptStore } from "./do/LoginAttemptStore";
 
 export { LoginAttemptStore };
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<AppEnv>();
 
 function unauthorized() {
   return Response.json({ error: "unauthorized" }, { status: 401 });
@@ -146,13 +147,8 @@ app.post("/login/verify", async (context) => {
   return context.json({ ok: true });
 });
 
-app.get("/whoami", async (context) => {
-  const auth = await authenticate(context);
-  if (!auth) {
-    return unauthorized();
-  }
-
-  return context.json({ email: auth.payload.email });
+app.get("/whoami", requireAuth, (context) => {
+  return context.json(context.get("identity"));
 });
 
 app.post("/logout", async (context) => {

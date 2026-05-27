@@ -1,9 +1,9 @@
 import { getCookie } from "hono/cookie";
-import type { Context } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { z } from "zod";
 
 import { SESSION_COOKIE_NAME, WHOAMI_EXPIRY_GRACE_SECONDS } from "./constants";
-import { sha256Hex, verifySessionToken, type SessionPayload } from "./crypto";
+import { sha256Hex, verifySessionToken } from "./crypto";
 
 export const loginAttemptSchema = z.object({
   email: z.email(),
@@ -14,7 +14,18 @@ export const loginVerifySchema = z.object({
   code: z.string().regex(/^\d{6}$/u),
 });
 
-export type AppContext = Context<{ Bindings: Env }>;
+export interface Identity {
+  email: string;
+}
+
+export type AppEnv = {
+  Bindings: Env;
+  Variables: {
+    identity: Identity;
+  };
+};
+
+export type AppContext = Context<AppEnv>;
 
 export async function parseJson<T>(
   context: AppContext,
@@ -44,9 +55,7 @@ export function getSessionToken(context: AppContext): string | undefined {
   return getCookie(context, SESSION_COOKIE_NAME);
 }
 
-export async function authenticate(
-  context: AppContext,
-): Promise<{ payload: SessionPayload; token: string; tokenHash: string } | null> {
+export async function authenticate(context: AppContext): Promise<Identity | null> {
   const token = getSessionToken(context);
   if (!token) {
     return null;
@@ -67,5 +76,15 @@ export async function authenticate(
     return null;
   }
 
-  return { payload, token, tokenHash };
+  return { email: payload.email };
 }
+
+export const requireAuth: MiddlewareHandler<AppEnv> = async (context, next) => {
+  const identity = await authenticate(context);
+  if (!identity) {
+    return context.json({ error: "unauthorized" }, 401);
+  }
+
+  context.set("identity", identity);
+  await next();
+};

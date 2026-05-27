@@ -1,4 +1,4 @@
-#!/usr/bin/env -S node --experimental-strip-types
+#!/usr/bin/env -S tsx
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
