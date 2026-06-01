@@ -27,12 +27,24 @@
       "id": "66d9e9077c76445da3615c8f81130d62",
       "preview_id": "b69eac2649404af0b4264c87899cbb70",
     },
+    {
+      "binding": "PROJECT_REGISTRY_CACHE",
+      "id": "5fbf9df51a4d49b88d3a2aecff2e2ba8",
+    },
   ],
   "durable_objects": {
     "bindings": [
       {
         "name": "LOGIN_ATTEMPT_STORE",
         "class_name": "LoginAttemptStore",
+      },
+      {
+        "name": "PROJECTS_REGISTRY",
+        "class_name": "ProjectsRegistry",
+      },
+      {
+        "name": "PROJECT_STORE",
+        "class_name": "ProjectStore",
       },
     ],
   },
@@ -41,6 +53,10 @@
       "tag": "v1",
       "new_sqlite_classes": ["LoginAttemptStore"],
     },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["ProjectsRegistry", "ProjectStore"],
+    },
   ],
   "send_email": [
     {
@@ -48,6 +64,53 @@
     },
   ],
   "env": {
+    "test": {
+      "vars": {
+        "ALLOWED_LOGIN_EMAILS": "yehvd9bbu@mozmail.com",
+      },
+      "secrets": {
+        "required": [],
+      },
+      "kv_namespaces": [
+        {
+          "binding": "REVOKED_TOKENS",
+        },
+        {
+          "binding": "PROJECT_REGISTRY_CACHE",
+        },
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "LOGIN_ATTEMPT_STORE",
+            "class_name": "LoginAttemptStore",
+          },
+          {
+            "name": "PROJECTS_REGISTRY",
+            "class_name": "ProjectsRegistry",
+          },
+          {
+            "name": "PROJECT_STORE",
+            "class_name": "ProjectStore",
+          },
+        ],
+      },
+      "migrations": [
+        {
+          "tag": "v1",
+          "new_sqlite_classes": ["LoginAttemptStore"],
+        },
+        {
+          "tag": "v2",
+          "new_sqlite_classes": ["ProjectsRegistry", "ProjectStore"],
+        },
+      ],
+      "send_email": [
+        {
+          "name": "SEND_EMAIL",
+        },
+      ],
+    },
     "dev": {
       "preview_urls": false,
       "workers_dev": false,
@@ -64,6 +127,10 @@
           "id": "66d9e9077c76445da3615c8f81130d62",
           "preview_id": "b69eac2649404af0b4264c87899cbb70",
         },
+        {
+          "binding": "PROJECT_REGISTRY_CACHE",
+          "id": "5fbf9df51a4d49b88d3a2aecff2e2ba8",
+        },
       ],
       "durable_objects": {
         "bindings": [
@@ -71,12 +138,24 @@
             "name": "LOGIN_ATTEMPT_STORE",
             "class_name": "LoginAttemptStore",
           },
+          {
+            "name": "PROJECTS_REGISTRY",
+            "class_name": "ProjectsRegistry",
+          },
+          {
+            "name": "PROJECT_STORE",
+            "class_name": "ProjectStore",
+          },
         ],
       },
       "migrations": [
         {
           "tag": "v1",
           "new_sqlite_classes": ["LoginAttemptStore"],
+        },
+        {
+          "tag": "v2",
+          "new_sqlite_classes": ["ProjectsRegistry", "ProjectStore"],
         },
       ],
       "send_email": [
@@ -99,6 +178,10 @@
           "id": "e0a15436bd8244e2910bf4ccdda8ddb7",
           "preview_id": "b69eac2649404af0b4264c87899cbb70",
         },
+        {
+          "binding": "PROJECT_REGISTRY_CACHE",
+          "id": "0b22fc0923f441fc8518c18fe9bf0659",
+        },
       ],
       "durable_objects": {
         "bindings": [
@@ -106,12 +189,24 @@
             "name": "LOGIN_ATTEMPT_STORE",
             "class_name": "LoginAttemptStore",
           },
+          {
+            "name": "PROJECTS_REGISTRY",
+            "class_name": "ProjectsRegistry",
+          },
+          {
+            "name": "PROJECT_STORE",
+            "class_name": "ProjectStore",
+          },
         ],
       },
       "migrations": [
         {
           "tag": "v1",
           "new_sqlite_classes": ["LoginAttemptStore"],
+        },
+        {
+          "tag": "v2",
+          "new_sqlite_classes": ["ProjectsRegistry", "ProjectStore"],
         },
       ],
       "send_email": [

@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   plugins: [
     cloudflareTest({
-      wrangler: { configPath: "./wrangler.jsonc", environment: "dev" },
+      wrangler: { configPath: "./wrangler.jsonc", environment: "test" },
       miniflare: {
         bindings: {
           AUTH_SECRET: "test-auth-secret-at-least-32-bytes",

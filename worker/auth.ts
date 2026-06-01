@@ -21,7 +21,7 @@ export interface Identity {
 export type AppEnv = {
   Bindings: Env;
   Variables: {
-    identity: Identity;
+    identity: Identity | undefined;
   };
 };
 
@@ -76,6 +76,19 @@ export async function authenticate(context: AppContext): Promise<Identity | null
 
   return { email: payload.email };
 }
+
+export function getRequiredIdentity(context: AppContext): Identity {
+  const identity = context.get("identity");
+  if (!identity) {
+    throw new Error("Expected authenticated identity in context.");
+  }
+  return identity;
+}
+
+export const optionalAuth: MiddlewareHandler<AppEnv> = async (context, next) => {
+  context.set("identity", (await authenticate(context)) ?? undefined);
+  await next();
+};
 
 export const requireAuth: MiddlewareHandler<AppEnv> = async (context, next) => {
   const identity = await authenticate(context);
