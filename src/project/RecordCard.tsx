@@ -121,7 +121,7 @@ export function RecordCard({
                 whiteSpace: "nowrap",
               }}
             >
-              Posted By {author?.name ?? "Unknown member"}
+              Posted by {author?.name ?? "Unknown member"}
             </Typography>
           ) : (
             <Box />

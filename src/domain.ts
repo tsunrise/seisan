@@ -60,7 +60,7 @@ export function recordTitle(record: ProjectRecord, members: ProjectMember[]): st
 }
 
 export function recordSubtitle(record: ProjectRecord, members: ProjectMember[]): string {
-  return `${memberName(members, record.authorMemberId)} · #${record.id}`;
+  return `Posted by ${memberName(members, record.authorMemberId)}`;
 }
 
 export function sumMoney(map: MoneyByMemberId): number {

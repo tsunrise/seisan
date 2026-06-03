@@ -10,6 +10,44 @@ import { PanelFrame } from "../components/PanelFrame";
 import { panelFrameSx } from "../components/styles";
 import { formatCents, memberName, negateMoneyMap, recordSubtitle, recordTitle } from "../domain";
 
+function memberNames(members: api.ProjectMember[], memberIds: number[]): string {
+  if (memberIds.length === 0) {
+    return "Someone";
+  }
+  if (memberIds.length === 1) {
+    return memberName(members, memberIds[0]);
+  }
+  if (memberIds.length === 2) {
+    return `${memberName(members, memberIds[0])} and ${memberName(members, memberIds[1])}`;
+  }
+  return `${memberIds
+    .slice(0, -1)
+    .map((memberId) => memberName(members, memberId))
+    .join(", ")}, and ${memberName(members, memberIds[memberIds.length - 1])}`;
+}
+
+function recordDetailTitle(record: api.ProjectRecord, members: api.ProjectMember[]): string {
+  if (record.description.type === "expense") {
+    const payerIds = Object.keys(record.description.paid).map(Number);
+    const totalPaid = Object.values(record.description.paid).reduce(
+      (total, amount) => total + amount,
+      0,
+    );
+    return `${memberNames(members, payerIds)} paid ${formatCents(totalPaid)} for ${
+      record.description.name
+    }`;
+  }
+
+  if (record.description.type === "transfer") {
+    return `${memberName(members, record.description.from)} transferred ${memberName(
+      members,
+      record.description.to,
+    )} ${formatCents(record.description.amount)}`;
+  }
+
+  return recordTitle(record, members);
+}
+
 export function RecordDetail({
   project,
   record,
@@ -43,7 +81,7 @@ export function RecordDetail({
       <Paper component="article" square sx={panelFrameSx}>
         <Stack spacing={2}>
           <Stack spacing={0.5}>
-            <Typography variant="h2">{recordTitle(record, project.members)}</Typography>
+            <Typography variant="h2">{recordDetailTitle(record, project.members)}</Typography>
             <Typography color="text.secondary">
               {recordSubtitle(record, project.members)}
             </Typography>
