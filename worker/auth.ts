@@ -5,12 +5,16 @@ import { z } from "zod";
 import { SESSION_COOKIE_NAME } from "./constants";
 import { sha256Hex, verifySessionToken } from "./crypto";
 
+function normalizeLoginEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 export const loginAttemptSchema = z.object({
-  email: z.email(),
+  email: z.email().transform(normalizeLoginEmail),
 });
 
 export const loginVerifySchema = z.object({
-  email: z.email(),
+  email: z.email().transform(normalizeLoginEmail),
   code: z.string().regex(/^\d{6}$/u),
 });
 
@@ -44,11 +48,12 @@ export async function parseJson<T>(
 }
 
 export function isEmailAllowed(email: string, allowedEmails: string): boolean {
+  const normalizedEmail = normalizeLoginEmail(email);
   return allowedEmails
     .split(",")
     .map((entry) => entry.trim().toLowerCase())
     .filter(Boolean)
-    .includes(email);
+    .includes(normalizedEmail);
 }
 
 export function getSessionToken(context: AppContext): string | undefined {

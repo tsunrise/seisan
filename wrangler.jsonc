@@ -9,6 +9,7 @@
   "compatibility_date": "2026-05-25",
   "assets": {
     "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"],
   },
   "observability": {
     "enabled": true,
@@ -16,10 +17,13 @@
   "upload_source_maps": true,
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    "ALLOWED_LOGIN_EMAILS": "yehvd9bbu@mozmail.com",
+    "ALLOWED_LOGIN_EMAILS": "seisan-test-alice@tom.mozmail.com,seisan-test-bob@tom.mozmail.com,seisan-test-carol@tom.mozmail.com",
+    "LOGIN_EMAIL_FROM": "no-reply@dev.seisan.waga.me",
+    "LOCAL_DEV_LOGIN_EMAILS": "seisan-test-alice@tom.mozmail.com,seisan-test-bob@tom.mozmail.com,seisan-test-carol@tom.mozmail.com",
+    "LOCAL_DEV_LOGIN_CODE": "123456",
   },
   "secrets": {
-    "required": ["AUTH_SECRET", "LOGIN_EMAIL_FROM"],
+    "required": ["AUTH_SECRET"],
   },
   "kv_namespaces": [
     {
@@ -67,9 +71,12 @@
     "test": {
       "vars": {
         "ALLOWED_LOGIN_EMAILS": "yehvd9bbu@mozmail.com",
+        "LOGIN_EMAIL_FROM": "login@example.com",
+        "LOCAL_DEV_LOGIN_EMAILS": "",
+        "LOCAL_DEV_LOGIN_CODE": "",
       },
       "secrets": {
-        "required": [],
+        "required": ["AUTH_SECRET"],
       },
       "kv_namespaces": [
         {
@@ -116,10 +123,13 @@
       "workers_dev": false,
       "routes": [{ "pattern": "dev.seisan.waga.me", "custom_domain": true }],
       "vars": {
-        "ALLOWED_LOGIN_EMAILS": "yehvd9bbu@mozmail.com",
+        "ALLOWED_LOGIN_EMAILS": "seisan-test-alice@tom.mozmail.com,seisan-test-bob@tom.mozmail.com,seisan-test-carol@tom.mozmail.com",
+        "LOGIN_EMAIL_FROM": "no-reply@dev.seisan.waga.me",
+        "LOCAL_DEV_LOGIN_EMAILS": "",
+        "LOCAL_DEV_LOGIN_CODE": "",
       },
       "secrets": {
-        "required": ["AUTH_SECRET", "LOGIN_EMAIL_FROM"],
+        "required": ["AUTH_SECRET"],
       },
       "kv_namespaces": [
         {
@@ -168,9 +178,12 @@
     "production": {
       "vars": {
         "ALLOWED_LOGIN_EMAILS": "yehvd9bbu@mozmail.com",
+        "LOGIN_EMAIL_FROM": "no-reply@seisan.waga.me",
+        "LOCAL_DEV_LOGIN_EMAIL": "",
+        "LOCAL_DEV_LOGIN_CODE": "",
       },
       "secrets": {
-        "required": ["AUTH_SECRET", "LOGIN_EMAIL_FROM"],
+        "required": ["AUTH_SECRET"],
       },
       "kv_namespaces": [
         {

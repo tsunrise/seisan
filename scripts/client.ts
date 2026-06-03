@@ -61,16 +61,16 @@ export class SeisanClient {
   }
 
   ping(): Promise<string> {
-    return this.requestText("GET", "/ping", { auth: false });
+    return this.requestText("GET", "/api/ping", { auth: false });
   }
 
   async whoami(): Promise<{ email: string }> {
-    return this.requestJson<{ email: string }>("GET", "/whoami", { auth: true });
+    return this.requestJson<{ email: string }>("GET", "/api/whoami", { auth: true });
   }
 
   async logout(): Promise<void> {
     try {
-      await this.request("POST", "/logout", { auth: true, expectedStatus: 204 });
+      await this.request("POST", "/api/logout", { auth: true, expectedStatus: 204 });
     } catch (error) {
       if (!(error instanceof MissingSessionError) && !(error instanceof UnauthorizedError)) {
         throw error;
@@ -81,7 +81,7 @@ export class SeisanClient {
   }
 
   async requestLoginCode(email: string): Promise<void> {
-    await this.requestJson("POST", "/login/attempt", {
+    await this.requestJson("POST", "/api/login/attempt", {
       auth: false,
       body: { email },
       expectedStatus: 202,
@@ -89,7 +89,7 @@ export class SeisanClient {
   }
 
   async verifyLoginCode(email: string, code: string): Promise<void> {
-    const response = await this.request("POST", "/login/verify", {
+    const response = await this.request("POST", "/api/login/verify", {
       auth: false,
       body: { email, code },
       expectedStatus: 200,

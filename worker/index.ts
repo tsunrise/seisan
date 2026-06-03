@@ -19,6 +19,7 @@ import {
   hashLoginCode,
   sha256Hex,
   signSessionToken,
+  timingSafeEqual,
   verifySessionToken,
 } from "./crypto";
 import { buildLoginEmail } from "./email";
@@ -42,12 +43,58 @@ import {
   projectMemberCreateSchema,
   projectMemberPatchSchema,
   projectRegistryCacheKey,
+  projectRenameSchema,
   type ProjectRegistryCacheValue,
+  type ProjectSummary,
 } from "./project";
 
 export { LoginAttemptStore, ProjectStore, ProjectsRegistry };
 
 const app = new Hono<AppEnv>();
+
+interface LocalDevLoginConfig {
+  emails: Set<string>;
+  code: string;
+}
+
+type LocalDevLoginEnv = Env & {
+  LOCAL_DEV_LOGIN_EMAILS?: string;
+  LOCAL_DEV_LOGIN_CODE?: string;
+};
+
+function getLocalDevLoginConfig(context: AppContext): LocalDevLoginConfig | null {
+  const hostname = new URL(context.req.url).hostname;
+  if (!["localhost", "127.0.0.1", "[::1]", "::1"].includes(hostname)) {
+    return null;
+  }
+
+  const env = context.env as LocalDevLoginEnv;
+  const emails = (env.LOCAL_DEV_LOGIN_EMAILS ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  const code = env.LOCAL_DEV_LOGIN_CODE?.trim();
+  if (emails.length === 0 || !code || !/^\d{6}$/u.test(code)) {
+    return null;
+  }
+
+  return { emails: new Set(emails), code };
+}
+
+async function isLocalDevLogin(
+  context: AppContext,
+  email: string,
+  code?: string,
+): Promise<boolean> {
+  const config = getLocalDevLoginConfig(context);
+  if (!config || !config.emails.has(email)) {
+    return false;
+  }
+  if (code === undefined) {
+    return true;
+  }
+  return timingSafeEqual(code, config.code);
+}
 
 function unauthorized() {
   return Response.json({ error: "unauthorized" }, { status: 401 });
@@ -205,18 +252,23 @@ function mapProjectStoreError(error: string): Response {
   return invalidRequest();
 }
 
-app.get("/ping", (context) => {
+app.get("/api/ping", (context) => {
   console.log("ping called");
   return context.text("Hello World");
 });
 
-app.post("/login/attempt", async (context) => {
+app.post("/api/login/attempt", async (context) => {
   const parsed = await parseJson(context, loginAttemptSchema);
   if (!parsed.ok) {
     return invalidRequest();
   }
 
   const { email } = parsed.data;
+  if (await isLocalDevLogin(context, email)) {
+    console.log("local dev login code requested", { email });
+    return context.json({ ok: true }, 202);
+  }
+
   if (!isEmailAllowed(email, context.env.ALLOWED_LOGIN_EMAILS)) {
     // silently ignore disallowed login email without letting the abusers know
     console.log("disallowed email silently ignored", { email });
@@ -259,13 +311,19 @@ app.post("/login/attempt", async (context) => {
   return context.json({ ok: true }, 202);
 });
 
-app.post("/login/verify", async (context) => {
+app.post("/api/login/verify", async (context) => {
   const parsed = await parseJson(context, loginVerifySchema);
   if (!parsed.ok) {
     return invalidRequest();
   }
 
   const { email, code } = parsed.data;
+  if (await isLocalDevLogin(context, email, code)) {
+    const { token } = await signSessionToken(email, context.env.AUTH_SECRET);
+    setSessionCookie(context, token);
+    return context.json({ ok: true });
+  }
+
   if (!isEmailAllowed(email, context.env.ALLOWED_LOGIN_EMAILS)) {
     return unauthorized();
   }
@@ -287,7 +345,7 @@ app.post("/login/verify", async (context) => {
   return context.json({ ok: true });
 });
 
-app.post("/logout", async (context) => {
+app.post("/api/logout", async (context) => {
   const token = getSessionToken(context);
   if (token) {
     const payload = await verifySessionToken(token, context.env.AUTH_SECRET, {
@@ -303,7 +361,7 @@ app.post("/logout", async (context) => {
 });
 
 // Reminder: add an Origin/CSRF check before these cookie-authenticated mutation routes become browser-facing.
-app.put("/project", requireAuth, async (context) => {
+app.put("/api/project", requireAuth, async (context) => {
   const parsed = await parseJson(context, projectCreateSchema);
   if (!parsed.ok) {
     return invalidRequest();
@@ -315,6 +373,7 @@ app.put("/project", requireAuth, async (context) => {
   const projectDoIdString = projectDoId.toString();
   const project = context.env.PROJECT_STORE.get(projectDoId);
   const created = await project.initialize({
+    name: parsed.data.name,
     acl: parsed.data.acl,
     ownerEmail: owner,
     ownerMemberName: parsed.data.ownerMemberName,
@@ -328,6 +387,7 @@ app.put("/project", requireAuth, async (context) => {
   const registered = await registry.registerProject({
     id: projectId,
     doId: projectDoIdString,
+    ownerEmail: owner,
     nowMs: Date.now(),
   });
   if (!registered.ok) {
@@ -335,12 +395,50 @@ app.put("/project", requireAuth, async (context) => {
   }
 
   return context.json(
-    { id: projectId, owner, acl: parsed.data.acl, members: created.members },
+    {
+      id: projectId,
+      name: parsed.data.name,
+      owner,
+      acl: parsed.data.acl,
+      members: created.members,
+    },
     201,
   );
 });
 
-app.get("/project/:id", optionalAuth, async (context) => {
+app.get("/api/projects", requireAuth, async (context) => {
+  const identity = getRequiredIdentity(context);
+  const registry = context.env.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME);
+  const listed = await registry.listProjects({ callerEmail: identity.email });
+  if (!listed.ok) {
+    return invalidRequest();
+  }
+  const projects = (
+    // TODO: this is not efficient. We should cache the balance (or even the entire projects) somewhere. 
+    await Promise.all(
+      listed.projects.map(async (projectReference): Promise<ProjectSummary | null> => {
+        try {
+          const store = context.env.PROJECT_STORE.get(
+            context.env.PROJECT_STORE.idFromString(projectReference.doId),
+          );
+          const summary = await store.getProjectSummary({
+            callerEmail: identity.email,
+            publicId: projectReference.id,
+          });
+          return summary.ok ? summary.project : null;
+        } catch {
+          return null;
+        }
+      }),
+    )
+  )
+    .filter((project): project is ProjectSummary => project !== null)
+    .sort((left, right) => right.updatedAt - left.updatedAt);
+
+  return context.json({ projects });
+});
+
+app.get("/api/project/:id", optionalAuth, async (context) => {
   if (!isValidProjectId(context.req.param("id"))) {
     return notFound();
   }
@@ -367,6 +465,7 @@ app.get("/project/:id", optionalAuth, async (context) => {
 
   return context.json({
     id: projectLookup.projectId,
+    name: result.name,
     owner: result.owner,
     acl: result.acl,
     members: result.members,
@@ -375,7 +474,33 @@ app.get("/project/:id", optionalAuth, async (context) => {
   });
 });
 
-app.post("/project/:id/acl/emails", requireAuth, async (context) => {
+app.patch("/api/project/:id", requireAuth, async (context) => {
+  if (!isValidProjectId(context.req.param("id"))) {
+    return notFound();
+  }
+
+  const parsed = await parseJson(context, projectRenameSchema);
+  if (!parsed.ok) {
+    return invalidRequest();
+  }
+
+  const projectLookup = await getProjectStore(context, context.req.param("id"));
+  if (!projectLookup) {
+    return notFound();
+  }
+
+  const result = await projectLookup.store.renameProject({
+    callerEmail: getRequiredIdentity(context).email,
+    name: parsed.data.name,
+    nowMs: Date.now(),
+  });
+  if (!result.ok) {
+    return mapProjectStoreError(result.error);
+  }
+  return context.json({ name: result.name });
+});
+
+app.post("/api/project/:id/acl/emails", requireAuth, async (context) => {
   if (!isValidProjectId(context.req.param("id"))) {
     return notFound();
   }
@@ -397,7 +522,7 @@ app.post("/project/:id/acl/emails", requireAuth, async (context) => {
   );
 });
 
-app.delete("/project/:id/acl/emails", requireAuth, async (context) => {
+app.delete("/api/project/:id/acl/emails", requireAuth, async (context) => {
   if (!isValidProjectId(context.req.param("id"))) {
     return notFound();
   }
@@ -419,7 +544,7 @@ app.delete("/project/:id/acl/emails", requireAuth, async (context) => {
   );
 });
 
-app.put("/project/:id/acl/type", requireAuth, async (context) => {
+app.put("/api/project/:id/acl/type", requireAuth, async (context) => {
   if (!isValidProjectId(context.req.param("id"))) {
     return notFound();
   }
@@ -441,7 +566,7 @@ app.put("/project/:id/acl/type", requireAuth, async (context) => {
   );
 });
 
-app.post("/project/:id/members", requireAuth, async (context) => {
+app.post("/api/project/:id/members", requireAuth, async (context) => {
   if (!isValidProjectId(context.req.param("id"))) {
     return notFound();
   }
@@ -466,7 +591,7 @@ app.post("/project/:id/members", requireAuth, async (context) => {
   return context.json({ member: result.member }, 201);
 });
 
-app.post("/project/:id/join", requireAuth, async (context) => {
+app.post("/api/project/:id/join", requireAuth, async (context) => {
   if (!isValidProjectId(context.req.param("id"))) {
     return notFound();
   }
@@ -489,10 +614,20 @@ app.post("/project/:id/join", requireAuth, async (context) => {
   if (!result.ok) {
     return mapProjectStoreError(result.error);
   }
+  const registered = await context.env.PROJECTS_REGISTRY.getByName(
+    PROJECTS_REGISTRY_NAME,
+  ).addProjectMember({
+    id: projectLookup.projectId,
+    email: getRequiredIdentity(context).email,
+    nowMs: Date.now(),
+  });
+  if (!registered.ok) {
+    return internalServerError();
+  }
   return context.json({ member: result.member }, 201);
 });
 
-app.patch("/project/:id/members/:memberId", requireAuth, async (context) => {
+app.patch("/api/project/:id/members/:memberId", requireAuth, async (context) => {
   if (!isValidProjectId(context.req.param("id"))) {
     return notFound();
   }
@@ -521,10 +656,21 @@ app.patch("/project/:id/members/:memberId", requireAuth, async (context) => {
   if (!result.ok) {
     return mapProjectStoreError(result.error);
   }
+  if (result.removedLinkedEmail) {
+    const removed = await context.env.PROJECTS_REGISTRY.getByName(
+      PROJECTS_REGISTRY_NAME,
+    ).removeProjectMember({
+      id: projectLookup.projectId,
+      email: result.removedLinkedEmail,
+    });
+    if (!removed.ok) {
+      return internalServerError();
+    }
+  }
   return context.json({ member: result.member });
 });
 
-app.delete("/project/:id/members/:memberId", requireAuth, async (context) => {
+app.delete("/api/project/:id/members/:memberId", requireAuth, async (context) => {
   if (!isValidProjectId(context.req.param("id"))) {
     return notFound();
   }
@@ -546,10 +692,21 @@ app.delete("/project/:id/members/:memberId", requireAuth, async (context) => {
   if (!result.ok) {
     return mapProjectStoreError(result.error);
   }
+  if (result.removedLinkedEmail) {
+    const removed = await context.env.PROJECTS_REGISTRY.getByName(
+      PROJECTS_REGISTRY_NAME,
+    ).removeProjectMember({
+      id: projectLookup.projectId,
+      email: result.removedLinkedEmail,
+    });
+    if (!removed.ok) {
+      return internalServerError();
+    }
+  }
   return context.body(null, 204);
 });
 
-app.post("/project/:id", requireAuth, async (context) => {
+app.post("/api/project/:id", requireAuth, async (context) => {
   if (!isValidProjectId(context.req.param("id"))) {
     return notFound();
   }
@@ -577,7 +734,7 @@ app.post("/project/:id", requireAuth, async (context) => {
   return context.json({ id: result.id }, 201);
 });
 
-app.get("/whoami", requireAuth, (context) => {
+app.get("/api/whoami", requireAuth, (context) => {
   return context.json(getRequiredIdentity(context));
 });
 

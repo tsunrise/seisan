@@ -25,6 +25,11 @@ export const memberNameSchema = z
   .transform(normalizeMemberName)
   .pipe(z.string().min(1).max(100));
 
+export const projectNameSchema = z
+  .string()
+  .transform(normalizeProjectName)
+  .pipe(z.string().min(1).max(120));
+
 export type MoneyByMemberId = Record<string, number>;
 
 function makeMoneyMapSchema(options: { nonNegative: boolean }) {
@@ -124,8 +129,13 @@ export const projectAclSchema = z.discriminatedUnion("type", [
 ]);
 
 export const projectCreateSchema = z.object({
+  name: projectNameSchema,
   acl: projectAclSchema,
   ownerMemberName: memberNameSchema.optional(),
+});
+
+export const projectRenameSchema = z.object({
+  name: projectNameSchema,
 });
 
 export const projectAppendRecordSchema = z.object({
@@ -145,19 +155,10 @@ export const projectMemberCreateSchema = z.object({
   name: memberNameSchema,
 });
 
-export const projectMemberPatchSchema = z
-  .object({
-    name: memberNameSchema.optional(),
-    email: z.literal("").optional(),
-  })
-  .superRefine((input, context) => {
-    if (input.name === undefined && input.email === undefined) {
-      context.addIssue({
-        code: "custom",
-        message: "At least one member field must be provided.",
-      });
-    }
-  });
+export const projectMemberPatchSchema = z.union([
+  z.object({ name: memberNameSchema }).strict(),
+  z.object({ email: z.literal("") }).strict(),
+]);
 
 export const projectJoinSchema = z.union([
   z.object({ memberId: memberIdSchema }).strict().describe("claim unlinked member"),
@@ -189,11 +190,24 @@ export interface ProjectRecord {
   createdAt: number;
 }
 
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  owner: string;
+  member: ProjectMember | null;
+  balance: number | null;
+  updatedAt: number;
+}
+
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
 export function normalizeMemberName(name: string): string {
+  return name.trim().replace(/\s+/gu, " ");
+}
+
+export function normalizeProjectName(name: string): string {
   return name.trim().replace(/\s+/gu, " ");
 }
 

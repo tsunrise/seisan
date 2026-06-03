@@ -1,0 +1,18 @@
+import type * as api from "./api";
+
+export type Loadable<T> =
+  | { status: "loading"; data: null; error: null }
+  | { status: "ready"; data: T; error: null }
+  | { status: "error"; data: null; error: string };
+
+export interface User {
+  email: string;
+}
+
+export type ProjectPanel = "timeline" | "newRecord" | "recordDetail" | "settings";
+
+export type SplitMode = "equal" | "ratio" | "custom";
+
+export interface ProjectChildProps {
+  project: api.Project;
+}

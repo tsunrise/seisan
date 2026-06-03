@@ -26,11 +26,23 @@ interface TestEnv {
 
 interface ProjectResponse {
   id: string;
+  name: string;
   owner: string;
   acl: { type: "public" } | { type: "restricted"; emails: string[] };
   members: ProjectMember[];
   records: unknown[];
   balance: Record<string, number>;
+}
+
+interface ProjectSummaryResponse {
+  projects: Array<{
+    id: string;
+    name: string;
+    owner: string;
+    member: ProjectMember | null;
+    balance: number | null;
+    updatedAt: number;
+  }>;
 }
 
 function makeEnv(overrides: Partial<Env> = {}): TestEnv {
@@ -48,7 +60,8 @@ function makeEnv(overrides: Partial<Env> = {}): TestEnv {
 }
 
 async function dispatch(path: string, testEnv: Env, init: RequestInit = {}): Promise<Response> {
-  const request = new Request(`https://seisan.test${path}`, init);
+  const apiPath = path.startsWith("/api/") ? path : `/api${path}`;
+  const request = new Request(`https://seisan.test${apiPath}`, init);
   const context = createExecutionContext();
   const response = await worker.fetch(
     request as Request<unknown, IncomingRequestCfProperties>,
@@ -82,6 +95,7 @@ async function createProject(
     acl?: { type: "public" } | { type: "restricted"; emails: string[] };
     owner?: string;
     ownerMemberName?: string;
+    name?: string;
   } = {},
 ): Promise<ProjectResponse> {
   const response = await dispatch(
@@ -89,7 +103,11 @@ async function createProject(
     testEnv,
     jsonBody(
       "PUT",
-      { acl: input.acl ?? { type: "public" }, ownerMemberName: input.ownerMemberName },
+      {
+        name: input.name ?? "Day Trip",
+        acl: input.acl ?? { type: "public" },
+        ownerMemberName: input.ownerMemberName,
+      },
       await authHeaders(input.owner ?? "owner@example.com"),
     ),
   );
@@ -261,6 +279,7 @@ describe("project worker", () => {
       return registryInstance.registerProject({
         id: projectId,
         doId: testEnv.PROJECT_STORE.newUniqueId().toString(),
+        ownerEmail: "owner@example.com",
         nowMs: Date.now(),
       });
     });
@@ -286,6 +305,63 @@ describe("project worker", () => {
     });
 
     expect(response.status).toBe(404);
+  });
+
+  it("persists project names, lists linked projects, and allows owner rename", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv, {
+      name: "Road Trip",
+      ownerMemberName: "Alice",
+    });
+
+    expect(project).toMatchObject({
+      name: "Road Trip",
+      owner: "owner@example.com",
+      members: [{ id: 1, name: "Alice", linkedEmail: "owner@example.com" }],
+    });
+
+    const listed = await dispatch("/projects", testEnv, {
+      headers: await authHeaders("owner@example.com"),
+    });
+    expect(listed.status).toBe(200);
+    const listedBody = (await listed.json()) as ProjectSummaryResponse;
+    expect(listedBody.projects).toContainEqual(
+      expect.objectContaining({
+        id: project.id,
+        name: "Road Trip",
+        owner: "owner@example.com",
+        member: expect.objectContaining({
+          id: 1,
+          name: "Alice",
+          linkedEmail: "owner@example.com",
+        }),
+        balance: 0,
+      }),
+    );
+
+    const outsiderList = await dispatch("/projects", testEnv, {
+      headers: await authHeaders("outsider@example.com"),
+    });
+    expect(outsiderList.status).toBe(200);
+    expect(await outsiderList.json()).toEqual({ projects: [] });
+
+    const outsiderRename = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody("PATCH", { name: "Beach Trip" }, await authHeaders("outsider@example.com")),
+    );
+    expect(outsiderRename.status).toBe(403);
+
+    const ownerRename = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody("PATCH", { name: "Beach Trip" }, await authHeaders("owner@example.com")),
+    );
+    expect(ownerRename.status).toBe(200);
+    expect(await ownerRename.json()).toEqual({ name: "Beach Trip" });
+
+    const renamed = await getProject(testEnv, project.id);
+    expect(renamed.name).toBe("Beach Trip");
   });
 
   it("creates restricted projects and enforces ACLs separately from members", async () => {
@@ -449,6 +525,17 @@ describe("project worker", () => {
       { id: 2, name: "Bob", deleted: false, linkedEmail: "member@example.com" },
     ]);
 
+    const bobProjects = await dispatch("/projects", testEnv, {
+      headers: await authHeaders("member@example.com"),
+    });
+    expect(bobProjects.status).toBe(200);
+    expect(((await bobProjects.json()) as ProjectSummaryResponse).projects).toContainEqual(
+      expect.objectContaining({
+        id: project.id,
+        member: expect.objectContaining({ id: 2, name: "Bob" }),
+      }),
+    );
+
     const transfer = await dispatch(
       `/project/${project.id}`,
       testEnv,
@@ -601,6 +688,14 @@ describe("project worker", () => {
       ),
     );
     expect(postAfterUnlink.status).toBe(403);
+
+    const selfProjectsAfterUnlink = await dispatch("/projects", testEnv, {
+      headers: await authHeaders("member@example.com"),
+    });
+    expect(selfProjectsAfterUnlink.status).toBe(200);
+    expect(((await selfProjectsAfterUnlink.json()) as ProjectSummaryResponse).projects).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: project.id })]),
+    );
 
     const ownerRename = await dispatch(
       `/project/${project.id}/members/${bob.id}`,
@@ -804,7 +899,7 @@ describe("project worker", () => {
     await runInDurableObject(
       testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
       async (_instance, state) => {
-        await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(1);
+        await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(2);
       },
     );
     await runInDurableObject(

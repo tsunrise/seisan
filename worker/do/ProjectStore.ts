@@ -18,6 +18,8 @@ import {
   projectJoinSchema,
   projectMemberCreateSchema,
   projectMemberPatchSchema,
+  projectNameSchema,
+  projectRenameSchema,
   recordDescriptionSchema,
   sumMoneyMap,
   type MoneyByMemberId,
@@ -26,15 +28,18 @@ import {
   type ProjectMember,
   type ProjectMemberPatch,
   type ProjectRecord,
+  type ProjectSummary,
   type RecordDescription,
 } from "../project";
 import { runSqlMigrations, type SqlMigration } from "./migrations";
 
 interface ProjectMetaRow extends Record<string, SqlStorageValue> {
+  name: string;
   owner_email: string;
   acl_type: "public" | "restricted";
   next_record_id: number;
   next_member_id: number;
+  updated_at: number;
 }
 
 interface AclAllowedListRow extends Record<string, SqlStorageValue> {
@@ -84,6 +89,7 @@ export class ProjectStore extends DurableObject<Env> {
     [
       `CREATE TABLE IF NOT EXISTS project_meta (
         id INTEGER PRIMARY KEY CHECK (id = 1),
+        name TEXT NOT NULL,
         owner_email TEXT NOT NULL,
         acl_type TEXT NOT NULL CHECK (acl_type IN ('public', 'restricted')),
         next_record_id INTEGER NOT NULL,
@@ -133,6 +139,7 @@ export class ProjectStore extends DurableObject<Env> {
   }
 
   async initialize(input: {
+    name: string;
     acl: ProjectAcl;
     ownerEmail: string;
     ownerMemberName?: string;
@@ -146,11 +153,17 @@ export class ProjectStore extends DurableObject<Env> {
     }
 
     const parsedAcl = projectAclSchema.safeParse(input.acl);
+    const parsedName = projectNameSchema.safeParse(input.name);
     const parsedOwnerEmail = normalizeProjectEmail(input.ownerEmail);
     const parsedOwnerMemberName = memberNameSchema.safeParse(
       input.ownerMemberName ?? defaultMemberNameForEmail(input.ownerEmail),
     );
-    if (!parsedAcl.success || !parsedOwnerEmail || !parsedOwnerMemberName.success) {
+    if (
+      !parsedAcl.success ||
+      !parsedName.success ||
+      !parsedOwnerEmail ||
+      !parsedOwnerMemberName.success
+    ) {
       return { ok: false, error: "invalid_input" };
     }
 
@@ -163,8 +176,9 @@ export class ProjectStore extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DELETE FROM project_meta");
       this.ctx.storage.sql.exec(
         `INSERT INTO project_meta
-          (id, owner_email, acl_type, next_record_id, next_member_id, created_at, updated_at)
-         VALUES (1, ?, ?, 1, 2, ?, ?)`,
+          (id, name, owner_email, acl_type, next_record_id, next_member_id, created_at, updated_at)
+         VALUES (1, ?, ?, ?, 1, 2, ?, ?)`,
+        parsedName.data,
         parsedOwnerEmail,
         acl.type,
         input.nowMs,
@@ -254,9 +268,16 @@ export class ProjectStore extends DurableObject<Env> {
       referencedMemberIds.add(description.from);
       referencedMemberIds.add(description.to);
     }
-    for (const memberId of referencedMemberIds) {
-      const member = this.getMember(memberId);
-      if (!member || member.deleted_at !== null) {
+    if (referencedMemberIds.size > 0) {
+      const memberIds = [...referencedMemberIds];
+      const placeholders = memberIds.map(() => "?").join(", ");
+      const activeCount =
+        this.ctx.storage.sql
+          .exec<
+            { count: number } & Record<string, SqlStorageValue>
+          >(`SELECT COUNT(*) AS count FROM members WHERE id IN (${placeholders}) AND deleted_at IS NULL`, ...memberIds)
+          .toArray()[0]?.count ?? 0;
+      if (activeCount !== memberIds.length) {
         return { ok: false, error: "invalid_record" };
       }
     }
@@ -288,6 +309,7 @@ export class ProjectStore extends DurableObject<Env> {
   getRecords(input: { callerEmail?: string | null; limit: number; offset: number }):
     | {
         ok: true;
+        name: string;
         owner: string;
         acl: ProjectAcl;
         members: ProjectMember[];
@@ -325,6 +347,7 @@ export class ProjectStore extends DurableObject<Env> {
 
     return {
       ok: true,
+      name: access.meta.name,
       owner: access.meta.owner_email,
       acl: this.getAcl(access.meta),
       members: this.getMembersForResponse({
@@ -334,6 +357,70 @@ export class ProjectStore extends DurableObject<Env> {
       records,
       balance,
     };
+  }
+
+  getProjectSummary(input: {
+    callerEmail: string;
+    publicId: string;
+  }): { ok: true; project: ProjectSummary } | { ok: false; error: "uninitialized" | "forbidden" } {
+    const access = this.getProjectAccess(input.callerEmail);
+    if (!access.ok) {
+      return access;
+    }
+    if (!access.email) {
+      return { ok: false, error: "forbidden" };
+    }
+
+    const requesterMember = this.getLinkedMember(access.email);
+    if (!access.isOwner && !requesterMember) {
+      return { ok: false, error: "forbidden" };
+    }
+
+    const balance = requesterMember
+      ? (this.ctx.storage.sql
+          .exec<BalanceRow>(
+            "SELECT amount_cents FROM balances WHERE member_id = ?",
+            requesterMember.id,
+          )
+          .toArray()[0]?.amount_cents ?? 0)
+      : null;
+
+    return {
+      ok: true,
+      project: {
+        id: input.publicId,
+        name: access.meta.name,
+        owner: access.meta.owner_email,
+        member: requesterMember ? memberForResponse(requesterMember, true) : null,
+        balance,
+        updatedAt: access.meta.updated_at,
+      },
+    };
+  }
+
+  renameProject(input: {
+    callerEmail: string;
+    name: string;
+    nowMs: number;
+  }):
+    | { ok: true; name: string }
+    | { ok: false; error: "uninitialized" | "forbidden" | "invalid_input" } {
+    const ownerAccess = this.getOwnerAccess(input.callerEmail);
+    if (!ownerAccess.ok) {
+      return ownerAccess;
+    }
+
+    const parsed = projectRenameSchema.safeParse({ name: input.name });
+    if (!parsed.success) {
+      return { ok: false, error: "invalid_input" };
+    }
+
+    this.ctx.storage.sql.exec(
+      "UPDATE project_meta SET name = ?, updated_at = ? WHERE id = 1",
+      parsed.data.name,
+      input.nowMs,
+    );
+    return { ok: true, name: parsed.data.name };
   }
 
   createMember(input: {
@@ -425,7 +512,9 @@ export class ProjectStore extends DurableObject<Env> {
     memberId: number;
     patch: ProjectMemberPatch;
     nowMs: number;
-  }): { ok: true; member: ProjectMember } | { ok: false; error: ProjectStoreError } {
+  }):
+    | { ok: true; member: ProjectMember; removedLinkedEmail?: string }
+    | { ok: false; error: ProjectStoreError } {
     const access = this.getProjectAccess(input.callerEmail);
     if (!access.ok) {
       return access;
@@ -450,7 +539,7 @@ export class ProjectStore extends DurableObject<Env> {
     }
 
     let nextMember = member;
-    if (parsed.data.name !== undefined) {
+    if ("name" in parsed.data) {
       const normalizedName = normalizeMemberNameForUnique(parsed.data.name);
       if (this.hasActiveMemberName(parsed.data.name, member.id)) {
         return { ok: false, error: "invalid_input" };
@@ -465,18 +554,21 @@ export class ProjectStore extends DurableObject<Env> {
       nextMember = { ...nextMember, name: parsed.data.name, normalized_name: normalizedName };
     }
 
-    if (parsed.data.email === "") {
+    let removedLinkedEmail: string | undefined;
+    if ("email" in parsed.data) {
       this.ctx.storage.sql.exec(
         "UPDATE members SET linked_email = NULL, updated_at = ? WHERE id = ?",
         input.nowMs,
         member.id,
       );
+      removedLinkedEmail = member.linked_email ?? undefined;
       nextMember = { ...nextMember, linked_email: null };
     }
 
     return {
       ok: true,
       member: memberForResponse(nextMember, access.isOwner || requesterOwnsMember),
+      ...(removedLinkedEmail ? { removedLinkedEmail } : {}),
     };
   }
 
@@ -484,7 +576,7 @@ export class ProjectStore extends DurableObject<Env> {
     callerEmail: string;
     memberId: number;
     nowMs: number;
-  }): { ok: true } | { ok: false; error: ProjectStoreError } {
+  }): { ok: true; removedLinkedEmail?: string } | { ok: false; error: ProjectStoreError } {
     const access = this.getProjectAccess(input.callerEmail);
     if (!access.ok) {
       return access;
@@ -514,7 +606,10 @@ export class ProjectStore extends DurableObject<Env> {
       input.nowMs,
       member.id,
     );
-    return { ok: true };
+    return {
+      ok: true,
+      ...(member.linked_email ? { removedLinkedEmail: member.linked_email } : {}),
+    };
   }
 
   appendEmailsToAcl(input: {
@@ -630,7 +725,7 @@ export class ProjectStore extends DurableObject<Env> {
     return (
       this.ctx.storage.sql
         .exec<ProjectMetaRow>(
-          "SELECT owner_email, acl_type, next_record_id, next_member_id FROM project_meta WHERE id = 1",
+          "SELECT name, owner_email, acl_type, next_record_id, next_member_id, updated_at FROM project_meta WHERE id = 1",
         )
         .toArray()[0] ?? null
     );

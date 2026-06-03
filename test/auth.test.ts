@@ -47,8 +47,14 @@ function makeEnv(allowedEmail = uniqueEmail()): TestEnv {
   };
 }
 
-async function dispatch(path: string, testEnv: Env, init: RequestInit = {}): Promise<Response> {
-  const request = new Request(`https://seisan.test${path}`, init);
+async function dispatch(
+  path: string,
+  testEnv: Env,
+  init: RequestInit = {},
+  origin = "https://seisan.test",
+): Promise<Response> {
+  const apiPath = path.startsWith("/api/") ? path : `/api${path}`;
+  const request = new Request(`${origin}${apiPath}`, init);
   const context = createExecutionContext();
   const response = await worker.fetch(
     request as Request<unknown, IncomingRequestCfProperties>,
@@ -240,6 +246,66 @@ describe("auth worker", () => {
         expect(rows).toHaveLength(0);
       },
     );
+  });
+
+  it("allows a configured fixed code only for local dev login", async () => {
+    const email = uniqueEmail();
+    const { env: testEnv, sentEmails } = makeEnv("allowed@example.com");
+    const localDevEnv = {
+      ...testEnv,
+      LOCAL_DEV_LOGIN_EMAIL: email,
+      LOCAL_DEV_LOGIN_CODE: "123456",
+    } as unknown as Env;
+
+    const remoteAttempt = await dispatch(
+      "/login/attempt",
+      localDevEnv,
+      jsonPost({ email }),
+      "https://seisan.test",
+    );
+    expect(remoteAttempt.status).toBe(202);
+    expect(sentEmails).toHaveLength(0);
+
+    const remoteVerify = await dispatch(
+      "/login/verify",
+      localDevEnv,
+      jsonPost({ email, code: "123456" }),
+      "https://seisan.test",
+    );
+    expect(remoteVerify.status).toBe(401);
+
+    const localAttempt = await dispatch(
+      "/login/attempt",
+      localDevEnv,
+      jsonPost({ email }),
+      "http://127.0.0.1:5173",
+    );
+    expect(localAttempt.status).toBe(202);
+    expect(sentEmails).toHaveLength(0);
+
+    const localWrongCode = await dispatch(
+      "/login/verify",
+      localDevEnv,
+      jsonPost({ email, code: "000000" }),
+      "http://127.0.0.1:5173",
+    );
+    expect(localWrongCode.status).toBe(401);
+
+    const localVerify = await dispatch(
+      "/login/verify",
+      localDevEnv,
+      jsonPost({ email, code: "123456" }),
+      "http://127.0.0.1:5173",
+    );
+    expect(localVerify.status).toBe(200);
+    expect(await localVerify.json()).toEqual({ ok: true });
+
+    const token = getSessionToken(localVerify);
+    const whoami = await dispatch("/whoami", localDevEnv, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${token}` },
+    });
+    expect(whoami.status).toBe(200);
+    expect(await whoami.json()).toEqual({ email });
   });
 
   it("whoami accepts valid tokens unless KV-revoked and rejects expired tokens", async () => {

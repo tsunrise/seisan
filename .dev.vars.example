@@ -1,2 +1,2 @@
+# Copy this file to .dev.vars for local dev and tests. Do not commit .dev.vars.
 AUTH_SECRET=replace-with-at-least-32-random-bytes
-LOGIN_EMAIL_FROM=no-reply@dev.seisan.waga.me

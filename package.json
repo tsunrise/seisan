@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/remove-dev-vars-artifact.mjs",
     "typecheck": "pnpm run typecheck:frontend && pnpm run typecheck:worker && pnpm run typecheck:test && pnpm run typecheck:node",
     "typecheck:frontend": "tsc -p tsconfig.app.json --noEmit",
     "typecheck:worker": "tsc -p tsconfig.worker.json --noEmit",
@@ -21,9 +21,14 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.0.1",
+    "@mui/material": "^9.0.1",
     "hono": "^4.12.22",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "react-router": "^7.16.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
