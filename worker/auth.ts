@@ -11,9 +11,11 @@ function normalizeLoginEmail(email: string): string {
 
 export const loginAttemptSchema = z.object({
   email: z.email().transform(normalizeLoginEmail),
+  turnstileToken: z.string().min(1).max(2048).optional(),
 });
 
 export const loginVerifySchema = z.object({
+  id: z.string().regex(/^[0-9A-Za-z]{32}$/u),
   email: z.email().transform(normalizeLoginEmail),
   code: z.string().regex(/^\d{6}$/u),
 });

@@ -6,6 +6,7 @@ import { runSqlMigrations, type SqlMigration } from "./migrations";
 
 interface AttemptRow extends Record<string, SqlStorageValue> {
   email_hash: string;
+  attempt_id: string;
   email: string;
   code_hash: string;
   expires_at: number;
@@ -26,6 +27,10 @@ export class LoginAttemptStore extends DurableObject<Env> {
         failed_attempts INTEGER NOT NULL DEFAULT 0
       )`,
     ],
+    [
+      "ALTER TABLE login_attempts ADD COLUMN attempt_id TEXT NOT NULL DEFAULT ''",
+      "DELETE FROM login_attempts",
+    ],
   ];
 
   constructor(state: DurableObjectState, env: Env) {
@@ -35,16 +40,21 @@ export class LoginAttemptStore extends DurableObject<Env> {
 
   createAttempt(input: {
     emailHash: string;
+    attemptId: string;
     email: string;
     codeHash: string;
     nowMs: number;
     expiresAtMs: number;
-  }): { ok: true } | { ok: false; retryAfterSeconds: number } {
+  }): { ok: true; id: string } | { ok: false; retryAfterSeconds?: number } {
     const existing = this.ctx.storage.sql
       .exec<AttemptRow>("SELECT * FROM login_attempts WHERE email_hash = ?", input.emailHash)
       .toArray()[0];
 
     if (existing && existing.expires_at > input.nowMs) {
+      if (existing.failed_attempts >= MAX_LOGIN_VERIFY_FAILURES) {
+        return { ok: false };
+      }
+
       const nextAllowedAt = existing.last_sent_at + LOGIN_RESEND_COOLDOWN_MS;
       if (nextAllowedAt > input.nowMs) {
         return {
@@ -56,9 +66,10 @@ export class LoginAttemptStore extends DurableObject<Env> {
 
     this.ctx.storage.sql.exec(
       `INSERT OR REPLACE INTO login_attempts
-        (email_hash, email, code_hash, expires_at, created_at, last_sent_at, failed_attempts)
-       VALUES (?, ?, ?, ?, ?, ?, 0)`,
+        (email_hash, attempt_id, email, code_hash, expires_at, created_at, last_sent_at, failed_attempts)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
       input.emailHash,
+      input.attemptId,
       input.email,
       input.codeHash,
       input.expiresAtMs,
@@ -66,14 +77,12 @@ export class LoginAttemptStore extends DurableObject<Env> {
       input.nowMs,
     );
 
-    return { ok: true };
+    return { ok: true, id: input.attemptId };
   }
 
-  async verifyAttempt(input: {
-    emailHash: string;
-    codeHash: string;
-    nowMs: number;
-  }): Promise<{ ok: boolean }> {
+  verifyAttempt(input: { emailHash: string; attemptId: string; codeHash: string; nowMs: number }): {
+    ok: boolean;
+  } {
     const existing = this.ctx.storage.sql
       .exec<AttemptRow>("SELECT * FROM login_attempts WHERE email_hash = ?", input.emailHash)
       .toArray()[0];
@@ -82,25 +91,26 @@ export class LoginAttemptStore extends DurableObject<Env> {
       return { ok: false };
     }
 
+    if (!timingSafeEqual(existing.attempt_id, input.attemptId)) {
+      return { ok: false };
+    }
+
     if (existing.expires_at <= input.nowMs) {
       this.ctx.storage.sql.exec("DELETE FROM login_attempts WHERE email_hash = ?", input.emailHash);
       return { ok: false };
     }
 
-    if (!(await timingSafeEqual(existing.code_hash, input.codeHash))) {
+    if (existing.failed_attempts >= MAX_LOGIN_VERIFY_FAILURES) {
+      return { ok: false };
+    }
+
+    if (!timingSafeEqual(existing.code_hash, input.codeHash)) {
       const failedAttempts = existing.failed_attempts + 1;
-      if (failedAttempts >= MAX_LOGIN_VERIFY_FAILURES) {
-        this.ctx.storage.sql.exec(
-          "DELETE FROM login_attempts WHERE email_hash = ?",
-          input.emailHash,
-        );
-      } else {
-        this.ctx.storage.sql.exec(
-          "UPDATE login_attempts SET failed_attempts = ? WHERE email_hash = ?",
-          failedAttempts,
-          input.emailHash,
-        );
-      }
+      this.ctx.storage.sql.exec(
+        "UPDATE login_attempts SET failed_attempts = ? WHERE email_hash = ?",
+        failedAttempts,
+        input.emailHash,
+      );
       return { ok: false };
     }
 

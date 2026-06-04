@@ -106,13 +106,16 @@ async function loginInteractively(client: SeisanClient): Promise<void> {
       throw new CliError("Email is required.");
     }
 
-    await client.requestLoginCode(email);
+    const attempt = await client.requestLoginCode(email);
+    if (!attempt.id) {
+      throw new CliError("No new code was sent. Try again later.");
+    }
     const code = (await rl.question("Verification code: ")).trim();
     if (!/^\d{6}$/u.test(code)) {
       throw new CliError("Verification code must be 6 digits.");
     }
 
-    await client.verifyLoginCode(email, code);
+    await client.verifyLoginCode(attempt.id, email, code);
   } finally {
     rl.close();
   }

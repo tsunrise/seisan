@@ -80,18 +80,18 @@ export class SeisanClient {
     }
   }
 
-  async requestLoginCode(email: string): Promise<void> {
-    await this.requestJson("POST", "/api/login/attempt", {
+  async requestLoginCode(email: string): Promise<{ id?: string }> {
+    return this.requestJson<{ id?: string }>("POST", "/api/login/attempt", {
       auth: false,
       body: { email },
       expectedStatus: 202,
     });
   }
 
-  async verifyLoginCode(email: string, code: string): Promise<void> {
+  async verifyLoginCode(id: string, email: string, code: string): Promise<void> {
     const response = await this.request("POST", "/api/login/verify", {
       auth: false,
-      body: { email, code },
+      body: { id, email, code },
       expectedStatus: 200,
     });
     const sessionCookie = extractSessionCookie(response.headers);

@@ -48,19 +48,41 @@ export async function sha256Hex(value: string): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function sha256(value: string): Promise<ArrayBuffer> {
-  return crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-}
-
-export async function timingSafeEqual(left: string, right: string): Promise<boolean> {
-  const [leftHash, rightHash] = await Promise.all([sha256(left), sha256(right)]);
-  return crypto.subtle.timingSafeEqual(leftHash, rightHash);
+export function timingSafeEqual(left: string, right: string): boolean {
+  const encoder = new TextEncoder();
+  const leftEncoded = encoder.encode(left);
+  const rightEncoded = encoder.encode(right);
+  if (leftEncoded.byteLength !== rightEncoded.byteLength) {
+    return false;
+  }
+  return crypto.subtle.timingSafeEqual(leftEncoded, rightEncoded);
 }
 
 export function generateLoginCode(): string {
   const bytes = new Uint32Array(1);
   crypto.getRandomValues(bytes);
   return String(bytes[0] % 1_000_000).padStart(6, "0");
+}
+
+export function generateLoginAttemptId(length = 32): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const bytes = new Uint8Array(length * 2);
+  let id = "";
+
+  while (id.length < length) {
+    crypto.getRandomValues(bytes);
+    for (const byte of bytes) {
+      if (byte >= 248) {
+        continue;
+      }
+      id += alphabet[byte % alphabet.length];
+      if (id.length === length) {
+        break;
+      }
+    }
+  }
+
+  return id;
 }
 
 export function hashLoginCode(email: string, code: string, secret: string): Promise<string> {
@@ -103,7 +125,7 @@ export async function verifySessionToken(
   const expectedSignature = bytesToBase64Url(
     await hmacSha256(`${encodedHeader}.${encodedPayload}`, secret),
   );
-  if (!(await timingSafeEqual(encodedSignature, expectedSignature))) {
+  if (!timingSafeEqual(encodedSignature, expectedSignature)) {
     return null;
   }
 

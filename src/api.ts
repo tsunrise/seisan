@@ -67,18 +67,21 @@ export async function whoami(): Promise<{ email: string }> {
   return requestJson("/api/whoami");
 }
 
-export async function requestLoginCode(email: string): Promise<void> {
-  await requestJson("/api/login/attempt", {
+export async function requestLoginCode(
+  email: string,
+  turnstileToken?: string,
+): Promise<{ id?: string }> {
+  return requestJson("/api/login/attempt", {
     method: "POST",
-    body: { email },
+    body: { email, ...(turnstileToken ? { turnstileToken } : {}) },
     expectedStatus: 202,
   });
 }
 
-export async function verifyLoginCode(email: string, code: string): Promise<void> {
+export async function verifyLoginCode(id: string, email: string, code: string): Promise<void> {
   await requestJson("/api/login/verify", {
     method: "POST",
-    body: { email, code },
+    body: { id, email, code },
   });
 }
 

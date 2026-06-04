@@ -15,6 +15,7 @@ import {
   requireAuth,
 } from "./auth";
 import {
+  generateLoginAttemptId,
   generateLoginCode,
   hashLoginCode,
   sha256Hex,
@@ -47,6 +48,7 @@ import {
   type ProjectRegistryCacheValue,
   type ProjectSummary,
 } from "./project";
+import { verifyTurnstileToken } from "./turnstile";
 
 export { LoginAttemptStore, ProjectStore, ProjectsRegistry };
 
@@ -64,7 +66,7 @@ type LocalDevLoginEnv = Env & {
 
 function getLocalDevLoginConfig(context: AppContext): LocalDevLoginConfig | null {
   const hostname = new URL(context.req.url).hostname;
-  if (!["localhost", "127.0.0.1", "[::1]", "::1"].includes(hostname)) {
+  if (!["localhost", "127.0.0.1", "::1"].includes(hostname)) {
     return null;
   }
 
@@ -81,11 +83,7 @@ function getLocalDevLoginConfig(context: AppContext): LocalDevLoginConfig | null
   return { emails: new Set(emails), code };
 }
 
-async function isLocalDevLogin(
-  context: AppContext,
-  email: string,
-  code?: string,
-): Promise<boolean> {
+function isLocalDevLogin(context: AppContext, email: string, code?: string): boolean {
   const config = getLocalDevLoginConfig(context);
   if (!config || !config.emails.has(email)) {
     return false;
@@ -264,15 +262,19 @@ app.post("/api/login/attempt", async (context) => {
   }
 
   const { email } = parsed.data;
-  if (await isLocalDevLogin(context, email)) {
+  const attemptId = generateLoginAttemptId();
+  const isLocalDevAttempt = isLocalDevLogin(context, email);
+  if (isLocalDevAttempt) {
     console.log("local dev login code requested", { email });
-    return context.json({ ok: true }, 202);
+    return context.json({ ok: true, id: attemptId }, 202);
+  } else if (!(await verifyTurnstileToken(context, parsed.data.turnstileToken))) {
+    return invalidRequest();
   }
 
   if (!isEmailAllowed(email, context.env.ALLOWED_LOGIN_EMAILS)) {
     // silently ignore disallowed login email without letting the abusers know
     console.log("disallowed email silently ignored", { email });
-    return context.json({ ok: true }, 202);
+    return context.json({ ok: true, id: attemptId }, 202);
   }
 
   const nowMs = Date.now();
@@ -281,6 +283,7 @@ app.post("/api/login/attempt", async (context) => {
   const codeHash = await hashLoginCode(email, code, context.env.AUTH_SECRET);
   const attempt = await context.env.LOGIN_ATTEMPT_STORE.getByName(emailHash).createAttempt({
     emailHash,
+    attemptId,
     email,
     codeHash,
     nowMs,
@@ -308,7 +311,7 @@ app.post("/api/login/attempt", async (context) => {
       }),
   );
 
-  return context.json({ ok: true }, 202);
+  return context.json({ ok: true, id: attempt.id }, 202);
 });
 
 app.post("/api/login/verify", async (context) => {
@@ -317,8 +320,8 @@ app.post("/api/login/verify", async (context) => {
     return invalidRequest();
   }
 
-  const { email, code } = parsed.data;
-  if (await isLocalDevLogin(context, email, code)) {
+  const { id, email, code } = parsed.data;
+  if (isLocalDevLogin(context, email, code)) {
     const { token } = await signSessionToken(email, context.env.AUTH_SECRET);
     setSessionCookie(context, token);
     return context.json({ ok: true });
@@ -332,6 +335,7 @@ app.post("/api/login/verify", async (context) => {
   const codeHash = await hashLoginCode(email, code, context.env.AUTH_SECRET);
   const verification = await context.env.LOGIN_ATTEMPT_STORE.getByName(emailHash).verifyAttempt({
     emailHash,
+    attemptId: id,
     codeHash,
     nowMs: Date.now(),
   });
@@ -413,27 +417,28 @@ app.get("/api/projects", requireAuth, async (context) => {
   if (!listed.ok) {
     return invalidRequest();
   }
-  const projects = (
-    // TODO: this is not efficient. We should cache the balance (or even the entire projects) somewhere. 
-    await Promise.all(
-      listed.projects.map(async (projectReference): Promise<ProjectSummary | null> => {
-        try {
-          const store = context.env.PROJECT_STORE.get(
-            context.env.PROJECT_STORE.idFromString(projectReference.doId),
-          );
-          const summary = await store.getProjectSummary({
-            callerEmail: identity.email,
-            publicId: projectReference.id,
-          });
-          return summary.ok ? summary.project : null;
-        } catch {
-          return null;
-        }
-      }),
+  const projects =
+    // TODO: this is not efficient. We should cache the balance (or even the entire projects) somewhere.
+    (
+      await Promise.all(
+        listed.projects.map(async (projectReference): Promise<ProjectSummary | null> => {
+          try {
+            const store = context.env.PROJECT_STORE.get(
+              context.env.PROJECT_STORE.idFromString(projectReference.doId),
+            );
+            const summary = await store.getProjectSummary({
+              callerEmail: identity.email,
+              publicId: projectReference.id,
+            });
+            return summary.ok ? summary.project : null;
+          } catch {
+            return null;
+          }
+        }),
+      )
     )
-  )
-    .filter((project): project is ProjectSummary => project !== null)
-    .sort((left, right) => right.updatedAt - left.updatedAt);
+      .filter((project): project is ProjectSummary => project !== null)
+      .sort((left, right) => right.updatedAt - left.updatedAt);
 
   return context.json({ projects });
 });
@@ -614,6 +619,8 @@ app.post("/api/project/:id/join", requireAuth, async (context) => {
   if (!result.ok) {
     return mapProjectStoreError(result.error);
   }
+  // TODO: Replace this cross-DO membership sync, and the unlink/delete syncs below,
+  // with a ProjectStore outbox/alarm so shutdown between RPCs cannot leave listings stale.
   const registered = await context.env.PROJECTS_REGISTRY.getByName(
     PROJECTS_REGISTRY_NAME,
   ).addProjectMember({
