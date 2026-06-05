@@ -146,7 +146,7 @@ export function LoginPage() {
             disabled={submitting || (step === "email" && requiresTurnstile && !turnstileToken)}
             sx={{ alignSelf: "start" }}
           >
-            {step === "email" ? "Send code" : "Verify"}
+            {step === "email" ? "Continue" : "Verify"}
           </Button>
         </Stack>
       </Paper>
