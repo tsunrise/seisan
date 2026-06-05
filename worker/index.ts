@@ -634,6 +634,37 @@ app.post("/api/project/:id/join", requireAuth, async (context) => {
   return context.json({ member: result.member }, 201);
 });
 
+app.post("/api/project/:id/leave", requireAuth, async (context) => {
+  if (!isValidProjectId(context.req.param("id"))) {
+    return notFound();
+  }
+
+  const projectLookup = await getProjectStore(context, context.req.param("id"));
+  if (!projectLookup) {
+    return notFound();
+  }
+
+  const result = await projectLookup.store.leaveProject({
+    callerEmail: getRequiredIdentity(context).email,
+    nowMs: Date.now(),
+  });
+  if (!result.ok) {
+    return mapProjectStoreError(result.error);
+  }
+
+  const removed = await context.env.PROJECTS_REGISTRY.getByName(
+    PROJECTS_REGISTRY_NAME,
+  ).removeProjectMember({
+    id: projectLookup.projectId,
+    email: result.removedLinkedEmail,
+  });
+  if (!removed.ok) {
+    return internalServerError();
+  }
+
+  return context.body(null, 204);
+});
+
 app.patch("/api/project/:id/members/:memberId", requireAuth, async (context) => {
   if (!isValidProjectId(context.req.param("id"))) {
     return notFound();

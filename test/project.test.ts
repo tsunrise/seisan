@@ -383,11 +383,10 @@ describe("project worker", () => {
     expect(member).toMatchObject({
       owner: "owner@example.com",
       acl: { type: "restricted", emails: ["member@example.com"] },
-      members: [{ id: 1, name: "Alice", deleted: false }],
+      members: [{ id: 1, name: "Alice", deleted: false, linkedEmail: "owner@example.com" }],
       records: [],
       balance: {},
     });
-    expect(member.members[0]).not.toHaveProperty("linkedEmail");
 
     const owner = await getProject(testEnv, project.id, "owner@example.com");
     expect(owner.members[0]).toMatchObject({
@@ -398,7 +397,7 @@ describe("project worker", () => {
     });
   });
 
-  it("allows guests to read public projects without linked email visibility", async () => {
+  it("allows guests to read public projects with linked email visibility", async () => {
     const { env: testEnv } = makeEnv();
     const project = await createProject(testEnv, { ownerMemberName: "Alice" });
     await createMember(testEnv, project.id, "Bob");
@@ -412,13 +411,12 @@ describe("project worker", () => {
       owner: "owner@example.com",
       acl: { type: "public" },
       members: [
-        { id: 1, name: "Alice", deleted: false },
+        { id: 1, name: "Alice", deleted: false, linkedEmail: "owner@example.com" },
         { id: 2, name: "Bob", deleted: false },
       ],
       records: [],
       balance: {},
     });
-    expect(guestBody.members[0]).not.toHaveProperty("linkedEmail");
   });
 
   it("lets the owner manage ACL emails and type", async () => {
@@ -521,7 +519,7 @@ describe("project worker", () => {
     const bobView = await getProject(testEnv, project.id, "member@example.com");
     expect(bobView.balance).toEqual({ "1": -2000, "2": 2000 });
     expect(bobView.members).toEqual([
-      { id: 1, name: "Alice", deleted: false },
+      { id: 1, name: "Alice", deleted: false, linkedEmail: "owner@example.com" },
       { id: 2, name: "Bob", deleted: false, linkedEmail: "member@example.com" },
     ]);
 
@@ -706,6 +704,67 @@ describe("project worker", () => {
     expect(await ownerRename.json()).toEqual({
       member: { id: bob.id, name: "Bobby", deleted: false },
     });
+  });
+
+  it("lets non-owner linked members leave without changing ACL", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv, {
+      acl: { type: "restricted", emails: ["member@example.com"] },
+    });
+    const bob = await createMember(testEnv, project.id, "Bob");
+
+    const bobJoin = await dispatch(
+      `/project/${project.id}/join`,
+      testEnv,
+      jsonBody("POST", { memberId: bob.id }, await authHeaders("member@example.com")),
+    );
+    expect(bobJoin.status).toBe(201);
+
+    const ownerLeave = await dispatch(`/project/${project.id}/leave`, testEnv, {
+      method: "POST",
+      headers: await authHeaders("owner@example.com"),
+    });
+    expect(ownerLeave.status).toBe(403);
+
+    const bobLeave = await dispatch(`/project/${project.id}/leave`, testEnv, {
+      method: "POST",
+      headers: await authHeaders("member@example.com"),
+    });
+    expect(bobLeave.status).toBe(204);
+
+    const bobView = await getProject(testEnv, project.id, "member@example.com");
+    expect(bobView.acl).toEqual({ type: "restricted", emails: ["member@example.com"] });
+    expect(bobView.members).toEqual([
+      { id: 1, name: "owner", deleted: false, linkedEmail: "owner@example.com" },
+      { id: 2, name: "Bob", deleted: false },
+    ]);
+
+    const postAfterLeave = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          delta: {},
+          description: {
+            type: "expense",
+            name: "Snack",
+            paid: { "1": 100 },
+            liability: { "1": 100 },
+          },
+        },
+        await authHeaders("member@example.com"),
+      ),
+    );
+    expect(postAfterLeave.status).toBe(403);
+
+    const bobProjects = await dispatch("/projects", testEnv, {
+      headers: await authHeaders("member@example.com"),
+    });
+    expect(bobProjects.status).toBe(200);
+    expect(((await bobProjects.json()) as ProjectSummaryResponse).projects).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: project.id })]),
+    );
   });
 
   it("soft-deletes only zero-balance members and preserves historical records", async () => {

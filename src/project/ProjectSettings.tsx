@@ -6,12 +6,14 @@ import {
   Dialog,
   DialogActions,
   DialogContent,
+  DialogContentText,
   DialogTitle,
   IconButton,
   MenuItem,
   Paper,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { useState } from "react";
@@ -22,6 +24,7 @@ import { InlineAlert } from "../components/InlineAlert";
 import { PanelFrame } from "../components/PanelFrame";
 import { panelFrameSx } from "../components/styles";
 import { parseEmailList } from "../utils";
+import { Security } from "@mui/icons-material";
 
 const memberActionButtonSx = {
   border: 0,
@@ -53,12 +56,15 @@ export function ProjectSettings({
   const [newAllowedEmail, setNewAllowedEmail] = useState("");
   const [editingMember, setEditingMember] = useState<api.ProjectMember | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [confirmingLeaveProject, setConfirmingLeaveProject] = useState(false);
+  const [leavingProject, setLeavingProject] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isOwner = currentEmail === project.owner;
   const activeMembers = project.members.filter((member) => !member.deleted);
   const allowedEmails = project.acl.type === "restricted" ? project.acl.emails : [];
   const canEditAllowedEmails = isOwner && visibility === "restricted" && !savingVisibility;
   const canManageMembers = isOwner || currentMember !== null;
+  const canLeaveProject = !isOwner && currentMember !== null;
 
   async function updateVisibility(nextVisibility: api.ProjectAcl["type"]) {
     if (nextVisibility === visibility || savingVisibility) {
@@ -147,6 +153,24 @@ export function ProjectSettings({
       onReload();
     } catch {
       setError("Only zero-balance members can be deleted.");
+    }
+  }
+
+  async function leaveProject() {
+    if (!canLeaveProject || leavingProject) {
+      return;
+    }
+    setLeavingProject(true);
+    setError(null);
+    try {
+      await api.leaveProject(project.id);
+      setConfirmingLeaveProject(false);
+      onReload();
+    } catch {
+      setConfirmingLeaveProject(false);
+      setError("Could not leave this project.");
+    } finally {
+      setLeavingProject(false);
     }
   }
 
@@ -241,6 +265,7 @@ export function ProjectSettings({
           {activeMembers.map((member) => {
             const balance = project.balance[String(member.id)] ?? 0;
             const isCurrentMember = member.id === currentMember?.id;
+            const isOwnerMember = member.linkedEmail === project.owner;
             const canEditMember = isOwner || isCurrentMember;
             const canDeleteMember = isOwner && balance === 0;
             return (
@@ -254,18 +279,33 @@ export function ProjectSettings({
                   minHeight: 44,
                 }}
               >
-                <Typography
-                  noWrap
-                  sx={{
-                    minWidth: 0,
-                    flex: "1 1 auto",
-                    fontWeight: isCurrentMember ? 900 : 400,
-                    textDecoration: isCurrentMember ? "underline" : "none",
-                    textUnderlineOffset: "4px",
-                  }}
-                >
-                  {member.name}
-                </Typography>
+                <Stack sx={{ minWidth: 0, flex: "1 1 auto" }}>
+                  <Stack direction="row" sx={{ alignItems: "center", gap: 0.75, minWidth: 0 }}>
+                    <Typography
+                      noWrap
+                      sx={{
+                        minWidth: 0,
+                        fontWeight: isCurrentMember ? 900 : 400,
+                        textDecoration: isCurrentMember ? "underline" : "none",
+                        textUnderlineOffset: "4px",
+                      }}
+                    >
+                      {member.name}
+                    </Typography>
+                    {isOwnerMember ? (
+                      <Tooltip title="Owner">
+                        <Security
+                          aria-label="Owner"
+                          fontSize="small"
+                          sx={{ color: "text.secondary", flex: "0 0 auto" }}
+                        />
+                      </Tooltip>
+                    ) : null}
+                  </Stack>
+                  <Typography variant="body2" noWrap sx={{ color: "text.secondary" }}>
+                    {member.linkedEmail ?? "Not yet joined"}
+                  </Typography>
+                </Stack>
                 <Stack direction="row" sx={{ alignItems: "center", gap: 0.75, flex: "0 0 auto" }}>
                   <Amount amount={balance} />
                   {manage ? (
@@ -294,6 +334,16 @@ export function ProjectSettings({
             );
           })}
         </Stack>
+        {canLeaveProject ? (
+          <Button
+            variant="outlined"
+            color="error"
+            disabled={leavingProject}
+            onClick={() => setConfirmingLeaveProject(true)}
+          >
+            Leave project
+          </Button>
+        ) : null}
         {manage && isOwner ? (
           <Stack direction={{ xs: "column", sm: "row" }} sx={{ gap: 1.25 }}>
             <TextField
@@ -328,6 +378,35 @@ export function ProjectSettings({
             onClick={() => void saveMemberName()}
           >
             Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
+        open={confirmingLeaveProject}
+        onClose={() => {
+          if (!leavingProject) {
+            setConfirmingLeaveProject(false);
+          }
+        }}
+        fullWidth
+      >
+        <DialogTitle>Leave project?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            This will unlink your email from your member profile. Existing records stay unchanged.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={leavingProject} onClick={() => setConfirmingLeaveProject(false)}>
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={leavingProject}
+            onClick={() => void leaveProject()}
+          >
+            Leave project
           </Button>
         </DialogActions>
       </Dialog>

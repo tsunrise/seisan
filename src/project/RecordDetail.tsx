@@ -1,5 +1,15 @@
 import UndoIcon from "@mui/icons-material/Undo";
-import { Button, Paper, Stack, Typography } from "@mui/material";
+import {
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  Paper,
+  Stack,
+  Typography,
+} from "@mui/material";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -61,18 +71,27 @@ export function RecordDetail({
 }) {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
+  const [confirmingRevert, setConfirmingRevert] = useState(false);
+  const [reverting, setReverting] = useState(false);
 
   async function revert() {
+    if (reverting) {
+      return;
+    }
+    setReverting(true);
     setError(null);
     try {
       await api.appendRecord(project.id, {
         description: { type: "revert", id: record.id },
         delta: negateMoneyMap(record.delta),
       });
+      setConfirmingRevert(false);
       onPosted();
       navigate(`/project/${project.id}`);
     } catch {
       setError("Could not revert this record.");
+    } finally {
+      setReverting(false);
     }
   }
 
@@ -105,12 +124,47 @@ export function RecordDetail({
           ) : null}
           {error ? <InlineAlert>{error}</InlineAlert> : null}
           {canPost && record.description.type !== "revert" ? (
-            <Button variant="outlined" startIcon={<UndoIcon />} onClick={() => void revert()}>
+            <Button
+              variant="outlined"
+              startIcon={<UndoIcon />}
+              disabled={reverting}
+              onClick={() => setConfirmingRevert(true)}
+            >
               Revert
             </Button>
           ) : null}
         </Stack>
       </Paper>
+      <Dialog
+        open={confirmingRevert}
+        onClose={() => {
+          if (!reverting) {
+            setConfirmingRevert(false);
+          }
+        }}
+        fullWidth
+      >
+        <DialogTitle>Revert record?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            This will post a new record that reverses #{record.id}. The original record stays in the
+            timeline.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={reverting} onClick={() => setConfirmingRevert(false)}>
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={reverting}
+            onClick={() => void revert()}
+          >
+            Revert
+          </Button>
+        </DialogActions>
+      </Dialog>
     </PanelFrame>
   );
 }

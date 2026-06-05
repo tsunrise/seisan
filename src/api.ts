@@ -150,6 +150,13 @@ export async function joinProject(
   });
 }
 
+export async function leaveProject(projectId: string): Promise<void> {
+  await requestEmpty(`/api/project/${projectId}/leave`, {
+    method: "POST",
+    expectedStatus: 204,
+  });
+}
+
 export async function createMember(
   projectId: string,
   name: string,

@@ -10,9 +10,11 @@ export function MemberBalanceList({
   project: api.Project;
   currentMember: api.ProjectMember | null;
 }) {
+  const activeMembers = project.members.filter((member) => !member.deleted);
+
   return (
     <Stack component="section" spacing={1}>
-      {project.members.map((member) => (
+      {activeMembers.map((member) => (
         <Stack
           key={member.id}
           direction="row"

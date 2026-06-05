@@ -198,7 +198,7 @@ export class ProjectStore extends DurableObject<Env> {
         nowMs: input.nowMs,
       });
       this.ctx.storage.kv.put(INITIALIZED_KEY, true);
-      return this.getMembersForResponse({ requesterIsOwner: true, requesterMemberId: 1 });
+      return this.getMembersForResponse();
     });
 
     this.initialized = true;
@@ -322,7 +322,6 @@ export class ProjectStore extends DurableObject<Env> {
       return access;
     }
 
-    const requesterMember = access.email ? this.getLinkedMember(access.email) : null;
     const limit = Math.min(PROJECT_RECORD_MAX_LIMIT, Math.max(1, Math.floor(input.limit)));
     const offset = Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, Math.floor(input.offset)));
     const records = this.ctx.storage.sql
@@ -350,10 +349,7 @@ export class ProjectStore extends DurableObject<Env> {
       name: access.meta.name,
       owner: access.meta.owner_email,
       acl: this.getAcl(access.meta),
-      members: this.getMembersForResponse({
-        requesterIsOwner: access.isOwner,
-        requesterMemberId: requesterMember?.id,
-      }),
+      members: this.getMembersForResponse(),
       records,
       balance,
     };
@@ -391,7 +387,7 @@ export class ProjectStore extends DurableObject<Env> {
         id: input.publicId,
         name: access.meta.name,
         owner: access.meta.owner_email,
-        member: requesterMember ? memberForResponse(requesterMember, true) : null,
+        member: requesterMember ? memberForResponse(requesterMember) : null,
         balance,
         updatedAt: access.meta.updated_at,
       },
@@ -448,7 +444,7 @@ export class ProjectStore extends DurableObject<Env> {
       nowMs: input.nowMs,
       meta: access.meta,
     });
-    return { ok: true, member: memberForResponse(member, true) };
+    return { ok: true, member: memberForResponse(member) };
   }
 
   joinProject(input: {
@@ -489,7 +485,7 @@ export class ProjectStore extends DurableObject<Env> {
       );
       return {
         ok: true,
-        member: memberForResponse({ ...member, linked_email: access.email }, true),
+        member: memberForResponse({ ...member, linked_email: access.email }),
       };
     }
 
@@ -504,7 +500,35 @@ export class ProjectStore extends DurableObject<Env> {
       nowMs: input.nowMs,
       meta: access.meta,
     });
-    return { ok: true, member: memberForResponse(member, true) };
+    return { ok: true, member: memberForResponse(member) };
+  }
+
+  leaveProject(input: {
+    callerEmail: string;
+    nowMs: number;
+  }): { ok: true; removedLinkedEmail: string } | { ok: false; error: ProjectStoreError } {
+    const access = this.getProjectAccess(input.callerEmail);
+    if (!access.ok) {
+      return access;
+    }
+    if (!access.email) {
+      return { ok: false, error: "forbidden" };
+    }
+    if (access.isOwner) {
+      return { ok: false, error: "forbidden" };
+    }
+
+    const member = this.getLinkedMember(access.email);
+    if (!member) {
+      return { ok: false, error: "forbidden" };
+    }
+
+    this.ctx.storage.sql.exec(
+      "UPDATE members SET linked_email = NULL, updated_at = ? WHERE id = ?",
+      input.nowMs,
+      member.id,
+    );
+    return { ok: true, removedLinkedEmail: access.email };
   }
 
   patchMember(input: {
@@ -567,7 +591,7 @@ export class ProjectStore extends DurableObject<Env> {
 
     return {
       ok: true,
-      member: memberForResponse(nextMember, access.isOwner || requesterOwnsMember),
+      member: memberForResponse(nextMember),
       ...(removedLinkedEmail ? { removedLinkedEmail } : {}),
     };
   }
@@ -796,10 +820,7 @@ export class ProjectStore extends DurableObject<Env> {
     );
   }
 
-  private getMembersForResponse(input: {
-    requesterIsOwner: boolean;
-    requesterMemberId?: number;
-  }): ProjectMember[] {
+  private getMembersForResponse(): ProjectMember[] {
     return this.ctx.storage.sql
       .exec<MemberRow>(
         `SELECT id, name, normalized_name, linked_email, deleted_at, created_at, updated_at
@@ -807,9 +828,7 @@ export class ProjectStore extends DurableObject<Env> {
          ORDER BY id`,
       )
       .toArray()
-      .map((member) =>
-        memberForResponse(member, input.requesterIsOwner || member.id === input.requesterMemberId),
-      );
+      .map((member) => memberForResponse(member));
   }
 
   private hasActiveMemberName(name: string, exceptMemberId?: number): boolean {
@@ -937,12 +956,12 @@ function normalizeProjectEmail(email: string): string | null {
   return parsed.success ? parsed.data : null;
 }
 
-function memberForResponse(member: MemberRow, includeEmail: boolean): ProjectMember {
+function memberForResponse(member: MemberRow): ProjectMember {
   return {
     id: member.id,
     name: member.name,
     deleted: member.deleted_at !== null,
-    ...(includeEmail && member.linked_email ? { linkedEmail: member.linked_email } : {}),
+    ...(member.linked_email ? { linkedEmail: member.linked_email } : {}),
   };
 }
 
