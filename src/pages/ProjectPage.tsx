@@ -61,7 +61,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
         minHeight: "100svh",
         px: { xs: 0, md: 3 },
         pt: 0,
-        pb: { xs: 0, md: 3 },
+        pb: 0,
       }}
     >
       <Box sx={{ display: { xs: "none", md: "block" } }}>
