@@ -42,6 +42,7 @@ export interface Project {
   members: ProjectMember[];
   records: ProjectRecord[];
   balance: MoneyByMemberId;
+  updatedAt: number;
 }
 
 export interface ProjectSummary {
@@ -52,6 +53,8 @@ export interface ProjectSummary {
   balance: number | null;
   updatedAt: number;
 }
+
+export type WithSyncTime<T> = T & { lastSyncAt: number };
 
 export class ApiError extends Error {
   readonly status: number;
@@ -89,8 +92,10 @@ export async function logout(): Promise<void> {
   await requestEmpty("/api/logout", { method: "POST", expectedStatus: 204 });
 }
 
-export async function listProjects(): Promise<ProjectSummary[]> {
-  const response = await requestJson<{ projects: ProjectSummary[] }>("/api/projects");
+export async function listProjects(): Promise<Array<WithSyncTime<ProjectSummary>>> {
+  const response = await requestJson<{ projects: Array<WithSyncTime<ProjectSummary>> }>(
+    "/api/projects",
+  );
   return response.projects;
 }
 
@@ -153,6 +158,14 @@ export async function joinProject(
 export async function leaveProject(projectId: string): Promise<void> {
   await requestEmpty(`/api/project/${projectId}/leave`, {
     method: "POST",
+    expectedStatus: 204,
+  });
+}
+
+export async function unlinkMemberEmail(projectId: string, email: string): Promise<void> {
+  await requestEmpty(`/api/project/${projectId}/member-links`, {
+    method: "DELETE",
+    body: { email },
     expectedStatus: 204,
   });
 }

@@ -1,13 +1,13 @@
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 
+import { cacheProjectsList, getCachedProjectsList, patchProjectsListCache } from "./projectCache";
 import { LOGIN_CODE_TTL_MS, SESSION_COOKIE_NAME, SESSION_TTL_SECONDS } from "./constants";
 import {
   type AppEnv,
   type AppContext,
   getRequiredIdentity,
   getSessionToken,
-  isEmailAllowed,
   loginAttemptSchema,
   loginVerifySchema,
   optionalAuth,
@@ -42,11 +42,13 @@ import {
   projectIdSchema,
   projectJoinSchema,
   projectMemberCreateSchema,
+  projectMemberEmailUnlinkSchema,
   projectMemberPatchSchema,
   projectRegistryCacheKey,
   projectRenameSchema,
   type ProjectRegistryCacheValue,
   type ProjectSummary,
+  type WithSyncTime,
 } from "./project";
 import { verifyTurnstileToken } from "./turnstile";
 
@@ -55,12 +57,10 @@ export { LoginAttemptStore, ProjectStore, ProjectsRegistry };
 const app = new Hono<AppEnv>();
 
 interface LocalDevLoginConfig {
-  emails: Set<string>;
   code: string;
 }
 
 type LocalDevLoginEnv = Env & {
-  LOCAL_DEV_LOGIN_EMAILS?: string;
   LOCAL_DEV_LOGIN_CODE?: string;
 };
 
@@ -71,21 +71,17 @@ function getLocalDevLoginConfig(context: AppContext): LocalDevLoginConfig | null
   }
 
   const env = context.env as LocalDevLoginEnv;
-  const emails = (env.LOCAL_DEV_LOGIN_EMAILS ?? "")
-    .split(",")
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean);
   const code = env.LOCAL_DEV_LOGIN_CODE?.trim();
-  if (emails.length === 0 || !code || !/^\d{6}$/u.test(code)) {
+  if (!code || !/^\d{6}$/u.test(code)) {
     return null;
   }
 
-  return { emails: new Set(emails), code };
+  return { code };
 }
 
-function isLocalDevLogin(context: AppContext, email: string, code?: string): boolean {
+function isLocalDevLogin(context: AppContext, code?: string): boolean {
   const config = getLocalDevLoginConfig(context);
-  if (!config || !config.emails.has(email)) {
+  if (!config) {
     return false;
   }
   if (code === undefined) {
@@ -225,6 +221,31 @@ function isValidProjectId(rawProjectId: string): boolean {
   return projectIdSchema.safeParse(rawProjectId).success;
 }
 
+async function patchProjectsListCacheWithProject(
+  context: AppContext,
+  input: {
+    email: string;
+    projectId: string;
+    store: DurableObjectStub<ProjectStore>;
+  },
+): Promise<void> {
+  const summary = await input.store.getProjectBalance({
+    callerEmail: input.email,
+    publicId: input.projectId,
+  });
+  if (!summary.ok) {
+    return;
+  }
+  patchProjectsListCache(context, {
+    email: input.email,
+    patch: {
+      type: "upsert",
+      project: summary.project,
+      lastSyncAt: Date.now(),
+    },
+  });
+}
+
 function mapAclAdminResult(
   result: { ok: true } | { ok: false; error: "uninitialized" | "forbidden" | "invalid_input" },
 ): Response {
@@ -244,7 +265,12 @@ function mapProjectStoreError(error: string): Response {
   if (error === "forbidden") {
     return forbidden();
   }
-  if (error === "already_linked" || error === "already_deleted" || error === "nonzero_balance") {
+  if (
+    error === "already_linked" ||
+    error === "already_deleted" ||
+    error === "nonzero_balance" ||
+    error === "project_limit_exceeded"
+  ) {
     return conflict(error);
   }
   return invalidRequest();
@@ -263,18 +289,12 @@ app.post("/api/login/attempt", async (context) => {
 
   const { email } = parsed.data;
   const attemptId = generateLoginAttemptId();
-  const isLocalDevAttempt = isLocalDevLogin(context, email);
+  const isLocalDevAttempt = isLocalDevLogin(context);
   if (isLocalDevAttempt) {
     console.log("local dev login code requested", { email });
     return context.json({ ok: true, id: attemptId }, 202);
   } else if (!(await verifyTurnstileToken(context, parsed.data.turnstileToken))) {
     return invalidRequest();
-  }
-
-  if (!isEmailAllowed(email, context.env.ALLOWED_LOGIN_EMAILS)) {
-    // silently ignore disallowed login email without letting the abusers know
-    console.log("disallowed email silently ignored", { email });
-    return context.json({ ok: true, id: attemptId }, 202);
   }
 
   const nowMs = Date.now();
@@ -321,14 +341,10 @@ app.post("/api/login/verify", async (context) => {
   }
 
   const { id, email, code } = parsed.data;
-  if (isLocalDevLogin(context, email, code)) {
+  if (isLocalDevLogin(context, code)) {
     const { token } = await signSessionToken(email, context.env.AUTH_SECRET);
     setSessionCookie(context, token);
     return context.json({ ok: true });
-  }
-
-  if (!isEmailAllowed(email, context.env.ALLOWED_LOGIN_EMAILS)) {
-    return unauthorized();
   }
 
   const emailHash = await sha256Hex(email);
@@ -375,28 +391,47 @@ app.put("/api/project", requireAuth, async (context) => {
   const projectId = crypto.randomUUID();
   const projectDoId = context.env.PROJECT_STORE.newUniqueId();
   const projectDoIdString = projectDoId.toString();
+  const nowMs = Date.now();
+  const registry = context.env.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME);
+  const registered = await registry.registerProject({
+    id: projectId,
+    doId: projectDoIdString,
+    ownerEmail: owner,
+    nowMs,
+  });
+  if (!registered.ok) {
+    return registered.error === "project_limit_exceeded"
+      ? conflict("project_limit_exceeded")
+      : internalServerError();
+  }
+
   const project = context.env.PROJECT_STORE.get(projectDoId);
   const created = await project.initialize({
     name: parsed.data.name,
     acl: parsed.data.acl,
     ownerEmail: owner,
     ownerMemberName: parsed.data.ownerMemberName,
-    nowMs: Date.now(),
+    nowMs,
   });
   if (!created.ok) {
     return internalServerError();
   }
 
-  const registry = context.env.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME);
-  const registered = await registry.registerProject({
-    id: projectId,
-    doId: projectDoIdString,
-    ownerEmail: owner,
-    nowMs: Date.now(),
+  patchProjectsListCache(context, {
+    email: owner,
+    patch: {
+      type: "upsert",
+      project: {
+        id: projectId,
+        name: parsed.data.name,
+        owner,
+        member: created.members.find((member) => member.linkedEmail === owner) ?? null,
+        balance: 0,
+        updatedAt: nowMs,
+      },
+      lastSyncAt: nowMs,
+    },
   });
-  if (!registered.ok) {
-    return internalServerError();
-  }
 
   return context.json(
     {
@@ -412,35 +447,49 @@ app.put("/api/project", requireAuth, async (context) => {
 
 app.get("/api/projects", requireAuth, async (context) => {
   const identity = getRequiredIdentity(context);
+  const email = normalizeEmail(identity.email);
+  const cached = await getCachedProjectsList(email);
+  if (cached) {
+    return cached;
+  }
+
   const registry = context.env.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME);
-  const listed = await registry.listProjects({ callerEmail: identity.email });
+  const listed = await registry.listProjects({ callerEmail: email });
   if (!listed.ok) {
     return invalidRequest();
   }
-  const projects =
-    // TODO: this is not efficient. We should cache the balance (or even the entire projects) somewhere.
-    (
-      await Promise.all(
-        listed.projects.map(async (projectReference): Promise<ProjectSummary | null> => {
+  const lastSyncAt = Date.now();
+  const projects = (
+    await Promise.all(
+      listed.projects.map(
+        async (projectReference): Promise<WithSyncTime<ProjectSummary> | null> => {
           try {
             const store = context.env.PROJECT_STORE.get(
               context.env.PROJECT_STORE.idFromString(projectReference.doId),
             );
-            const summary = await store.getProjectSummary({
-              callerEmail: identity.email,
+            const summary = await store.getProjectBalance({
+              callerEmail: email,
               publicId: projectReference.id,
             });
-            return summary.ok ? summary.project : null;
+            return summary.ok ? { ...summary.project, lastSyncAt } : null;
           } catch {
             return null;
           }
-        }),
-      )
+        },
+      ),
     )
-      .filter((project): project is ProjectSummary => project !== null)
-      .sort((left, right) => right.updatedAt - left.updatedAt);
+  )
+    .filter((project): project is WithSyncTime<ProjectSummary> => project !== null)
+    .sort((left, right) => right.updatedAt - left.updatedAt);
 
-  return context.json({ projects });
+  const body = { projects };
+  cacheProjectsList(context, email, body);
+  return new Response(JSON.stringify(body), {
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "private, no-store",
+    },
+  });
 });
 
 app.get("/api/project/:id", optionalAuth, async (context) => {
@@ -459,13 +508,42 @@ app.get("/api/project/:id", optionalAuth, async (context) => {
     return notFound();
   }
 
+  const identity = context.get("identity");
+  const callerEmail = identity ? normalizeEmail(identity.email) : null;
   const result = await projectLookup.store.getRecords({
-    callerEmail: context.get("identity")?.email,
+    callerEmail,
     limit,
     offset,
   });
   if (!result.ok) {
     return result.error === "forbidden" ? forbidden() : notFound();
+  }
+
+  if (callerEmail) {
+    const member =
+      result.members.find((projectMember) => projectMember.linkedEmail === callerEmail) ?? null;
+    if (member) {
+      patchProjectsListCache(context, {
+        email: callerEmail,
+        patch: {
+          type: "upsert",
+          project: {
+            id: projectLookup.projectId,
+            name: result.name,
+            owner: result.owner,
+            member,
+            balance: result.balance[String(member.id)] ?? 0,
+            updatedAt: result.updatedAt,
+          },
+          lastSyncAt: Date.now(),
+        },
+      });
+    } else {
+      patchProjectsListCache(context, {
+        email: callerEmail,
+        patch: { type: "remove", projectId: projectLookup.projectId },
+      });
+    }
   }
 
   return context.json({
@@ -476,6 +554,7 @@ app.get("/api/project/:id", optionalAuth, async (context) => {
     members: result.members,
     records: result.records,
     balance: result.balance,
+    updatedAt: result.updatedAt,
   });
 });
 
@@ -611,26 +690,38 @@ app.post("/api/project/:id/join", requireAuth, async (context) => {
     return notFound();
   }
 
+  const callerEmail = normalizeEmail(getRequiredIdentity(context).email);
+  const registry = context.env.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME);
+  const reserved = await registry.addProjectMember({
+    id: projectLookup.projectId,
+    email: callerEmail,
+    nowMs: Date.now(),
+  });
+  if (!reserved.ok) {
+    return reserved.error === "project_limit_exceeded"
+      ? conflict("project_limit_exceeded")
+      : internalServerError();
+  }
+
   const result = await projectLookup.store.joinProject({
-    callerEmail: getRequiredIdentity(context).email,
+    callerEmail,
     join: parsed.data,
     nowMs: Date.now(),
   });
   if (!result.ok) {
+    if (!reserved.alreadyMember) {
+      await registry.removeProjectMember({
+        id: projectLookup.projectId,
+        email: callerEmail,
+      });
+    }
     return mapProjectStoreError(result.error);
   }
-  // TODO: Replace this cross-DO membership sync, and the unlink/delete syncs below,
-  // with a ProjectStore outbox/alarm so shutdown between RPCs cannot leave listings stale.
-  const registered = await context.env.PROJECTS_REGISTRY.getByName(
-    PROJECTS_REGISTRY_NAME,
-  ).addProjectMember({
-    id: projectLookup.projectId,
-    email: getRequiredIdentity(context).email,
-    nowMs: Date.now(),
+  await patchProjectsListCacheWithProject(context, {
+    email: callerEmail,
+    projectId: projectLookup.projectId,
+    store: projectLookup.store,
   });
-  if (!registered.ok) {
-    return internalServerError();
-  }
   return context.json({ member: result.member }, 201);
 });
 
@@ -662,6 +753,51 @@ app.post("/api/project/:id/leave", requireAuth, async (context) => {
     return internalServerError();
   }
 
+  patchProjectsListCache(context, {
+    email: result.removedLinkedEmail,
+    patch: { type: "remove", projectId: projectLookup.projectId },
+  });
+  return context.body(null, 204);
+});
+
+app.delete("/api/project/:id/member-links", requireAuth, async (context) => {
+  if (!isValidProjectId(context.req.param("id"))) {
+    return notFound();
+  }
+
+  const parsed = await parseJson(context, projectMemberEmailUnlinkSchema);
+  if (!parsed.ok) {
+    return invalidRequest();
+  }
+
+  const projectLookup = await getProjectStore(context, context.req.param("id"));
+  if (!projectLookup) {
+    return notFound();
+  }
+
+  const result = await projectLookup.store.unlinkMemberEmail({
+    callerEmail: getRequiredIdentity(context).email,
+    email: parsed.data.email,
+    nowMs: Date.now(),
+  });
+  if (!result.ok) {
+    return mapProjectStoreError(result.error);
+  }
+
+  const removed = await context.env.PROJECTS_REGISTRY.getByName(
+    PROJECTS_REGISTRY_NAME,
+  ).removeProjectMember({
+    id: projectLookup.projectId,
+    email: result.removedLinkedEmail,
+  });
+  if (!removed.ok) {
+    return internalServerError();
+  }
+
+  patchProjectsListCache(context, {
+    email: result.removedLinkedEmail,
+    patch: { type: "remove", projectId: projectLookup.projectId },
+  });
   return context.body(null, 204);
 });
 
@@ -704,6 +840,10 @@ app.patch("/api/project/:id/members/:memberId", requireAuth, async (context) => 
     if (!removed.ok) {
       return internalServerError();
     }
+    patchProjectsListCache(context, {
+      email: result.removedLinkedEmail,
+      patch: { type: "remove", projectId: projectLookup.projectId },
+    });
   }
   return context.json({ member: result.member });
 });
@@ -740,6 +880,10 @@ app.delete("/api/project/:id/members/:memberId", requireAuth, async (context) =>
     if (!removed.ok) {
       return internalServerError();
     }
+    patchProjectsListCache(context, {
+      email: result.removedLinkedEmail,
+      patch: { type: "remove", projectId: projectLookup.projectId },
+    });
   }
   return context.body(null, 204);
 });

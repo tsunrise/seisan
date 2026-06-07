@@ -13,6 +13,29 @@ export function formatCents(amount: number): string {
   return formatted;
 }
 
+export function formatRelativeTime(timestamp: number, now = Date.now()): string {
+  const elapsedSeconds = Math.max(0, Math.floor((now - timestamp) / 1000));
+  if (elapsedSeconds < 5) {
+    return "just now";
+  }
+  if (elapsedSeconds < 60) {
+    return `${elapsedSeconds} seconds ago`;
+  }
+
+  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+  if (elapsedMinutes < 60) {
+    return `${elapsedMinutes} ${elapsedMinutes === 1 ? "minute" : "minutes"} ago`;
+  }
+
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) {
+    return `${elapsedHours} ${elapsedHours === 1 ? "hour" : "hours"} ago`;
+  }
+
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  return `${elapsedDays} ${elapsedDays === 1 ? "day" : "days"} ago`;
+}
+
 export function amountTone(amount: number | null | undefined): AmountTone {
   if (!amount) {
     return "settled";

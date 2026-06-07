@@ -2,14 +2,19 @@ import { z } from "zod";
 
 export const PROJECTS_REGISTRY_NAME = "projects";
 export const PROJECT_REGISTRY_CACHE_TTL_SECONDS = 60;
+export const PROJECTS_LIST_CACHE_TTL_SECONDS = 10 * 60;
+// TODO: Give user an option to archive a record (e.g. delete DO but save the records in KV).
+export const PROJECTS_PER_USER_LIMIT = 50;
 export const PROJECT_RECORD_DEFAULT_LIMIT = 50;
 export const PROJECT_RECORD_MAX_LIMIT = 1024;
+export const MAX_MONEY_CENTS = 100_000_000;
+export const MAX_BALANCE_CENTS = 100_000_000;
 
 const projectIdRegex =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const memberIdKeyRegex = /^[1-9]\d*$/u;
 
-const centsSchema = z.number().int().min(Number.MIN_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER);
+const centsSchema = z.number().int().min(-MAX_MONEY_CENTS).max(MAX_MONEY_CENTS);
 
 export const normalizedEmailSchema = z.email().transform((email) => normalizeEmail(email));
 
@@ -160,6 +165,10 @@ export const projectMemberPatchSchema = z.union([
   z.object({ email: z.literal("") }).strict(),
 ]);
 
+export const projectMemberEmailUnlinkSchema = z.object({
+  email: normalizedEmailSchema,
+});
+
 export const projectJoinSchema = z.union([
   z.object({ memberId: memberIdSchema }).strict().describe("claim unlinked member"),
   z.object({ name: memberNameSchema }).strict().describe("create a new member"),
@@ -198,6 +207,8 @@ export interface ProjectSummary {
   balance: number | null;
   updatedAt: number;
 }
+
+export type WithSyncTime<T> = T & { lastSyncAt: number };
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();

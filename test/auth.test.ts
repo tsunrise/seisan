@@ -43,7 +43,7 @@ function uniqueEmail(): string {
   return `test-${crypto.randomUUID()}@example.com`;
 }
 
-function makeEnv(allowedEmail = uniqueEmail(), turnstileSuccess = true): TestEnv {
+function makeEnv(turnstileSuccess = true): TestEnv {
   const sentEmails: TestEnv["sentEmails"] = [];
   const send = vi.fn(async (message: TestEnv["sentEmails"][number]) => {
     sentEmails.push(message);
@@ -65,7 +65,6 @@ function makeEnv(allowedEmail = uniqueEmail(), turnstileSuccess = true): TestEnv
       AUTH_SECRET,
       LOGIN_EMAIL_FROM,
       TURNSTILE_SECRET_KEY,
-      ALLOWED_LOGIN_EMAILS: allowedEmail,
       SEND_EMAIL: { send } as unknown as SendEmail,
     } as unknown as Env,
     sentEmails,
@@ -180,14 +179,14 @@ describe("auth worker", () => {
 
   it("requires turnstile before sending login email", async () => {
     const email = uniqueEmail();
-    const { env: testEnv, sentEmails, turnstileFetch } = makeEnv(email);
+    const { env: testEnv, sentEmails, turnstileFetch } = makeEnv();
     const missingToken = await dispatch("/login/attempt", testEnv, jsonPost({ email }));
 
     expect(missingToken.status).toBe(400);
     expect(sentEmails).toHaveLength(0);
     expect(turnstileFetch).not.toHaveBeenCalled();
 
-    const failedEnv = makeEnv(email, false);
+    const failedEnv = makeEnv(false);
     const failedTurnstile = await dispatch(
       "/login/attempt",
       failedEnv.env,
@@ -199,23 +198,21 @@ describe("auth worker", () => {
     expect(failedEnv.turnstileFetch).toHaveBeenCalledTimes(1);
   });
 
-  it("returns generic success for non-allowlisted login attempts without sending email", async () => {
-    const { env: testEnv, sentEmails, turnstileFetch } = makeEnv("allowed@example.com");
-    const response = await dispatch(
-      "/login/attempt",
-      testEnv,
-      jsonPost(loginAttemptBody("blocked@example.com")),
-    );
+  it("accepts any valid email after turnstile verification", async () => {
+    const email = uniqueEmail();
+    const { env: testEnv, sentEmails, turnstileFetch } = makeEnv();
+    const response = await dispatch("/login/attempt", testEnv, jsonPost(loginAttemptBody(email)));
 
     expect(response.status).toBe(202);
     await readLoginAttemptId(response);
-    expect(sentEmails).toHaveLength(0);
+    expect(sentEmails).toHaveLength(1);
+    expect(sentEmails[0].to).toBe(email);
     expect(turnstileFetch).toHaveBeenCalledTimes(1);
   });
 
-  it("stores hashed login codes and sends email for allowlisted users", async () => {
+  it("stores hashed login codes and sends email for users", async () => {
     const email = uniqueEmail();
-    const { env: testEnv, sentEmails } = makeEnv(email);
+    const { env: testEnv, sentEmails } = makeEnv();
     const response = await dispatch("/login/attempt", testEnv, jsonPost(loginAttemptBody(email)));
     const attemptId = await readLoginAttemptId(response);
 
@@ -250,7 +247,7 @@ describe("auth worker", () => {
 
   it("returns generic success without sending during the resend cooldown", async () => {
     const email = uniqueEmail();
-    const { env: testEnv, sentEmails } = makeEnv(email);
+    const { env: testEnv, sentEmails } = makeEnv();
 
     const first = await dispatch("/login/attempt", testEnv, jsonPost(loginAttemptBody(email)));
     expect(first.status).toBe(202);
@@ -266,7 +263,7 @@ describe("auth worker", () => {
 
   it("rejects wrong, expired, and over-attempted verification codes", async () => {
     const email = uniqueEmail();
-    const { env: testEnv, sentEmails } = makeEnv(email);
+    const { env: testEnv, sentEmails } = makeEnv();
     const attemptResponse = await dispatch(
       "/login/attempt",
       testEnv,
@@ -353,7 +350,7 @@ describe("auth worker", () => {
     expect(sentEmails).toHaveLength(1);
 
     const expiredEmail = uniqueEmail();
-    const expiredEnv = makeEnv(expiredEmail).env;
+    const expiredEnv = makeEnv().env;
     const expiredEmailHash = await sha256Hex(expiredEmail);
     const expiredAttemptId = generateLoginAttemptId();
     const expiredCodeHash = await hashLoginCode(expiredEmail, "123456", AUTH_SECRET);
@@ -376,7 +373,7 @@ describe("auth worker", () => {
 
   it("verifies a correct code, consumes the attempt, and sets a session cookie", async () => {
     const email = uniqueEmail();
-    const { env: testEnv, sentEmails } = makeEnv(email);
+    const { env: testEnv, sentEmails } = makeEnv();
 
     const attemptResponse = await dispatch(
       "/login/attempt",
@@ -409,12 +406,11 @@ describe("auth worker", () => {
     );
   });
 
-  it("allows a configured fixed code only for local dev login", async () => {
+  it("allows a configured fixed code for any local dev email only on localhost", async () => {
     const email = uniqueEmail();
-    const { env: testEnv, sentEmails } = makeEnv("allowed@example.com");
+    const { env: testEnv, sentEmails } = makeEnv();
     const localDevEnv = {
       ...testEnv,
-      LOCAL_DEV_LOGIN_EMAILS: email,
       LOCAL_DEV_LOGIN_CODE: "123456",
     } as unknown as Env;
 
@@ -426,7 +422,7 @@ describe("auth worker", () => {
     );
     expect(remoteAttempt.status).toBe(202);
     const remoteAttemptId = await readLoginAttemptId(remoteAttempt);
-    expect(sentEmails).toHaveLength(0);
+    expect(sentEmails).toHaveLength(1);
 
     const remoteVerify = await dispatch(
       "/login/verify",
@@ -444,7 +440,7 @@ describe("auth worker", () => {
     );
     expect(localAttempt.status).toBe(202);
     const localAttemptId = await readLoginAttemptId(localAttempt);
-    expect(sentEmails).toHaveLength(0);
+    expect(sentEmails).toHaveLength(1);
 
     const localWrongCode = await dispatch(
       "/login/verify",
@@ -473,7 +469,7 @@ describe("auth worker", () => {
 
   it("whoami accepts valid tokens unless KV-revoked and rejects expired tokens", async () => {
     const email = uniqueEmail();
-    const { env: testEnv } = makeEnv(email);
+    const { env: testEnv } = makeEnv();
     const validToken = await createVerifiedSession(testEnv, email);
 
     const valid = await dispatch("/whoami", testEnv, {
@@ -502,7 +498,7 @@ describe("auth worker", () => {
 
   it("does not expose a sensitive whoami endpoint", async () => {
     const email = uniqueEmail();
-    const { env: testEnv } = makeEnv(email);
+    const { env: testEnv } = makeEnv();
     const token = await createVerifiedSession(testEnv, email);
 
     const response = await dispatch("/whoami/sensitive", testEnv, {
@@ -513,7 +509,7 @@ describe("auth worker", () => {
 
   it("logout writes revocation to KV, then clears the cookie", async () => {
     const email = uniqueEmail();
-    const { env: testEnv } = makeEnv(email);
+    const { env: testEnv } = makeEnv();
     const token = await createVerifiedSession(testEnv, email);
     const tokenHash = await sha256Hex(token);
 

@@ -17,6 +17,7 @@ import * as api from "../api";
 import { Amount } from "../components/Amount";
 import { InlineAlert } from "../components/InlineAlert";
 import { paperFrameSx } from "../components/styles";
+import { formatRelativeTime } from "../domain";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { useProjects } from "../hooks/useProjects";
 import { loginPath } from "../utils";
@@ -132,7 +133,7 @@ export function ProjectsPage() {
   );
 }
 
-function ProjectListRow({ project }: { project: api.ProjectSummary }) {
+function ProjectListRow({ project }: { project: api.WithSyncTime<api.ProjectSummary> }) {
   return (
     <Paper
       component={Link}
@@ -156,7 +157,12 @@ function ProjectListRow({ project }: { project: api.ProjectSummary }) {
         <Typography variant="h2">{project.name}</Typography>
         <Typography color="text.secondary">{project.member?.name ?? "Owner"}</Typography>
       </Box>
-      <Amount amount={project.balance} />
+      <Box sx={{ textAlign: "right" }}>
+        <Amount amount={project.balance} />
+        <Typography color="text.secondary" sx={{ fontSize: 13 }}>
+          {formatRelativeTime(project.lastSyncAt)}
+        </Typography>
+      </Box>
     </Paper>
   );
 }

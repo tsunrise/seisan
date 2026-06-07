@@ -1,6 +1,8 @@
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import LinkOffIcon from "@mui/icons-material/LinkOff";
+import SecurityIcon from "@mui/icons-material/Security";
 import {
   Button,
   Dialog,
@@ -24,7 +26,6 @@ import { InlineAlert } from "../components/InlineAlert";
 import { PanelFrame } from "../components/PanelFrame";
 import { panelFrameSx } from "../components/styles";
 import { parseEmailList } from "../utils";
-import { Security } from "@mui/icons-material";
 
 const memberActionButtonSx = {
   border: 0,
@@ -56,6 +57,8 @@ export function ProjectSettings({
   const [newAllowedEmail, setNewAllowedEmail] = useState("");
   const [editingMember, setEditingMember] = useState<api.ProjectMember | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [memberToKick, setMemberToKick] = useState<api.ProjectMember | null>(null);
+  const [kickingMember, setKickingMember] = useState(false);
   const [confirmingLeaveProject, setConfirmingLeaveProject] = useState(false);
   const [leavingProject, setLeavingProject] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -153,6 +156,24 @@ export function ProjectSettings({
       onReload();
     } catch {
       setError("Only zero-balance members can be deleted.");
+    }
+  }
+
+  async function kickMemberEmail() {
+    if (!memberToKick?.linkedEmail || memberToKick.linkedEmail === project.owner || kickingMember) {
+      return;
+    }
+    setKickingMember(true);
+    setError(null);
+    try {
+      await api.unlinkMemberEmail(project.id, memberToKick.linkedEmail);
+      setMemberToKick(null);
+      onReload();
+    } catch {
+      setMemberToKick(null);
+      setError("Could not unlink that email.");
+    } finally {
+      setKickingMember(false);
     }
   }
 
@@ -268,6 +289,8 @@ export function ProjectSettings({
             const isOwnerMember = member.linkedEmail === project.owner;
             const canEditMember = isOwner || isCurrentMember;
             const canDeleteMember = isOwner && balance === 0;
+            const canKickMemberEmail =
+              isOwner && member.linkedEmail !== undefined && member.linkedEmail !== project.owner;
             return (
               <Stack
                 key={member.id}
@@ -294,7 +317,7 @@ export function ProjectSettings({
                     </Typography>
                     {isOwnerMember ? (
                       <Tooltip title="Owner">
-                        <Security
+                        <SecurityIcon
                           aria-label="Owner"
                           fontSize="small"
                           sx={{ color: "text.secondary", flex: "0 0 auto" }}
@@ -318,6 +341,21 @@ export function ProjectSettings({
                       >
                         <EditIcon fontSize="small" />
                       </IconButton>
+                      {isOwner ? (
+                        <Tooltip title={canKickMemberEmail ? "Unlink email" : "Cannot unlink"}>
+                          <span>
+                            <IconButton
+                              color="warning"
+                              aria-label={`Unlink ${member.name}`}
+                              disabled={!canKickMemberEmail}
+                              onClick={() => setMemberToKick(member)}
+                              sx={memberActionButtonSx}
+                            >
+                              <LinkOffIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      ) : null}
                       <IconButton
                         color="error"
                         aria-label={`Delete ${member.name}`}
@@ -378,6 +416,37 @@ export function ProjectSettings({
             onClick={() => void saveMemberName()}
           >
             Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
+        open={memberToKick !== null}
+        onClose={() => {
+          if (!kickingMember) {
+            setMemberToKick(null);
+          }
+        }}
+        fullWidth
+      >
+        <DialogTitle>Unlink member email?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {memberToKick?.linkedEmail
+              ? `${memberToKick.linkedEmail} will no longer be linked to ${memberToKick.name}. Existing records stay unchanged.`
+              : "This email will be unlinked from the member. Existing records stay unchanged."}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={kickingMember} onClick={() => setMemberToKick(null)}>
+            Cancel
+          </Button>
+          <Button
+            color="warning"
+            variant="contained"
+            disabled={kickingMember}
+            onClick={() => void kickMemberEmail()}
+          >
+            Unlink email
           </Button>
         </DialogActions>
       </Dialog>

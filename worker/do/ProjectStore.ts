@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 
 import {
+  MAX_BALANCE_CENTS,
   PROJECT_RECORD_MAX_LIMIT,
   defaultMemberNameForEmail,
   deriveDescriptionDelta,
@@ -17,6 +18,7 @@ import {
   projectAclTypeSchema,
   projectJoinSchema,
   projectMemberCreateSchema,
+  projectMemberEmailUnlinkSchema,
   projectMemberPatchSchema,
   projectNameSchema,
   projectRenameSchema,
@@ -198,7 +200,7 @@ export class ProjectStore extends DurableObject<Env> {
         nowMs: input.nowMs,
       });
       this.ctx.storage.kv.put(INITIALIZED_KEY, true);
-      return this.getMembersForResponse();
+      return this.getMembersForResponse({ includeLinkedEmails: true });
     });
 
     this.initialized = true;
@@ -282,26 +284,32 @@ export class ProjectStore extends DurableObject<Env> {
       }
     }
 
-    const id = access.meta.next_record_id;
-    this.ctx.storage.sql.exec(
-      `INSERT INTO records
-        (id, author_member_id, description_type, description_json, delta_json, reverts_record_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      id,
-      authorMember.id,
-      description.type,
-      JSON.stringify(description),
-      JSON.stringify(resolvedDelta.delta),
-      description.type === "revert" ? description.id : null,
-      input.nowMs,
-    );
+    if (!this.canApplyBalanceDelta(resolvedDelta.delta)) {
+      return { ok: false, error: "invalid_record" };
+    }
 
-    this.applyBalanceDelta(resolvedDelta.delta);
-    this.ctx.storage.sql.exec(
-      "UPDATE project_meta SET next_record_id = ?, updated_at = ? WHERE id = 1",
-      id + 1,
-      input.nowMs,
-    );
+    const id = access.meta.next_record_id;
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec(
+        `INSERT INTO records
+          (id, author_member_id, description_type, description_json, delta_json, reverts_record_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        id,
+        authorMember.id,
+        description.type,
+        JSON.stringify(description),
+        JSON.stringify(resolvedDelta.delta),
+        description.type === "revert" ? description.id : null,
+        input.nowMs,
+      );
+
+      this.applyBalanceDelta(resolvedDelta.delta);
+      this.ctx.storage.sql.exec(
+        "UPDATE project_meta SET next_record_id = ?, updated_at = ? WHERE id = 1",
+        id + 1,
+        input.nowMs,
+      );
+    });
 
     return { ok: true, id };
   }
@@ -315,6 +323,7 @@ export class ProjectStore extends DurableObject<Env> {
         members: ProjectMember[];
         records: ProjectRecord[];
         balance: MoneyByMemberId;
+        updatedAt: number;
       }
     | { ok: false; error: "uninitialized" | "forbidden" } {
     const access = this.getProjectAccess(input.callerEmail);
@@ -349,13 +358,14 @@ export class ProjectStore extends DurableObject<Env> {
       name: access.meta.name,
       owner: access.meta.owner_email,
       acl: this.getAcl(access.meta),
-      members: this.getMembersForResponse(),
+      members: this.getMembersForResponse({ includeLinkedEmails: access.email !== null }),
       records,
       balance,
+      updatedAt: access.meta.updated_at,
     };
   }
 
-  getProjectSummary(input: {
+  getProjectBalance(input: {
     callerEmail: string;
     publicId: string;
   }): { ok: true; project: ProjectSummary } | { ok: false; error: "uninitialized" | "forbidden" } {
@@ -387,7 +397,9 @@ export class ProjectStore extends DurableObject<Env> {
         id: input.publicId,
         name: access.meta.name,
         owner: access.meta.owner_email,
-        member: requesterMember ? memberForResponse(requesterMember) : null,
+        member: requesterMember
+          ? memberForResponse(requesterMember, { includeLinkedEmails: true })
+          : null,
         balance,
         updatedAt: access.meta.updated_at,
       },
@@ -444,7 +456,7 @@ export class ProjectStore extends DurableObject<Env> {
       nowMs: input.nowMs,
       meta: access.meta,
     });
-    return { ok: true, member: memberForResponse(member) };
+    return { ok: true, member: memberForResponse(member, { includeLinkedEmails: true }) };
   }
 
   joinProject(input: {
@@ -485,7 +497,10 @@ export class ProjectStore extends DurableObject<Env> {
       );
       return {
         ok: true,
-        member: memberForResponse({ ...member, linked_email: access.email }),
+        member: memberForResponse(
+          { ...member, linked_email: access.email },
+          { includeLinkedEmails: true },
+        ),
       };
     }
 
@@ -500,7 +515,7 @@ export class ProjectStore extends DurableObject<Env> {
       nowMs: input.nowMs,
       meta: access.meta,
     });
-    return { ok: true, member: memberForResponse(member) };
+    return { ok: true, member: memberForResponse(member, { includeLinkedEmails: true }) };
   }
 
   leaveProject(input: {
@@ -591,7 +606,7 @@ export class ProjectStore extends DurableObject<Env> {
 
     return {
       ok: true,
-      member: memberForResponse(nextMember),
+      member: memberForResponse(nextMember, { includeLinkedEmails: true }),
       ...(removedLinkedEmail ? { removedLinkedEmail } : {}),
     };
   }
@@ -634,6 +649,37 @@ export class ProjectStore extends DurableObject<Env> {
       ok: true,
       ...(member.linked_email ? { removedLinkedEmail: member.linked_email } : {}),
     };
+  }
+
+  unlinkMemberEmail(input: {
+    callerEmail: string;
+    email: string;
+    nowMs: number;
+  }): { ok: true; removedLinkedEmail: string } | { ok: false; error: ProjectStoreError } {
+    const ownerAccess = this.getOwnerAccess(input.callerEmail);
+    if (!ownerAccess.ok) {
+      return ownerAccess;
+    }
+
+    const parsed = projectMemberEmailUnlinkSchema.safeParse({ email: input.email });
+    if (!parsed.success) {
+      return { ok: false, error: "invalid_input" };
+    }
+    if (parsed.data.email === ownerAccess.meta.owner_email) {
+      return { ok: false, error: "forbidden" };
+    }
+
+    const member = this.getLinkedMember(parsed.data.email);
+    if (!member) {
+      return { ok: false, error: "not_found" };
+    }
+
+    this.ctx.storage.sql.exec(
+      "UPDATE members SET linked_email = NULL, updated_at = ? WHERE id = ?",
+      input.nowMs,
+      member.id,
+    );
+    return { ok: true, removedLinkedEmail: parsed.data.email };
   }
 
   appendEmailsToAcl(input: {
@@ -820,7 +866,7 @@ export class ProjectStore extends DurableObject<Env> {
     );
   }
 
-  private getMembersForResponse(): ProjectMember[] {
+  private getMembersForResponse(options: { includeLinkedEmails: boolean }): ProjectMember[] {
     return this.ctx.storage.sql
       .exec<MemberRow>(
         `SELECT id, name, normalized_name, linked_email, deleted_at, created_at, updated_at
@@ -828,7 +874,7 @@ export class ProjectStore extends DurableObject<Env> {
          ORDER BY id`,
       )
       .toArray()
-      .map((member) => memberForResponse(member));
+      .map((member) => memberForResponse(member, options));
   }
 
   private hasActiveMemberName(name: string, exceptMemberId?: number): boolean {
@@ -907,6 +953,23 @@ export class ProjectStore extends DurableObject<Env> {
     }
   }
 
+  private canApplyBalanceDelta(delta: MoneyByMemberId): boolean {
+    for (const [memberId, amount] of Object.entries(delta)) {
+      const currentBalance =
+        this.ctx.storage.sql
+          .exec<BalanceRow>(
+            "SELECT amount_cents FROM balances WHERE member_id = ?",
+            Number(memberId),
+          )
+          .toArray()[0]?.amount_cents ?? 0;
+      const nextBalance = currentBalance + amount;
+      if (!Number.isSafeInteger(nextBalance) || Math.abs(nextBalance) > MAX_BALANCE_CENTS) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /**
    * Update `updated_at` for project metadata.
    */
@@ -956,12 +1019,17 @@ function normalizeProjectEmail(email: string): string | null {
   return parsed.success ? parsed.data : null;
 }
 
-function memberForResponse(member: MemberRow): ProjectMember {
+function memberForResponse(
+  member: MemberRow,
+  options: { includeLinkedEmails: boolean },
+): ProjectMember {
   return {
     id: member.id,
     name: member.name,
     deleted: member.deleted_at !== null,
-    ...(member.linked_email ? { linkedEmail: member.linked_email } : {}),
+    ...(options.includeLinkedEmails && member.linked_email
+      ? { linkedEmail: member.linked_email }
+      : {}),
   };
 }
 

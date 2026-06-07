@@ -17,9 +17,7 @@
   "upload_source_maps": true,
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    "ALLOWED_LOGIN_EMAILS": "seisan-test-alice@tom.mozmail.com,seisan-test-bob@tom.mozmail.com,seisan-test-carol@tom.mozmail.com",
     "LOGIN_EMAIL_FROM": "no-reply@dev.seisan.waga.me",
-    "LOCAL_DEV_LOGIN_EMAILS": "seisan-test-alice@tom.mozmail.com,seisan-test-bob@tom.mozmail.com,seisan-test-carol@tom.mozmail.com",
     "LOCAL_DEV_LOGIN_CODE": "123456",
   },
   "secrets": {
@@ -70,9 +68,7 @@
   "env": {
     "test": {
       "vars": {
-        "ALLOWED_LOGIN_EMAILS": "yehvd9bbu@mozmail.com",
         "LOGIN_EMAIL_FROM": "login@example.com",
-        "LOCAL_DEV_LOGIN_EMAILS": "",
         "LOCAL_DEV_LOGIN_CODE": "",
       },
       "secrets": {
@@ -123,9 +119,7 @@
       "workers_dev": false,
       "routes": [{ "pattern": "dev.seisan.waga.me", "custom_domain": true }],
       "vars": {
-        "ALLOWED_LOGIN_EMAILS": "seisan-test-alice@tom.mozmail.com,seisan-test-bob@tom.mozmail.com,seisan-test-carol@tom.mozmail.com",
         "LOGIN_EMAIL_FROM": "no-reply@dev.seisan.waga.me",
-        "LOCAL_DEV_LOGIN_EMAILS": "",
         "LOCAL_DEV_LOGIN_CODE": "",
       },
       "secrets": {
@@ -177,9 +171,7 @@
     },
     "production": {
       "vars": {
-        "ALLOWED_LOGIN_EMAILS": "yehvd9bbu@mozmail.com",
         "LOGIN_EMAIL_FROM": "no-reply@seisan.waga.me",
-        "LOCAL_DEV_LOGIN_EMAILS": "",
         "LOCAL_DEV_LOGIN_CODE": "",
       },
       "routes": [{ "pattern": "seisan.waga.me", "custom_domain": true }],

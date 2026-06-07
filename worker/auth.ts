@@ -49,15 +49,6 @@ export async function parseJson<T>(
   }
 }
 
-export function isEmailAllowed(email: string, allowedEmails: string): boolean {
-  const normalizedEmail = normalizeLoginEmail(email);
-  return allowedEmails
-    .split(",")
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean)
-    .includes(normalizedEmail);
-}
-
 export function getSessionToken(context: AppContext): string | undefined {
   return getCookie(context, SESSION_COOKIE_NAME);
 }

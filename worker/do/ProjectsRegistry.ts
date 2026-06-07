@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 
 import {
+  PROJECTS_PER_USER_LIMIT,
   normalizedEmailSchema,
   projectIdSchema,
   projectRegistryCacheKey,
@@ -61,7 +62,9 @@ export class ProjectsRegistry extends DurableObject<Env> {
     doId: string;
     ownerEmail: string;
     nowMs: number;
-  }): { ok: true } | { ok: false; error: "already_exists" | "invalid_input" } {
+  }):
+    | { ok: true }
+    | { ok: false; error: "already_exists" | "invalid_input" | "project_limit_exceeded" } {
     const projectId = projectIdSchema.safeParse(input.id);
     const ownerEmail = normalizedEmailSchema.safeParse(input.ownerEmail);
     if (!projectId.success || !ownerEmail.success || !durableObjectIdRegex.test(input.doId)) {
@@ -73,6 +76,9 @@ export class ProjectsRegistry extends DurableObject<Env> {
       .toArray()[0];
     if (existing) {
       return { ok: false, error: "already_exists" };
+    }
+    if (this.countProjectsForEmail(ownerEmail.data) >= PROJECTS_PER_USER_LIMIT) {
+      return { ok: false, error: "project_limit_exceeded" };
     }
 
     this.ctx.storage.transactionSync(() => {
@@ -102,7 +108,9 @@ export class ProjectsRegistry extends DurableObject<Env> {
     id: string;
     email: string;
     nowMs: number;
-  }): { ok: true } | { ok: false; error: "invalid_input" | "not_found" } {
+  }):
+    | { ok: true; alreadyMember: boolean }
+    | { ok: false; error: "invalid_input" | "not_found" | "project_limit_exceeded" } {
     const projectId = projectIdSchema.safeParse(input.id);
     const email = normalizedEmailSchema.safeParse(input.email);
     if (!projectId.success || !email.success) {
@@ -112,13 +120,17 @@ export class ProjectsRegistry extends DurableObject<Env> {
     if (!this.hasProject(projectId.data)) {
       return { ok: false, error: "not_found" };
     }
+    const alreadyMember = this.hasProjectMember(projectId.data, email.data);
+    if (!alreadyMember && this.countProjectsForEmail(email.data) >= PROJECTS_PER_USER_LIMIT) {
+      return { ok: false, error: "project_limit_exceeded" };
+    }
 
     this.insertProjectMember({
       projectId: projectId.data,
       email: email.data,
       nowMs: input.nowMs,
     });
-    return { ok: true };
+    return { ok: true, alreadyMember };
   }
 
   removeProjectMember(input: {
@@ -193,6 +205,28 @@ export class ProjectsRegistry extends DurableObject<Env> {
       this.ctx.storage.sql
         .exec<ProjectRow>("SELECT id FROM projects WHERE id = ?", projectId)
         .toArray()[0] !== undefined
+    );
+  }
+
+  private hasProjectMember(projectId: string, email: string): boolean {
+    return (
+      this.ctx.storage.sql
+        .exec<ProjectMemberRow>(
+          "SELECT project_id AS id FROM project_members WHERE email = ? AND project_id = ?",
+          email,
+          projectId,
+        )
+        .toArray()[0] !== undefined
+    );
+  }
+
+  private countProjectsForEmail(email: string): number {
+    return (
+      this.ctx.storage.sql
+        .exec<
+          { count: number } & Record<string, SqlStorageValue>
+        >("SELECT COUNT(*) AS count FROM project_members WHERE email = ?", email)
+        .toArray()[0]?.count ?? 0
     );
   }
 
