@@ -2,6 +2,9 @@ import { DurableObject } from "cloudflare:workers";
 
 import {
   PROJECTS_PER_USER_LIMIT,
+  type ProjectMember,
+  type ProjectSummary,
+  type WithSyncTime,
   normalizedEmailSchema,
   projectIdSchema,
   projectRegistryCacheKey,
@@ -19,8 +22,39 @@ interface ProjectRow extends Record<string, SqlStorageValue> {
 interface ProjectMemberRow extends Record<string, SqlStorageValue> {
   id: string;
   do_id: string;
+  name: string | null;
+  owner_email: string | null;
+  member_json: string | null;
+  balance_cents: number | null;
+  project_updated_at: number | null;
+  summary_synced_at: number | null;
   created_at: number;
   updated_at: number;
+}
+
+interface ProjectSummaryRow extends Record<string, SqlStorageValue> {
+  id: string;
+  name: string;
+  owner_email: string;
+  member_json: string;
+  balance_cents: number | null;
+  project_updated_at: number;
+  summary_synced_at: number;
+}
+
+export interface ProjectSummarySyncMember {
+  email: string;
+  member: ProjectMember;
+  balance: number | null;
+}
+
+export interface ProjectSummarySyncInput {
+  id: string;
+  name: string;
+  owner: string;
+  updatedAt: number;
+  lastSyncAt: number;
+  members: ProjectSummarySyncMember[];
 }
 
 const durableObjectIdRegex = /^[0-9a-f]{64}$/u;
@@ -46,6 +80,19 @@ export class ProjectsRegistry extends DurableObject<Env> {
       )`,
       `CREATE INDEX IF NOT EXISTS project_members_email_updated_idx
         ON project_members(email, updated_at DESC)`,
+    ],
+    [
+      `CREATE TABLE IF NOT EXISTS project_summaries (
+        project_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        owner_email TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        summary_synced_at INTEGER NOT NULL
+      )`,
+      `ALTER TABLE project_members ADD COLUMN member_json TEXT`,
+      `ALTER TABLE project_members ADD COLUMN balance_cents INTEGER`,
+      `CREATE INDEX IF NOT EXISTS project_summaries_updated_idx
+        ON project_summaries(updated_at DESC)`,
     ],
   ];
 
@@ -151,6 +198,89 @@ export class ProjectsRegistry extends DurableObject<Env> {
     return { ok: true };
   }
 
+  syncProjectSummary(
+    input: ProjectSummarySyncInput,
+  ): { ok: true } | { ok: false; error: "invalid_input" | "not_found" } {
+    const projectId = projectIdSchema.safeParse(input.id);
+    const ownerEmail = normalizedEmailSchema.safeParse(input.owner);
+    if (!projectId.success || !ownerEmail.success) {
+      return { ok: false, error: "invalid_input" };
+    }
+    if (!this.hasProject(projectId.data)) {
+      return { ok: false, error: "not_found" };
+    }
+
+    const members = new Map<string, ProjectSummarySyncMember>();
+    for (const member of input.members) {
+      const parsedEmail = normalizedEmailSchema.safeParse(member.email);
+      if (!parsedEmail.success) {
+        return { ok: false, error: "invalid_input" };
+      }
+      members.set(parsedEmail.data, {
+        email: parsedEmail.data,
+        member: member.member,
+        balance: member.balance,
+      });
+    }
+    if (!members.has(ownerEmail.data)) {
+      return { ok: false, error: "invalid_input" };
+    }
+
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec(
+        `INSERT INTO project_summaries
+          (project_id, name, owner_email, updated_at, summary_synced_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(project_id) DO UPDATE SET
+          name = excluded.name,
+          owner_email = excluded.owner_email,
+          updated_at = excluded.updated_at,
+          summary_synced_at = excluded.summary_synced_at`,
+        projectId.data,
+        input.name,
+        ownerEmail.data,
+        input.updatedAt,
+        input.lastSyncAt,
+      );
+
+      const memberEmails = [...members.keys()];
+      if (memberEmails.length > 0) {
+        const placeholders = memberEmails.map(() => "?").join(", ");
+        this.ctx.storage.sql.exec(
+          `DELETE FROM project_members
+           WHERE project_id = ? AND email NOT IN (${placeholders})`,
+          projectId.data,
+          ...memberEmails,
+        );
+      } else {
+        this.ctx.storage.sql.exec(
+          "DELETE FROM project_members WHERE project_id = ?",
+          projectId.data,
+        );
+      }
+
+      for (const member of members.values()) {
+        this.ctx.storage.sql.exec(
+          `INSERT INTO project_members
+            (email, project_id, created_at, updated_at, member_json, balance_cents)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(email, project_id) DO UPDATE SET
+            updated_at = excluded.updated_at,
+            member_json = excluded.member_json,
+            balance_cents = excluded.balance_cents`,
+          member.email,
+          projectId.data,
+          input.lastSyncAt,
+          input.updatedAt,
+          JSON.stringify(member.member),
+          member.balance,
+        );
+      }
+    });
+
+    return { ok: true };
+  }
+
   async lookupProject(
     id: string,
   ): Promise<{ ok: true; doId: string } | { ok: false; error: "not_found" }> {
@@ -177,7 +307,7 @@ export class ProjectsRegistry extends DurableObject<Env> {
   async listProjects(input: {
     callerEmail: string;
   }): Promise<
-    | { ok: true; projects: Array<{ id: string; doId: string }> }
+    | { ok: true; projects: Array<WithSyncTime<ProjectSummary>> }
     | { ok: false; error: "invalid_input" }
   > {
     const callerEmail = normalizedEmailSchema.safeParse(input.callerEmail);
@@ -186,16 +316,32 @@ export class ProjectsRegistry extends DurableObject<Env> {
     }
 
     const projects = this.ctx.storage.sql
-      .exec<ProjectMemberRow>(
-        `SELECT projects.id, projects.do_id, projects.created_at, project_members.updated_at
+      .exec<ProjectSummaryRow>(
+        `SELECT
+          projects.id,
+          project_summaries.name,
+          project_summaries.owner_email,
+          project_members.member_json,
+          project_members.balance_cents,
+          project_summaries.updated_at AS project_updated_at,
+          project_summaries.summary_synced_at
          FROM project_members
          JOIN projects ON projects.id = project_members.project_id
+         JOIN project_summaries ON project_summaries.project_id = projects.id
          WHERE project_members.email = ?
-         ORDER BY project_members.updated_at DESC`,
+         ORDER BY project_summaries.updated_at DESC`,
         callerEmail.data,
       )
       .toArray()
-      .map((project) => ({ id: project.id, doId: project.do_id }));
+      .map((project) => ({
+        id: project.id,
+        name: project.name,
+        owner: project.owner_email,
+        member: parseProjectMember(project.member_json),
+        balance: project.balance_cents,
+        updatedAt: project.project_updated_at,
+        lastSyncAt: project.summary_synced_at,
+      }));
 
     return { ok: true, projects };
   }
@@ -273,5 +419,16 @@ export class ProjectsRegistry extends DurableObject<Env> {
       projectRegistryCacheKey(project.id),
       serializeProjectRegistryCacheValue({ doId: project.doId }),
     );
+  }
+}
+
+function parseProjectMember(value: string | null): ProjectMember | null {
+  if (!value) {
+    return null;
+  }
+  try {
+    return JSON.parse(value) as ProjectMember;
+  } catch {
+    return null;
   }
 }

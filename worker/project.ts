@@ -2,7 +2,8 @@ import { z } from "zod";
 
 export const PROJECTS_REGISTRY_NAME = "projects";
 export const PROJECT_REGISTRY_CACHE_TTL_SECONDS = 60;
-export const PROJECTS_LIST_CACHE_TTL_SECONDS = 10 * 60;
+export const PROJECTS_LIST_CACHE_TTL_SECONDS = 10;
+export const PROJECT_SUMMARY_SYNC_DELAY_MS = 10_000;
 // TODO: Give user an option to archive a record (e.g. delete DO but save the records in KV).
 export const PROJECTS_PER_USER_LIMIT = 50;
 export const PROJECT_RECORD_DEFAULT_LIMIT = 50;

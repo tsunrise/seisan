@@ -2,6 +2,8 @@ import { DurableObject } from "cloudflare:workers";
 
 import {
   MAX_BALANCE_CENTS,
+  PROJECTS_REGISTRY_NAME,
+  PROJECT_SUMMARY_SYNC_DELAY_MS,
   PROJECT_RECORD_MAX_LIMIT,
   defaultMemberNameForEmail,
   deriveDescriptionDelta,
@@ -20,6 +22,7 @@ import {
   projectMemberCreateSchema,
   projectMemberEmailUnlinkSchema,
   projectMemberPatchSchema,
+  projectIdSchema,
   projectNameSchema,
   projectRenameSchema,
   recordDescriptionSchema,
@@ -34,8 +37,10 @@ import {
   type RecordDescription,
 } from "../project";
 import { runSqlMigrations, type SqlMigration } from "./migrations";
+import type { ProjectSummarySyncInput } from "./ProjectsRegistry";
 
 interface ProjectMetaRow extends Record<string, SqlStorageValue> {
+  public_id: string | null;
   name: string;
   owner_email: string;
   acl_type: "public" | "restricted";
@@ -128,12 +133,15 @@ export class ProjectStore extends DurableObject<Env> {
         amount_cents INTEGER NOT NULL
       )`,
     ],
+    [`ALTER TABLE project_meta ADD COLUMN public_id TEXT`],
   ];
 
   private initialized = false;
+  private readonly bindings: Env;
 
   constructor(state: DurableObjectState, env: Env) {
     super(state, env);
+    this.bindings = env;
     state.blockConcurrencyWhile(async () => {
       await runSqlMigrations(state, ProjectStore.migrations);
       this.initialized = (await state.storage.get<boolean>(INITIALIZED_KEY)) === true;
@@ -141,6 +149,7 @@ export class ProjectStore extends DurableObject<Env> {
   }
 
   async initialize(input: {
+    publicId: string;
     name: string;
     acl: ProjectAcl;
     ownerEmail: string;
@@ -155,6 +164,7 @@ export class ProjectStore extends DurableObject<Env> {
     }
 
     const parsedAcl = projectAclSchema.safeParse(input.acl);
+    const parsedPublicId = projectIdSchema.safeParse(input.publicId);
     const parsedName = projectNameSchema.safeParse(input.name);
     const parsedOwnerEmail = normalizeProjectEmail(input.ownerEmail);
     const parsedOwnerMemberName = memberNameSchema.safeParse(
@@ -162,6 +172,7 @@ export class ProjectStore extends DurableObject<Env> {
     );
     if (
       !parsedAcl.success ||
+      !parsedPublicId.success ||
       !parsedName.success ||
       !parsedOwnerEmail ||
       !parsedOwnerMemberName.success
@@ -178,8 +189,9 @@ export class ProjectStore extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DELETE FROM project_meta");
       this.ctx.storage.sql.exec(
         `INSERT INTO project_meta
-          (id, name, owner_email, acl_type, next_record_id, next_member_id, created_at, updated_at)
-         VALUES (1, ?, ?, ?, 1, 2, ?, ?)`,
+          (id, public_id, name, owner_email, acl_type, next_record_id, next_member_id, created_at, updated_at)
+         VALUES (1, ?, ?, ?, ?, 1, 2, ?, ?)`,
+        parsedPublicId.data,
         parsedName.data,
         parsedOwnerEmail,
         acl.type,
@@ -204,6 +216,7 @@ export class ProjectStore extends DurableObject<Env> {
     });
 
     this.initialized = true;
+    this.queueProjectSummarySync();
     return {
       ok: true,
       members,
@@ -311,10 +324,16 @@ export class ProjectStore extends DurableObject<Env> {
       );
     });
 
+    this.queueProjectSummarySync();
     return { ok: true, id };
   }
 
-  getRecords(input: { callerEmail?: string | null; limit: number; offset: number }):
+  getRecords(input: {
+    publicId?: string;
+    callerEmail?: string | null;
+    limit: number;
+    offset: number;
+  }):
     | {
         ok: true;
         name: string;
@@ -330,6 +349,7 @@ export class ProjectStore extends DurableObject<Env> {
     if (!access.ok) {
       return access;
     }
+    this.persistPublicIdIfMissing(access.meta, input.publicId);
 
     const limit = Math.min(PROJECT_RECORD_MAX_LIMIT, Math.max(1, Math.floor(input.limit)));
     const offset = Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, Math.floor(input.offset)));
@@ -353,6 +373,7 @@ export class ProjectStore extends DurableObject<Env> {
         .map((row) => [String(row.member_id), row.amount_cents]),
     );
 
+    this.queueProjectSummarySync();
     return {
       ok: true,
       name: access.meta.name,
@@ -373,6 +394,7 @@ export class ProjectStore extends DurableObject<Env> {
     if (!access.ok) {
       return access;
     }
+    this.persistPublicIdIfMissing(access.meta, input.publicId);
     if (!access.email) {
       return { ok: false, error: "forbidden" };
     }
@@ -428,6 +450,7 @@ export class ProjectStore extends DurableObject<Env> {
       parsed.data.name,
       input.nowMs,
     );
+    this.queueProjectSummarySync();
     return { ok: true, name: parsed.data.name };
   }
 
@@ -456,6 +479,7 @@ export class ProjectStore extends DurableObject<Env> {
       nowMs: input.nowMs,
       meta: access.meta,
     });
+    this.queueProjectSummarySync();
     return { ok: true, member: memberForResponse(member, { includeLinkedEmails: true }) };
   }
 
@@ -495,6 +519,7 @@ export class ProjectStore extends DurableObject<Env> {
         input.nowMs,
         member.id,
       );
+      this.queueProjectSummarySync();
       return {
         ok: true,
         member: memberForResponse(
@@ -515,6 +540,7 @@ export class ProjectStore extends DurableObject<Env> {
       nowMs: input.nowMs,
       meta: access.meta,
     });
+    this.queueProjectSummarySync();
     return { ok: true, member: memberForResponse(member, { includeLinkedEmails: true }) };
   }
 
@@ -543,6 +569,7 @@ export class ProjectStore extends DurableObject<Env> {
       input.nowMs,
       member.id,
     );
+    this.queueProjectSummarySync();
     return { ok: true, removedLinkedEmail: access.email };
   }
 
@@ -604,6 +631,7 @@ export class ProjectStore extends DurableObject<Env> {
       nextMember = { ...nextMember, linked_email: null };
     }
 
+    this.queueProjectSummarySync();
     return {
       ok: true,
       member: memberForResponse(nextMember, { includeLinkedEmails: true }),
@@ -645,6 +673,7 @@ export class ProjectStore extends DurableObject<Env> {
       input.nowMs,
       member.id,
     );
+    this.queueProjectSummarySync();
     return {
       ok: true,
       ...(member.linked_email ? { removedLinkedEmail: member.linked_email } : {}),
@@ -679,6 +708,7 @@ export class ProjectStore extends DurableObject<Env> {
       input.nowMs,
       member.id,
     );
+    this.queueProjectSummarySync();
     return { ok: true, removedLinkedEmail: parsed.data.email };
   }
 
@@ -743,7 +773,30 @@ export class ProjectStore extends DurableObject<Env> {
       parsed.data.type,
       Date.now(),
     );
+    this.queueProjectSummarySync();
     return { ok: true };
+  }
+
+  async alarm(): Promise<void> {
+    if (!this.initialized) {
+      return;
+    }
+
+    const summary = this.buildProjectSummarySync(Date.now());
+    if (!summary) {
+      return;
+    }
+
+    const synced =
+      await this.bindings.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME).syncProjectSummary(
+        summary,
+      );
+    if (!synced.ok) {
+      console.error("failed to sync project summary", {
+        projectId: summary.id,
+        error: synced.error,
+      });
+    }
   }
 
   private getProjectAccess(
@@ -795,7 +848,7 @@ export class ProjectStore extends DurableObject<Env> {
     return (
       this.ctx.storage.sql
         .exec<ProjectMetaRow>(
-          "SELECT name, owner_email, acl_type, next_record_id, next_member_id, updated_at FROM project_meta WHERE id = 1",
+          "SELECT public_id, name, owner_email, acl_type, next_record_id, next_member_id, updated_at FROM project_meta WHERE id = 1",
         )
         .toArray()[0] ?? null
     );
@@ -975,6 +1028,65 @@ export class ProjectStore extends DurableObject<Env> {
    */
   private touchProject(): void {
     this.ctx.storage.sql.exec("UPDATE project_meta SET updated_at = ? WHERE id = 1", Date.now());
+    this.queueProjectSummarySync();
+  }
+
+  private persistPublicIdIfMissing(meta: ProjectMetaRow, publicId: string | undefined): void {
+    if (meta.public_id || !publicId) {
+      return;
+    }
+    const parsed = projectIdSchema.safeParse(publicId);
+    if (!parsed.success) {
+      return;
+    }
+    this.ctx.storage.sql.exec("UPDATE project_meta SET public_id = ? WHERE id = 1", parsed.data);
+  }
+
+  private queueProjectSummarySync(): void {
+    const queue = this.setAlarmIfNotAlready().catch((error: unknown) => {
+      console.error("failed to queue project summary sync", { error });
+    });
+    this.ctx.waitUntil(queue);
+  }
+
+  private async setAlarmIfNotAlready(): Promise<void> {
+    if ((await this.ctx.storage.getAlarm()) !== null) {
+      return;
+    }
+    await this.ctx.storage.setAlarm(Date.now() + PROJECT_SUMMARY_SYNC_DELAY_MS);
+  }
+
+  private buildProjectSummarySync(lastSyncAt: number): ProjectSummarySyncInput | null {
+    const meta = this.getMeta();
+    if (!meta?.public_id) {
+      return null;
+    }
+
+    const members = this.ctx.storage.sql
+      .exec<MemberRow>(
+        `SELECT id, name, normalized_name, linked_email, deleted_at, created_at, updated_at
+         FROM members
+         WHERE linked_email IS NOT NULL
+         ORDER BY id`,
+      )
+      .toArray()
+      .map((member) => ({
+        email: member.linked_email as string,
+        member: memberForResponse(member, { includeLinkedEmails: true }),
+        balance:
+          this.ctx.storage.sql
+            .exec<BalanceRow>("SELECT amount_cents FROM balances WHERE member_id = ?", member.id)
+            .toArray()[0]?.amount_cents ?? 0,
+      }));
+
+    return {
+      id: meta.public_id,
+      name: meta.name,
+      owner: meta.owner_email,
+      updatedAt: meta.updated_at,
+      lastSyncAt,
+      members,
+    };
   }
 
   private resolveDelta(

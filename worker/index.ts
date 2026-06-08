@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 
-import { cacheProjectsList, getCachedProjectsList, patchProjectsListCache } from "./projectCache";
+import { cacheProjectsList, getCachedProjectsList } from "./projectCache";
 import { LOGIN_CODE_TTL_MS, SESSION_COOKIE_NAME, SESSION_TTL_SECONDS } from "./constants";
 import {
   type AppEnv,
@@ -47,8 +47,6 @@ import {
   projectRegistryCacheKey,
   projectRenameSchema,
   type ProjectRegistryCacheValue,
-  type ProjectSummary,
-  type WithSyncTime,
 } from "./project";
 import { verifyTurnstileToken } from "./turnstile";
 
@@ -221,31 +219,6 @@ function isValidProjectId(rawProjectId: string): boolean {
   return projectIdSchema.safeParse(rawProjectId).success;
 }
 
-async function patchProjectsListCacheWithProject(
-  context: AppContext,
-  input: {
-    email: string;
-    projectId: string;
-    store: DurableObjectStub<ProjectStore>;
-  },
-): Promise<void> {
-  const summary = await input.store.getProjectBalance({
-    callerEmail: input.email,
-    publicId: input.projectId,
-  });
-  if (!summary.ok) {
-    return;
-  }
-  patchProjectsListCache(context, {
-    email: input.email,
-    patch: {
-      type: "upsert",
-      project: summary.project,
-      lastSyncAt: Date.now(),
-    },
-  });
-}
-
 function mapAclAdminResult(
   result: { ok: true } | { ok: false; error: "uninitialized" | "forbidden" | "invalid_input" },
 ): Response {
@@ -407,6 +380,7 @@ app.put("/api/project", requireAuth, async (context) => {
 
   const project = context.env.PROJECT_STORE.get(projectDoId);
   const created = await project.initialize({
+    publicId: projectId,
     name: parsed.data.name,
     acl: parsed.data.acl,
     ownerEmail: owner,
@@ -416,22 +390,6 @@ app.put("/api/project", requireAuth, async (context) => {
   if (!created.ok) {
     return internalServerError();
   }
-
-  patchProjectsListCache(context, {
-    email: owner,
-    patch: {
-      type: "upsert",
-      project: {
-        id: projectId,
-        name: parsed.data.name,
-        owner,
-        member: created.members.find((member) => member.linkedEmail === owner) ?? null,
-        balance: 0,
-        updatedAt: nowMs,
-      },
-      lastSyncAt: nowMs,
-    },
-  });
 
   return context.json(
     {
@@ -458,31 +416,7 @@ app.get("/api/projects", requireAuth, async (context) => {
   if (!listed.ok) {
     return invalidRequest();
   }
-  const lastSyncAt = Date.now();
-  const projects = (
-    await Promise.all(
-      listed.projects.map(
-        async (projectReference): Promise<WithSyncTime<ProjectSummary> | null> => {
-          try {
-            const store = context.env.PROJECT_STORE.get(
-              context.env.PROJECT_STORE.idFromString(projectReference.doId),
-            );
-            const summary = await store.getProjectBalance({
-              callerEmail: email,
-              publicId: projectReference.id,
-            });
-            return summary.ok ? { ...summary.project, lastSyncAt } : null;
-          } catch {
-            return null;
-          }
-        },
-      ),
-    )
-  )
-    .filter((project): project is WithSyncTime<ProjectSummary> => project !== null)
-    .sort((left, right) => right.updatedAt - left.updatedAt);
-
-  const body = { projects };
+  const body = { projects: listed.projects };
   cacheProjectsList(context, email, body);
   return new Response(JSON.stringify(body), {
     headers: {
@@ -511,39 +445,13 @@ app.get("/api/project/:id", optionalAuth, async (context) => {
   const identity = context.get("identity");
   const callerEmail = identity ? normalizeEmail(identity.email) : null;
   const result = await projectLookup.store.getRecords({
+    publicId: projectLookup.projectId,
     callerEmail,
     limit,
     offset,
   });
   if (!result.ok) {
     return result.error === "forbidden" ? forbidden() : notFound();
-  }
-
-  if (callerEmail) {
-    const member =
-      result.members.find((projectMember) => projectMember.linkedEmail === callerEmail) ?? null;
-    if (member) {
-      patchProjectsListCache(context, {
-        email: callerEmail,
-        patch: {
-          type: "upsert",
-          project: {
-            id: projectLookup.projectId,
-            name: result.name,
-            owner: result.owner,
-            member,
-            balance: result.balance[String(member.id)] ?? 0,
-            updatedAt: result.updatedAt,
-          },
-          lastSyncAt: Date.now(),
-        },
-      });
-    } else {
-      patchProjectsListCache(context, {
-        email: callerEmail,
-        patch: { type: "remove", projectId: projectLookup.projectId },
-      });
-    }
   }
 
   return context.json({
@@ -717,11 +625,6 @@ app.post("/api/project/:id/join", requireAuth, async (context) => {
     }
     return mapProjectStoreError(result.error);
   }
-  await patchProjectsListCacheWithProject(context, {
-    email: callerEmail,
-    projectId: projectLookup.projectId,
-    store: projectLookup.store,
-  });
   return context.json({ member: result.member }, 201);
 });
 
@@ -753,10 +656,6 @@ app.post("/api/project/:id/leave", requireAuth, async (context) => {
     return internalServerError();
   }
 
-  patchProjectsListCache(context, {
-    email: result.removedLinkedEmail,
-    patch: { type: "remove", projectId: projectLookup.projectId },
-  });
   return context.body(null, 204);
 });
 
@@ -794,10 +693,6 @@ app.delete("/api/project/:id/member-links", requireAuth, async (context) => {
     return internalServerError();
   }
 
-  patchProjectsListCache(context, {
-    email: result.removedLinkedEmail,
-    patch: { type: "remove", projectId: projectLookup.projectId },
-  });
   return context.body(null, 204);
 });
 
@@ -840,10 +735,6 @@ app.patch("/api/project/:id/members/:memberId", requireAuth, async (context) => 
     if (!removed.ok) {
       return internalServerError();
     }
-    patchProjectsListCache(context, {
-      email: result.removedLinkedEmail,
-      patch: { type: "remove", projectId: projectLookup.projectId },
-    });
   }
   return context.json({ member: result.member });
 });
@@ -880,10 +771,6 @@ app.delete("/api/project/:id/members/:memberId", requireAuth, async (context) =>
     if (!removed.ok) {
       return internalServerError();
     }
-    patchProjectsListCache(context, {
-      email: result.removedLinkedEmail,
-      patch: { type: "remove", projectId: projectLookup.projectId },
-    });
   }
   return context.body(null, 204);
 });

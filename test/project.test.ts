@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import {
   createExecutionContext,
+  runDurableObjectAlarm,
   runInDurableObject,
   waitOnExecutionContext,
 } from "cloudflare:test";
@@ -12,7 +13,6 @@ import worker from "../worker/index";
 import {
   MAX_MONEY_CENTS,
   PROJECTS_REGISTRY_NAME,
-  PROJECTS_LIST_CACHE_TTL_SECONDS,
   PROJECTS_PER_USER_LIMIT,
   parseProjectRegistryCacheValue,
   projectRegistryCacheKey,
@@ -24,7 +24,6 @@ const AUTH_SECRET = "test-auth-secret-at-least-32-bytes";
 const LOGIN_EMAIL_FROM = "login@example.com";
 const PROJECTS_LIST_CACHE_NAME = "seisan-projects";
 const PROJECTS_LIST_CACHE_HOST = "cache.seisan.waga.me";
-const PROJECTS_LIST_CACHE_EXPIRES_AT_HEADER = "X-Seisan-Cache-Expires-At";
 
 interface TestEnv {
   env: Env;
@@ -176,64 +175,50 @@ async function waitForProjectCacheMissRepair(testEnv: Env, projectId: string) {
 
 async function getProjectsListCacheResponse(email: string): Promise<Response | undefined> {
   const cache = await caches.open(PROJECTS_LIST_CACHE_NAME);
-  const key = projectsListCacheRequest(email);
-  const cached = await cache.match(key);
-  if (!cached) {
-    return undefined;
-  }
-
-  // Cache implementation does not respect mocked `now()` implementation, so we made extra handling below.
-
-  const rawExpiresAtMs = cached.headers.get(PROJECTS_LIST_CACHE_EXPIRES_AT_HEADER);
-  if (!rawExpiresAtMs) {
-    await cache.delete(key);
-    return undefined;
-  }
-  const expiresAtMs = Number(rawExpiresAtMs);
-  if (!Number.isSafeInteger(expiresAtMs) || expiresAtMs <= Date.now()) {
-    await cache.delete(key);
-    return undefined;
-  }
-
-  return cached;
+  return cache.match(projectsListCacheRequest(email));
 }
 
 function projectsListCacheRequest(email: string): Request {
   return new Request(`https://${PROJECTS_LIST_CACHE_HOST}/projects/${encodeURIComponent(email)}`);
 }
 
-async function putProjectsListCacheResponse(
-  email: string,
-  body: ProjectSummaryResponse,
-  input: { expiresAtMs?: number; cacheControl?: string },
-): Promise<void> {
-  const cache = await caches.open(PROJECTS_LIST_CACHE_NAME);
-  const headers = new Headers({
-    "Content-Type": "application/json",
-    "Cache-Control": input.cacheControl ?? "s-maxage=600",
-    Expires: new Date((input.expiresAtMs ?? Date.now()) + 600_000).toUTCString(),
-  });
-  if (input.expiresAtMs !== undefined) {
-    headers.set(PROJECTS_LIST_CACHE_EXPIRES_AT_HEADER, String(input.expiresAtMs));
-  }
-  await cache.put(projectsListCacheRequest(email), new Response(JSON.stringify(body), { headers }));
+async function getProjectStoreStub(
+  testEnv: Env,
+  projectId: string,
+): Promise<DurableObjectStub<import("../worker/index").ProjectStore>> {
+  const cachedProject = await waitForProjectCache(testEnv, projectId);
+  return testEnv.PROJECT_STORE.get(testEnv.PROJECT_STORE.idFromString(cachedProject.doId));
 }
 
-async function getProjectsListCacheExpiresAt(email: string): Promise<string | null> {
-  return (
-    (await getProjectsListCacheResponse(email))?.headers.get(
-      PROJECTS_LIST_CACHE_EXPIRES_AT_HEADER,
-    ) ?? null
+async function getProjectSummaryAlarm(testEnv: Env, projectId: string): Promise<number | null> {
+  const stub = await getProjectStoreStub(testEnv, projectId);
+  return runInDurableObject(stub, async (_instance, state) => state.storage.getAlarm());
+}
+
+async function runProjectSummaryAlarm(testEnv: Env, projectId: string): Promise<boolean> {
+  const stub = await getProjectStoreStub(testEnv, projectId);
+  const alarm = await runInDurableObject(stub, async (_instance, state) =>
+    state.storage.getAlarm(),
   );
+  if (alarm === null) {
+    throw new Error(
+      `Expected project summary alarm to be configured for ${projectId} after waitOnExecutionContext`,
+    );
+  }
+  return runDurableObjectAlarm(stub);
 }
 
-async function withFixedNow<T>(nowMs: number, callback: () => Promise<T>): Promise<T> {
-  const dateNow = vi.spyOn(Date, "now").mockReturnValue(nowMs);
-  try {
-    return await callback();
-  } finally {
-    dateNow.mockRestore();
+async function listProjectsFromRegistry(
+  testEnv: Env,
+  email: string,
+): Promise<ProjectSummaryResponse["projects"]> {
+  const listed = await testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME).listProjects({
+    callerEmail: email,
+  });
+  if (!listed.ok) {
+    throw new Error(`Registry list failed: ${listed.error}`);
   }
+  return listed.projects;
 }
 
 describe("project worker", () => {
@@ -387,6 +372,7 @@ describe("project worker", () => {
       members: [{ id: 1, name: "Alice", linkedEmail: "owner@example.com" }],
     });
 
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
     const listed = await dispatch("/projects", testEnv, {
       headers: await authHeaders("owner@example.com"),
     });
@@ -432,60 +418,104 @@ describe("project worker", () => {
     expect(renamed.name).toBe("Beach Trip");
   });
 
-  it("adds a newly created project to an existing projects list cache", async () => {
+  it("caches the registry-backed projects response for one minute", async () => {
     const { env: testEnv } = makeEnv();
-    const owner = `cached-create-${crypto.randomUUID()}@example.com`;
-
-    const emptyList = await dispatch("/projects", testEnv, {
-      headers: await authHeaders(owner),
-    });
-    expect(emptyList.status).toBe(200);
-    expect(await emptyList.json()).toEqual({ projects: [] });
-    expect(await getProjectsListCacheResponse(owner)).toBeDefined();
-
+    const owner = `response-cache-${crypto.randomUUID()}@example.com`;
     const project = await createProject(testEnv, {
       owner,
-      name: "Cached Create",
+      name: "Response Cache",
       ownerMemberName: "Alice",
     });
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
 
-    const cachedList = await dispatch("/projects", testEnv, {
+    const firstList = await dispatch("/projects", testEnv, {
       headers: await authHeaders(owner),
     });
-    expect(cachedList.status).toBe(200);
-    expect(((await cachedList.json()) as ProjectSummaryResponse).projects).toContainEqual(
+    expect(firstList.status).toBe(200);
+    expect(((await firstList.json()) as ProjectSummaryResponse).projects).toContainEqual(
       expect.objectContaining({
         id: project.id,
-        name: "Cached Create",
+        name: "Response Cache",
         member: expect.objectContaining({ id: 1, name: "Alice" }),
         balance: 0,
         lastSyncAt: expect.any(Number),
       }),
     );
+
+    const cached = await getProjectsListCacheResponse(owner);
+    expect(cached).toBeDefined();
+    expect(cached?.headers.get("Cache-Control")).toBe("s-maxage=10");
+
+    const cachedList = await dispatch(
+      "/projects",
+      {
+        ...testEnv,
+        PROJECTS_REGISTRY: {
+          getByName: () => {
+            throw new Error("PROJECTS_REGISTRY should not be touched on projects cache hit");
+          },
+        } as unknown as Env["PROJECTS_REGISTRY"],
+      } as Env,
+      {
+        headers: await authHeaders(owner),
+      },
+    );
+    expect(cachedList.status).toBe(200);
+    if (!cached) {
+      throw new Error("Expected projects list response to be cached");
+    }
+    expect(await cachedList.json()).toEqual(await cached.clone().json());
   });
 
-  it("patches a cached projects list entry after reading project records", async () => {
+  it("serves projects from registry summaries on cache miss without activating project stores", async () => {
     const { env: testEnv } = makeEnv();
+    const owner = `registry-summary-${crypto.randomUUID()}@example.com`;
     const project = await createProject(testEnv, {
-      name: "Cache Trip",
+      owner,
+      name: "Registry Summary",
       ownerMemberName: "Alice",
     });
-    const bob = await createMember(testEnv, project.id, "Bob");
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
+    await (await caches.open(PROJECTS_LIST_CACHE_NAME)).delete(projectsListCacheRequest(owner));
 
-    const firstList = await dispatch("/projects", testEnv, {
-      headers: await authHeaders("owner@example.com"),
-    });
-    expect(firstList.status).toBe(200);
-    const firstProject = ((await firstList.json()) as ProjectSummaryResponse).projects.find(
-      (listedProject) => listedProject.id === project.id,
+    const response = await dispatch(
+      "/projects",
+      {
+        ...testEnv,
+        PROJECT_STORE: {
+          get: () => {
+            throw new Error("PROJECT_STORE should not be touched when listing projects");
+          },
+        } as unknown as Env["PROJECT_STORE"],
+      } as Env,
+      {
+        headers: await authHeaders(owner),
+      },
     );
-    expect(firstProject).toMatchObject({
-      name: "Cache Trip",
-      balance: 0,
-      lastSyncAt: expect.any(Number),
+
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as ProjectSummaryResponse).projects).toContainEqual(
+      expect.objectContaining({
+        id: project.id,
+        name: "Registry Summary",
+        balance: 0,
+      }),
+    );
+  });
+
+  it("batches project summary updates behind a single durable object alarm", async () => {
+    const { env: testEnv } = makeEnv();
+    const owner = `summary-batch-${crypto.randomUUID()}@example.com`;
+    const project = await createProject(testEnv, {
+      owner,
+      name: "Summary Batch",
+      ownerMemberName: "Alice",
     });
-    const expiresAtBeforePatch = await getProjectsListCacheExpiresAt("owner@example.com");
-    expect(expiresAtBeforePatch).not.toBeNull();
+    const firstAlarm = await getProjectSummaryAlarm(testEnv, project.id);
+    expect(firstAlarm).toEqual(expect.any(Number));
+    const stub = await getProjectStoreStub(testEnv, project.id);
+
+    const bob = await createMember(testEnv, project.id, "Bob", owner);
 
     const expense = await dispatch(
       `/project/${project.id}`,
@@ -501,251 +531,58 @@ describe("project worker", () => {
             liability: { [String(bob.id)]: 1000 },
           },
         },
-        await authHeaders("owner@example.com"),
+        await authHeaders(owner),
       ),
     );
     expect(expense.status).toBe(201);
 
-    const staleList = await dispatch("/projects", testEnv, {
-      headers: await authHeaders("owner@example.com"),
-    });
-    expect(staleList.status).toBe(200);
-    const staleProject = ((await staleList.json()) as ProjectSummaryResponse).projects.find(
-      (listedProject) => listedProject.id === project.id,
-    );
-    expect(staleProject?.balance).toBe(0);
+    const nextAlarm = await getProjectSummaryAlarm(testEnv, project.id);
+    expect(nextAlarm).toBe(firstAlarm);
 
-    const detail = await getProject(testEnv, project.id);
-    expect(detail.balance).toEqual({ "1": -1000, "2": 1000 });
-
-    const patchedList = await dispatch("/projects", testEnv, {
-      headers: await authHeaders("owner@example.com"),
-    });
-    expect(patchedList.status).toBe(200);
-    const patchedProject = ((await patchedList.json()) as ProjectSummaryResponse).projects.find(
-      (listedProject) => listedProject.id === project.id,
-    );
-    expect(patchedProject).toMatchObject({
-      id: project.id,
-      name: "Cache Trip",
-      balance: -1000,
-    });
-    expect(patchedProject?.lastSyncAt).toBeGreaterThanOrEqual(firstProject?.lastSyncAt ?? 0);
-    expect(await getProjectsListCacheExpiresAt("owner@example.com")).toBe(expiresAtBeforePatch);
-  });
-
-  it("rebuilds an expired projects list cache entry on read", async () => {
-    const nowMs = Date.UTC(2030, 0, 1, 12, 0, 0);
-    await withFixedNow(nowMs, async () => {
-      const { env: testEnv } = makeEnv();
-      const owner = `expired-read-${crypto.randomUUID()}@example.com`;
-      const project = await createProject(testEnv, {
-        owner,
-        name: "Expired Read",
-        ownerMemberName: "Alice",
-      });
-      await putProjectsListCacheResponse(
-        owner,
-        { projects: [] },
-        { expiresAtMs: nowMs - 1, cacheControl: "s-maxage=600" },
-      );
-
-      const response = await dispatch("/projects", testEnv, {
-        headers: await authHeaders(owner),
-      });
-
-      expect(response.status).toBe(200);
-      expect(((await response.json()) as ProjectSummaryResponse).projects).toContainEqual(
-        expect.objectContaining({
-          id: project.id,
-          name: "Expired Read",
-          lastSyncAt: nowMs,
-        }),
-      );
-      expect(await getProjectsListCacheExpiresAt(owner)).toBe(
-        String(nowMs + PROJECTS_LIST_CACHE_TTL_SECONDS * 1000),
-      );
-    });
-  });
-
-  it("deletes an expired projects list cache entry instead of patching it", async () => {
-    const nowMs = Date.UTC(2030, 0, 2, 12, 0, 0);
-    await withFixedNow(nowMs, async () => {
-      const { env: testEnv } = makeEnv();
-      const owner = `expired-patch-${crypto.randomUUID()}@example.com`;
-      const project = await createProject(testEnv, {
-        owner,
-        name: "Expired Patch",
-        ownerMemberName: "Alice",
-      });
-      await putProjectsListCacheResponse(
-        owner,
-        {
-          projects: [
-            {
-              id: project.id,
-              name: "Expired Patch",
-              owner,
-              member: project.members[0] ?? null,
-              balance: 0,
-              updatedAt: nowMs,
-              lastSyncAt: nowMs - 1000,
-            },
-          ],
-        },
-        { expiresAtMs: nowMs - 1, cacheControl: "s-maxage=600" },
-      );
-
-      const detail = await getProject(testEnv, project.id, owner);
-      expect(detail.id).toBe(project.id);
-      expect(await getProjectsListCacheResponse(owner)).toBeUndefined();
-    });
-  });
-
-  it("treats a projects list cache entry without app expiration metadata as a miss", async () => {
-    const nowMs = Date.UTC(2030, 0, 3, 12, 0, 0);
-    await withFixedNow(nowMs, async () => {
-      const { env: testEnv } = makeEnv();
-      const owner = `missing-expiration-${crypto.randomUUID()}@example.com`;
-      const project = await createProject(testEnv, {
-        owner,
-        name: "Missing Expiration",
-        ownerMemberName: "Alice",
-      });
-      await putProjectsListCacheResponse(owner, { projects: [] }, { cacheControl: "s-maxage=600" });
-
-      const response = await dispatch("/projects", testEnv, {
-        headers: await authHeaders(owner),
-      });
-
-      expect(response.status).toBe(200);
-      expect(((await response.json()) as ProjectSummaryResponse).projects).toContainEqual(
-        expect.objectContaining({
-          id: project.id,
-          name: "Missing Expiration",
-        }),
-      );
-      expect(await getProjectsListCacheExpiresAt(owner)).toBe(
-        String(nowMs + PROJECTS_LIST_CACHE_TTL_SECONDS * 1000),
-      );
-    });
-  });
-
-  it("patches a near-expiry projects list cache entry without extending expiration", async () => {
-    const nowMs = Date.UTC(2030, 0, 4, 12, 0, 0);
-    await withFixedNow(nowMs, async () => {
-      const { env: testEnv } = makeEnv();
-      const owner = `near-expiry-${crypto.randomUUID()}@example.com`;
-      const project = await createProject(testEnv, {
-        owner,
-        name: "Near Expiry",
-        ownerMemberName: "Alice",
-      });
-      const expiresAtMs = nowMs + 5_000;
-      await putProjectsListCacheResponse(
-        owner,
-        {
-          projects: [
-            {
-              id: project.id,
-              name: "Near Expiry",
-              owner,
-              member: project.members[0] ?? null,
-              balance: 0,
-              updatedAt: nowMs,
-              lastSyncAt: nowMs - 1_000,
-            },
-          ],
-        },
-        { expiresAtMs, cacheControl: "s-maxage=600" },
-      );
-
-      const detail = await getProject(testEnv, project.id, owner);
-      expect(detail.id).toBe(project.id);
-
-      const cached = await getProjectsListCacheResponse(owner);
-      expect(cached).toBeDefined();
-      expect(cached?.headers.get(PROJECTS_LIST_CACHE_EXPIRES_AT_HEADER)).toBe(String(expiresAtMs));
-      expect(cached?.headers.get("Cache-Control")).toBe("s-maxage=5");
-      expect(((await cached?.json()) as ProjectSummaryResponse).projects).toContainEqual(
-        expect.objectContaining({
-          id: project.id,
-          lastSyncAt: nowMs,
-        }),
-      );
-    });
-  });
-
-  it("expires a projects list cache at its original time after a later patch", async () => {
-    const startMs = Date.UTC(2030, 0, 5, 12, 0, 0);
-    let nowMs = startMs;
-    const dateNow = vi.spyOn(Date, "now").mockImplementation(() => nowMs);
-    try {
-      const { env: testEnv } = makeEnv();
-      const owner = `patched-expiration-${crypto.randomUUID()}@example.com`;
-      const project = await createProject(testEnv, {
-        owner,
-        name: "Patched Expiration",
-        ownerMemberName: "Alice",
-      });
-      const bob = await createMember(testEnv, project.id, "Bob", owner);
-
-      const firstList = await dispatch("/projects", testEnv, {
-        headers: await authHeaders(owner),
-      });
-      expect(firstList.status).toBe(200);
-      const firstProject = ((await firstList.json()) as ProjectSummaryResponse).projects.find(
-        (listedProject) => listedProject.id === project.id,
-      );
-      expect(firstProject).toMatchObject({
-        balance: 0,
-        lastSyncAt: startMs,
-      });
-      expect(await getProjectsListCacheExpiresAt(owner)).toBe(
-        String(startMs + PROJECTS_LIST_CACHE_TTL_SECONDS * 1000),
-      );
-
-      nowMs = startMs + 6 * 60 * 1000;
-      const expense = await dispatch(
-        `/project/${project.id}`,
-        testEnv,
-        jsonBody(
-          "POST",
-          {
-            delta: { "1": -1000, "2": 1000 },
-            description: {
-              type: "expense",
-              name: "Coffee",
-              paid: { "1": 1000 },
-              liability: { [String(bob.id)]: 1000 },
-            },
-          },
-          await authHeaders(owner),
-        ),
-      );
-      expect(expense.status).toBe(201);
-
-      const detail = await getProject(testEnv, project.id, owner);
-      expect(detail.balance).toEqual({ "1": -1000, "2": 1000 });
-      expect(await getProjectsListCacheExpiresAt(owner)).toBe(
-        String(startMs + PROJECTS_LIST_CACHE_TTL_SECONDS * 1000),
-      );
-
-      const patchedCached = await getProjectsListCacheResponse(owner);
-      expect(patchedCached).toBeDefined();
-      const patchedProject = (
-        (await patchedCached?.json()) as ProjectSummaryResponse
-      ).projects.find((listedProject) => listedProject.id === project.id);
-      expect(patchedProject).toMatchObject({
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    const projects = await listProjectsFromRegistry(testEnv, owner);
+    expect(projects).toContainEqual(
+      expect.objectContaining({
+        id: project.id,
+        name: "Summary Batch",
         balance: -1000,
-        lastSyncAt: nowMs,
-      });
+        member: expect.objectContaining({ id: 1, name: "Alice" }),
+        lastSyncAt: expect.any(Number),
+      }),
+    );
+  });
 
-      nowMs = startMs + 12 * 60 * 1000;
-      expect(await getProjectsListCacheResponse(owner)).toBeUndefined();
-    } finally {
-      dateNow.mockRestore();
-    }
+  it("syncs joined and unlinked members into registry project summaries", async () => {
+    const { env: testEnv } = makeEnv();
+    const memberEmail = `summary-member-${crypto.randomUUID()}@example.com`;
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+    const bob = await createMember(testEnv, project.id, "Bob");
+
+    const bobJoin = await dispatch(
+      `/project/${project.id}/join`,
+      testEnv,
+      jsonBody("POST", { memberId: bob.id }, await authHeaders(memberEmail)),
+    );
+    expect(bobJoin.status).toBe(201);
+
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
+    await expect(listProjectsFromRegistry(testEnv, memberEmail)).resolves.toContainEqual(
+      expect.objectContaining({
+        id: project.id,
+        member: expect.objectContaining({ id: bob.id, name: "Bob", linkedEmail: memberEmail }),
+      }),
+    );
+
+    const bobLeave = await dispatch(`/project/${project.id}/leave`, testEnv, {
+      method: "POST",
+      headers: await authHeaders(memberEmail),
+    });
+    expect(bobLeave.status).toBe(204);
+
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
+    await expect(listProjectsFromRegistry(testEnv, memberEmail)).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: project.id })]),
+    );
   });
 
   it("enforces a per-user project cap before creating another project store", async () => {
@@ -953,6 +790,7 @@ describe("project worker", () => {
       { id: 2, name: "Bob", deleted: false, linkedEmail: "member@example.com" },
     ]);
 
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
     const bobProjects = await dispatch("/projects", testEnv, {
       headers: await authHeaders("member@example.com"),
     });
@@ -1184,11 +1022,8 @@ describe("project worker", () => {
     );
     expect(postAfterUnlink.status).toBe(403);
 
-    const selfProjectsAfterUnlink = await dispatch("/projects", testEnv, {
-      headers: await authHeaders("member@example.com"),
-    });
-    expect(selfProjectsAfterUnlink.status).toBe(200);
-    expect(((await selfProjectsAfterUnlink.json()) as ProjectSummaryResponse).projects).not.toEqual(
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
+    await expect(listProjectsFromRegistry(testEnv, "member@example.com")).resolves.not.toEqual(
       expect.arrayContaining([expect.objectContaining({ id: project.id })]),
     );
 
@@ -1218,6 +1053,7 @@ describe("project worker", () => {
     );
     expect(bobJoin.status).toBe(201);
 
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
     const bobProjectsBeforeLeave = await dispatch("/projects", testEnv, {
       headers: await authHeaders(memberEmail),
     });
@@ -1264,11 +1100,8 @@ describe("project worker", () => {
     );
     expect(postAfterLeave.status).toBe(403);
 
-    const bobProjects = await dispatch("/projects", testEnv, {
-      headers: await authHeaders(memberEmail),
-    });
-    expect(bobProjects.status).toBe(200);
-    expect(((await bobProjects.json()) as ProjectSummaryResponse).projects).not.toEqual(
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
+    await expect(listProjectsFromRegistry(testEnv, memberEmail)).resolves.not.toEqual(
       expect.arrayContaining([expect.objectContaining({ id: project.id })]),
     );
   });
@@ -1311,11 +1144,8 @@ describe("project worker", () => {
       { id: 2, name: "Bob", deleted: false },
     ]);
 
-    const bobProjects = await dispatch("/projects", testEnv, {
-      headers: await authHeaders("member@example.com"),
-    });
-    expect(bobProjects.status).toBe(200);
-    expect(((await bobProjects.json()) as ProjectSummaryResponse).projects).not.toEqual(
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
+    await expect(listProjectsFromRegistry(testEnv, "member@example.com")).resolves.not.toEqual(
       expect.arrayContaining([expect.objectContaining({ id: project.id })]),
     );
 
@@ -1530,13 +1360,13 @@ describe("project worker", () => {
     await runInDurableObject(
       testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
       async (_instance, state) => {
-        await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(2);
+        await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(3);
       },
     );
     await runInDurableObject(
       testEnv.PROJECT_STORE.get(testEnv.PROJECT_STORE.idFromString(cachedProject?.doId ?? "")),
       async (_instance, state) => {
-        await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(1);
+        await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(2);
         await expect(state.storage.get<boolean>("initialized")).resolves.toBe(true);
       },
     );
