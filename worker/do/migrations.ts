@@ -21,11 +21,11 @@ export async function backfill(
   uniqueStr: string,
   fn: () => Promise<null>,
 ): Promise<void> {
-  const currentBackfill = state.storage.kv.get<string>(BACKFILL_STATE_KEY);
+  const currentBackfill = await state.storage.get<string>(BACKFILL_STATE_KEY);
   if (currentBackfill === uniqueStr) {
     return;
   }
 
   await fn();
-  state.storage.kv.put(BACKFILL_STATE_KEY, uniqueStr);
+  await state.storage.put(BACKFILL_STATE_KEY, uniqueStr);
 }

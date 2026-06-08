@@ -634,6 +634,32 @@ describe("project worker", () => {
     );
   });
 
+  it("does not refresh project summaries on project reads", async () => {
+    const { env: testEnv } = makeEnv();
+    const owner = `summary-read-${crypto.randomUUID()}@example.com`;
+    const project = await createProject(testEnv, {
+      owner,
+      name: "Read Only Summary",
+      ownerMemberName: "Alice",
+    });
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
+    expect(await getProjectSummaryAlarm(testEnv, project.id)).toBeNull();
+
+    const summaryBefore = (await listProjectsFromRegistry(testEnv, owner)).find(
+      (summary) => summary.id === project.id,
+    );
+    expect(summaryBefore?.lastSyncAt).toEqual(expect.any(Number));
+
+    const read = await getProject(testEnv, project.id, owner);
+    expect(read.id).toBe(project.id);
+    expect(await getProjectSummaryAlarm(testEnv, project.id)).toBeNull();
+
+    const summaryAfter = (await listProjectsFromRegistry(testEnv, owner)).find(
+      (summary) => summary.id === project.id,
+    );
+    expect(summaryAfter?.lastSyncAt).toBe(summaryBefore?.lastSyncAt);
+  });
+
   it("syncs joined and unlinked members into registry project summaries", async () => {
     const { env: testEnv } = makeEnv();
     const memberEmail = `summary-member-${crypto.randomUUID()}@example.com`;

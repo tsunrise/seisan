@@ -373,7 +373,6 @@ export class ProjectStore extends DurableObject<Env> {
         .map((row) => [String(row.member_id), row.amount_cents]),
     );
 
-    this.queueProjectSummarySync();
     return {
       ok: true,
       name: access.meta.name,
