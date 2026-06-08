@@ -1,6 +1,7 @@
 export type SqlMigration = string[];
 
 const MIGRATION_VERSION_KEY = "dbMigrationVersion";
+const BACKFILL_STATE_KEY = "dbBackfillState";
 
 export async function runSqlMigrations(
   state: DurableObjectState,
@@ -13,4 +14,18 @@ export async function runSqlMigrations(
     }
     await state.storage.put(MIGRATION_VERSION_KEY, version + 1);
   }
+}
+
+export async function backfill(
+  state: DurableObjectState,
+  uniqueStr: string,
+  fn: () => Promise<null>,
+): Promise<void> {
+  const currentBackfill = state.storage.kv.get<string>(BACKFILL_STATE_KEY);
+  if (currentBackfill === uniqueStr) {
+    return;
+  }
+
+  await fn();
+  state.storage.kv.put(BACKFILL_STATE_KEY, uniqueStr);
 }

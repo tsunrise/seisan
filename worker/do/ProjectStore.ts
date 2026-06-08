@@ -778,13 +778,39 @@ export class ProjectStore extends DurableObject<Env> {
   }
 
   async alarm(): Promise<void> {
+    const synced = await this.sendSummaryToRegistry();
+    if (!synced.ok) {
+      console.error("failed to sync project summary", { error: synced.error });
+    }
+  }
+
+  async sendSummaryToRegistry(input: { publicId?: string } = {}): Promise<
+    | { ok: true }
+    | {
+        ok: false;
+        error: "uninitialized" | "missing_public_id" | "invalid_input" | "not_found";
+      }
+  > {
     if (!this.initialized) {
-      return;
+      return { ok: false, error: "uninitialized" };
+    }
+
+    const meta = this.getMeta();
+    if (!meta) {
+      this.initialized = false;
+      return { ok: false, error: "uninitialized" };
+    }
+    if (input.publicId) {
+      const parsed = projectIdSchema.safeParse(input.publicId);
+      if (!parsed.success) {
+        return { ok: false, error: "invalid_input" };
+      }
+      this.persistPublicIdIfMissing(meta, parsed.data);
     }
 
     const summary = this.buildProjectSummarySync(Date.now());
     if (!summary) {
-      return;
+      return { ok: false, error: "missing_public_id" };
     }
 
     const synced =
@@ -792,11 +818,9 @@ export class ProjectStore extends DurableObject<Env> {
         summary,
       );
     if (!synced.ok) {
-      console.error("failed to sync project summary", {
-        projectId: summary.id,
-        error: synced.error,
-      });
+      return synced;
     }
+    return { ok: true };
   }
 
   private getProjectAccess(

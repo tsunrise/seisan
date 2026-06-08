@@ -70,7 +70,6 @@ pnpm run build
 ## Durable Objects And Storage
 
 - Durable Object classes belong in `worker/do/`, one class per file.
-- DOs use internal SQL migrations. Keep `dbMigrationVersion` in DO storage KV and run pending migrations in `ctx.blockConcurrencyWhile()`.
 - Use SQLite storage APIs for DO state; keep mutations that must be atomic inside a transaction.
 - Be careful with shutdown behavior: if a method writes multiple related pieces of storage state, prefer a transaction or leave an inline TODO if a future transaction is needed.
 - `ProjectStore` owns project state, members, ACL data, records, and balances.
@@ -78,6 +77,25 @@ pnpm run build
 - `PROJECT_REGISTRY_CACHE` is a KV cache for public project ID to ProjectStore DO ID lookup. The registry DO is authoritative.
 - `ProjectStore` queues project summary syncs with a DO alarm. Use `setAlarmIfNotAlready()` style logic so repeated mutations inside the delay window do not reschedule or fan out.
 - `ProjectStore.alarm()` syncs summary data to `ProjectsRegistry.syncProjectSummary()`. Keep this summary good enough for project lists; it does not need to be perfectly fresh.
+
+### Durable Object SQL Migrations
+
+- Use SQL migrations for every Durable Object schema change. This includes creating or dropping tables or indexes, adding columns, changing constraints, and any required persisted data shape change that the new code cannot safely run without.
+- Do not use `backfill()` for schema changes. If the DO would be unusable or code would fail without the change, it belongs in SQL migrations.
+- Add a new ordered migration group to the DO class `static readonly migrations`; do not edit migration groups that may already have run in deployed Durable Objects.
+- Keep `dbMigrationVersion` in DO storage KV and run pending migrations with `runSqlMigrations(state, ClassName.migrations)` inside `ctx.blockConcurrencyWhile()`.
+- Migrations should be deterministic and safe to run exactly once per DO instance. Prefer `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, and explicit `ALTER TABLE` statements only when the target deployed state is known.
+- After changing a DO migration list, update migration tests that assert `dbMigrationVersion`.
+- Wrangler-level Durable Object migrations in `wrangler.jsonc` are for class lifecycle changes such as introducing a new DO class. Internal SQL migrations are still required for that DO class's SQLite schema.
+
+### Durable Object Backfills
+
+- Use the shared `backfill()` helper only for temporary, one-time deployed-data repairs where missing the run does not make the Durable Object unusable. Backfills are lighter weight and less persistent than SQL migrations, and should be removed after confidence that deployed data has been repaired.
+- `backfill()` stores `dbBackfillState` in DO storage KV and only marks the backfill complete after the awaited repair function succeeds. Use a unique, date-stamped name such as `20260607-project-summary`.
+- Backfills are appropriate for derived or redundant data, cache-like summaries, optional repair jobs, or best-effort compatibility fills. They are not appropriate for required schema setup.
+- Put the `backfill()` call close to the code path that can safely repair the data, such as a registry/listing path or another DO method that has enough information to rebuild the missing state.
+- Always add a cleanup TODO comment on every backfill use and every backfill-specific test, using this exact format: `TODO: remove this after backfill <backfill_name> is fully done`.
+- Backfill tests should verify the repaired behavior and, when practical, that the helper does not run the same named backfill more than once.
 
 ## Project Model Notes
 

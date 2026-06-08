@@ -10,7 +10,7 @@ import {
   projectRegistryCacheKey,
   serializeProjectRegistryCacheValue,
 } from "../project";
-import { runSqlMigrations, type SqlMigration } from "./migrations";
+import { backfill, runSqlMigrations, type SqlMigration } from "./migrations";
 
 interface ProjectRow extends Record<string, SqlStorageValue> {
   id: string;
@@ -97,6 +97,7 @@ export class ProjectsRegistry extends DurableObject<Env> {
   ];
 
   private readonly bindings: Env;
+  private projectSummaryBackfill: Promise<void> | null = null;
 
   constructor(state: DurableObjectState, env: Env) {
     super(state, env);
@@ -315,6 +316,8 @@ export class ProjectsRegistry extends DurableObject<Env> {
       return { ok: false, error: "invalid_input" };
     }
 
+    await this.runProjectSummaryBackfill();
+
     const projects = this.ctx.storage.sql
       .exec<ProjectSummaryRow>(
         `SELECT
@@ -344,6 +347,52 @@ export class ProjectsRegistry extends DurableObject<Env> {
       }));
 
     return { ok: true, projects };
+  }
+
+  private async runProjectSummaryBackfill(): Promise<void> {
+    if (!this.projectSummaryBackfill) {
+      // TODO: remove this after backfill 20260607-project-summary is fully done.
+      this.projectSummaryBackfill = backfill(this.ctx, "20260607-project-summary", async () => {
+        await this.backfillMissingProjectSummaries();
+        return null;
+      }).finally(() => {
+        this.projectSummaryBackfill = null;
+      });
+    }
+
+    await this.projectSummaryBackfill;
+  }
+
+  private async backfillMissingProjectSummaries(): Promise<void> {
+    const projects = this.ctx.storage.sql
+      .exec<ProjectRow>(
+        `SELECT projects.id, projects.do_id, projects.created_at, projects.updated_at
+         FROM projects
+         LEFT JOIN project_summaries ON project_summaries.project_id = projects.id
+         WHERE project_summaries.project_id IS NULL
+         ORDER BY projects.created_at`,
+      )
+      .toArray();
+
+    for (const project of projects) {
+      const projectStore = this.bindings.PROJECT_STORE.get(
+        this.bindings.PROJECT_STORE.idFromString(project.do_id),
+      );
+      try {
+        const synced = await projectStore.sendSummaryToRegistry({ publicId: project.id });
+        if (!synced.ok) {
+          console.error("failed to backfill project summary", {
+            projectId: project.id,
+            error: synced.error,
+          });
+        }
+      } catch (error) {
+        console.error("failed to backfill project summary", {
+          projectId: project.id,
+          error,
+        });
+      }
+    }
   }
 
   private hasProject(projectId: string): boolean {

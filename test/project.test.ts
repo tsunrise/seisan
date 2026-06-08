@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { SESSION_COOKIE_NAME } from "../worker/constants";
 import { signSessionToken } from "../worker/crypto";
+import { backfill } from "../worker/do/migrations";
 import worker from "../worker/index";
 import {
   MAX_MONEY_CENTS,
@@ -222,6 +223,32 @@ async function listProjectsFromRegistry(
 }
 
 describe("project worker", () => {
+  it("runs durable object backfills only once per unique marker", async () => {
+    const { env: testEnv } = makeEnv();
+    const stub = testEnv.PROJECT_STORE.getByName(`backfill-${crypto.randomUUID()}`);
+
+    await runInDurableObject(stub, async (_instance, state) => {
+      let calls = 0;
+      await backfill(state, "backfill-a", async () => {
+        calls += 1;
+        return null;
+      });
+      await backfill(state, "backfill-a", async () => {
+        calls += 1;
+        return null;
+      });
+      expect(calls).toBe(1);
+      await expect(state.storage.get<string>("dbBackfillState")).resolves.toBe("backfill-a");
+
+      await backfill(state, "backfill-b", async () => {
+        calls += 1;
+        return null;
+      });
+      expect(calls).toBe(2);
+      await expect(state.storage.get<string>("dbBackfillState")).resolves.toBe("backfill-b");
+    });
+  });
+
   it("rejects malformed project IDs before touching lookup storage", async () => {
     const cacheGet = vi.fn(() => {
       throw new Error("PROJECT_REGISTRY_CACHE should not be touched");
@@ -500,6 +527,61 @@ describe("project worker", () => {
         name: "Registry Summary",
         balance: 0,
       }),
+    );
+  });
+
+  // TODO: remove this after backfill 20260607-project-summary is fully done.
+  it("backfills missing registry summaries before listing caller projects", async () => {
+    const { env: testEnv } = makeEnv();
+    const owner = `registry-backfill-${crypto.randomUUID()}@example.com`;
+    const project = await createProject(testEnv, {
+      owner,
+      name: "Backfilled Summary",
+      ownerMemberName: "Alice",
+    });
+    await (await caches.open(PROJECTS_LIST_CACHE_NAME)).delete(projectsListCacheRequest(owner));
+
+    await runInDurableObject(
+      testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
+      async (_instance, state) => {
+        await state.storage.delete("dbBackfillState");
+        state.storage.sql.exec("DELETE FROM project_summaries WHERE project_id = ?", project.id);
+        const count =
+          state.storage.sql
+            .exec<
+              { count: number } & Record<string, SqlStorageValue>
+            >("SELECT COUNT(*) AS count FROM project_summaries WHERE project_id = ?", project.id)
+            .toArray()[0]?.count ?? 0;
+        expect(count).toBe(0);
+      },
+    );
+
+    const response = await dispatch("/projects", testEnv, {
+      headers: await authHeaders(owner),
+    });
+
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as ProjectSummaryResponse).projects).toContainEqual(
+      expect.objectContaining({
+        id: project.id,
+        name: "Backfilled Summary",
+        balance: 0,
+        member: expect.objectContaining({ id: 1, name: "Alice" }),
+        lastSyncAt: expect.any(Number),
+      }),
+    );
+
+    await runInDurableObject(
+      testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
+      async (_instance, state) => {
+        const count =
+          state.storage.sql
+            .exec<
+              { count: number } & Record<string, SqlStorageValue>
+            >("SELECT COUNT(*) AS count FROM project_summaries WHERE project_id = ?", project.id)
+            .toArray()[0]?.count ?? 0;
+        expect(count).toBe(1);
+      },
     );
   });
 
