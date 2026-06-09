@@ -48,17 +48,17 @@ export function formatRecordTimestamp(timestamp: number, now = Date.now()): stri
     return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
   }
 
-  const dayMonth = `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}`;
+  const monthDay = `${pad2(date.getMonth() + 1)}/${pad2(date.getDate())}`;
   if (date.getFullYear() === current.getFullYear()) {
-    return dayMonth;
+    return monthDay;
   }
 
-  return `${date.getFullYear()}/${dayMonth}`;
+  return `${date.getFullYear()}/${monthDay}`;
 }
 
 export function formatRecordDetailTimestamp(timestamp: number): string {
   const date = new Date(timestamp);
-  return `${date.getFullYear()}/${pad2(date.getDate())}/${pad2(date.getMonth() + 1)} ${pad2(
+  return `${date.getFullYear()}/${pad2(date.getMonth() + 1)}/${pad2(date.getDate())} ${pad2(
     date.getHours(),
   )}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
 }
