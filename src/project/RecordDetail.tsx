@@ -6,6 +6,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  Divider,
   Paper,
   Stack,
   Typography,
@@ -18,7 +19,14 @@ import { InlineAlert } from "../components/InlineAlert";
 import { MoneyTable } from "../components/MoneyTable";
 import { PanelFrame } from "../components/PanelFrame";
 import { panelFrameSx } from "../components/styles";
-import { formatCents, memberName, negateMoneyMap, recordSubtitle, recordTitle } from "../domain";
+import {
+  formatCents,
+  formatRecordDetailTimestamp,
+  memberName,
+  negateMoneyMap,
+  recordSubtitle,
+  recordTitle,
+} from "../domain";
 
 function memberNames(members: api.ProjectMember[], memberIds: number[]): string {
   if (memberIds.length === 0) {
@@ -97,27 +105,33 @@ export function RecordDetail({
 
   return (
     <PanelFrame title="Record detail" backTo={`/project/${project.id}`}>
-      <Paper component="article" square sx={panelFrameSx}>
+      <Paper component="article" sx={{ ...panelFrameSx, boxShadow: "none" }}>
         <Stack spacing={2}>
           <Stack spacing={0.5}>
-            <Typography variant="h2">{recordDetailTitle(record, project.members)}</Typography>
+            <Typography color="text.secondary" sx={{ fontWeight: 650 }}>
+              #{record.id}
+            </Typography>
+            <Typography
+              component="h2"
+              sx={{ fontSize: "1.5rem", fontWeight: 700, lineHeight: 1.2 }}
+            >
+              {recordDetailTitle(record, project.members)}
+            </Typography>
             <Typography color="text.secondary">
               {recordSubtitle(record, project.members)}
             </Typography>
+            <Typography color="text.secondary" sx={{ fontSize: 13 }}>
+              {formatRecordDetailTimestamp(record.createdAt)}
+            </Typography>
           </Stack>
+          <Divider />
           <MoneyTable title="Balance change" project={project} map={record.delta} />
           {record.description.type === "expense" ? (
             <>
+              <Divider />
               <MoneyTable title="Paid" project={project} map={record.description.paid} />
               <MoneyTable title="Liability" project={project} map={record.description.liability} />
             </>
-          ) : null}
-          {record.description.type === "transfer" ? (
-            <Typography>
-              {memberName(project.members, record.description.from)} paid{" "}
-              {memberName(project.members, record.description.to)}{" "}
-              {formatCents(record.description.amount)}.
-            </Typography>
           ) : null}
           {record.description.type === "revert" ? (
             <Typography>Reverts #{record.description.id}.</Typography>

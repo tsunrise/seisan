@@ -3,9 +3,10 @@ import type { SxProps, Theme } from "@mui/material/styles";
 import { ledgerColors } from "../theme";
 
 export const paperFrameSx: SxProps<Theme> = {
-  border: `2px solid ${ledgerColors.ink}`,
+  border: `1px solid ${ledgerColors.line}`,
+  borderRadius: 2.5,
   bgcolor: "background.paper",
-  boxShadow: `5px 5px 0 ${ledgerColors.shadowInk}`,
+  boxShadow: `0 6px 18px ${ledgerColors.shadowInk}`,
 };
 
 export const panelFrameSx: SxProps<Theme> = {

@@ -3,15 +3,15 @@ import { createTheme } from "@mui/material/styles";
 export const ledgerColors = {
   paperBg: "#f4f2ea",
   paper: "#fffdf5",
-  ink: "#171717",
-  muted: "#69665d",
-  line: "#9f9b90",
+  ink: "#22211f",
+  muted: "#6f6b62",
+  line: "#c8c2b6",
   blue: "#1167d8",
   blueDark: "#0c4da3",
-  blueSoft: "#cfe8f7",
+  blueSoft: "#e8f4ff",
   red: "#b61b2a",
   green: "#07804f",
-  shadowInk: "rgba(23, 23, 23, 0.12)",
+  shadowInk: "rgba(34, 33, 31, 0.06)",
 };
 
 export const theme = createTheme({
@@ -47,22 +47,22 @@ export const theme = createTheme({
     h1: {
       fontSize: "2rem",
       lineHeight: 1.1,
-      fontWeight: 900,
+      fontWeight: 800,
       letterSpacing: 0,
     },
     h2: {
       fontSize: "1.375rem",
       lineHeight: 1.18,
-      fontWeight: 900,
+      fontWeight: 750,
       letterSpacing: 0,
     },
     h3: {
       fontSize: "1rem",
-      fontWeight: 900,
+      fontWeight: 750,
       letterSpacing: 0,
     },
     button: {
-      fontWeight: 800,
+      fontWeight: 750,
       textTransform: "none",
       letterSpacing: 0,
     },
@@ -99,7 +99,7 @@ export const theme = createTheme({
       styleOverrides: {
         root: {
           minHeight: 42,
-          borderWidth: 2,
+          borderWidth: 1,
           borderRadius: 5,
         },
       },
@@ -107,7 +107,7 @@ export const theme = createTheme({
     MuiIconButton: {
       styleOverrides: {
         root: {
-          border: `2px solid ${ledgerColors.ink}`,
+          border: `1px solid ${ledgerColors.line}`,
           borderRadius: 5,
           backgroundColor: ledgerColors.paper,
         },

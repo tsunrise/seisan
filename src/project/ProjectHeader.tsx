@@ -31,7 +31,7 @@ export function ProjectHeader({
         zIndex: 5,
         p: 2.5,
         bgcolor: "background.paper",
-        borderBottom: `2px solid ${ledgerColors.line}`,
+        borderBottom: `1px solid ${ledgerColors.line}`,
       }}
     >
       <Box>
@@ -45,7 +45,7 @@ export function ProjectHeader({
         >
           {project.name}
         </Typography>
-        <Typography sx={{ mt: 0.75, fontWeight: 800 }}>
+        <Typography sx={{ mt: 0.75, fontWeight: 700 }}>
           {currentMember?.name ?? (currentEmail ? "Unlinked" : "Guest")}{" "}
           {balance !== null ? <Amount amount={balance} /> : null}
         </Typography>

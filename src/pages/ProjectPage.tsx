@@ -78,7 +78,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
           minWidth: 0,
           minHeight: { xs: "100svh", md: "auto" },
           display: { xs: showPanel ? "none" : "block", md: "block" },
-          borderInline: { xs: 0, md: `2px solid ${ledgerColors.ink}` },
+          borderInline: { xs: 0, md: `1px solid ${ledgerColors.line}` },
           bgcolor: "background.paper",
         }}
       >

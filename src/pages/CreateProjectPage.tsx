@@ -26,7 +26,7 @@ export function CreateProjectPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const user = useCurrentUser({ required: true });
-  const [name, setName] = useState("Day Trip");
+  const [name, setName] = useState("");
   const [ownerMemberName, setOwnerMemberName] = useState("");
   const [visibility, setVisibility] = useState<api.ProjectAcl["type"]>("public");
   const [emails, setEmails] = useState("");

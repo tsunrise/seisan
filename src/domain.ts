@@ -36,6 +36,33 @@ export function formatRelativeTime(timestamp: number, now = Date.now()): string 
   return `${elapsedDays} ${elapsedDays === 1 ? "day" : "days"} ago`;
 }
 
+export function formatRecordTimestamp(timestamp: number, now = Date.now()): string {
+  const date = new Date(timestamp);
+  const current = new Date(now);
+
+  if (
+    date.getFullYear() === current.getFullYear() &&
+    date.getMonth() === current.getMonth() &&
+    date.getDate() === current.getDate()
+  ) {
+    return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+  }
+
+  const dayMonth = `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}`;
+  if (date.getFullYear() === current.getFullYear()) {
+    return dayMonth;
+  }
+
+  return `${date.getFullYear()}/${dayMonth}`;
+}
+
+export function formatRecordDetailTimestamp(timestamp: number): string {
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}/${pad2(date.getDate())}/${pad2(date.getMonth() + 1)} ${pad2(
+    date.getHours(),
+  )}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
+
 export function amountTone(amount: number | null | undefined): AmountTone {
   if (!amount) {
     return "settled";
@@ -169,4 +196,8 @@ export function allocateRatio(
     assigned += amount;
   }
   return normalizeMoneyMap(allocation);
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
 }

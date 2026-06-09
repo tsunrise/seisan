@@ -46,9 +46,9 @@ export function RecordTimeline({
       component="section"
       sx={{
         display: "grid",
-        gap: 2.25,
-        px: 2.5,
-        pt: 3.5,
+        gap: { xs: 2.5, md: 3 },
+        px: { xs: 2, md: 3 },
+        pt: { xs: 2.75, md: 3.5 },
         pb: { xs: "110px", md: 3.5 },
       }}
     >

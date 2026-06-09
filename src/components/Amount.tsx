@@ -9,7 +9,7 @@ export function Amount({ amount }: { amount: number | null | undefined }) {
     tone === "owe" ? ledgerColors.red : tone === "owed" ? ledgerColors.green : ledgerColors.ink;
 
   return (
-    <Typography component="span" sx={{ color, fontWeight: 900, whiteSpace: "nowrap" }}>
+    <Typography component="span" sx={{ color, fontWeight: 800, whiteSpace: "nowrap" }}>
       {formatCents(amount ?? 0)}
     </Typography>
   );
