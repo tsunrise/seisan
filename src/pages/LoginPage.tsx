@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
 import * as api from "../api";
+import { BrandLink } from "../components/BrandLink";
 import { InlineAlert } from "../components/InlineAlert";
 import { pageCenterSx, panelFrameSx } from "../components/styles";
 import { Turnstile } from "../components/Turnstile";
@@ -79,17 +80,7 @@ export function LoginPage() {
       >
         <Stack spacing={2}>
           <Box>
-            <Typography
-              sx={{
-                color: "text.secondary",
-                fontSize: 13,
-                fontWeight: 900,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-              }}
-            >
-              Seisan
-            </Typography>
+            <BrandLink sx={{ mb: 1 }} />
             <Typography variant="h1">{step === "email" ? "Get Started" : "Enter code"}</Typography>
           </Box>
           <Typography color="text.secondary">

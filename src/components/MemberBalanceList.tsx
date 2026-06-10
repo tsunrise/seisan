@@ -18,11 +18,18 @@ export function MemberBalanceList({
         <Stack
           key={member.id}
           direction="row"
-          sx={{ alignItems: "center", justifyContent: "space-between", gap: 1.5 }}
+          sx={{ alignItems: "center", justifyContent: "space-between", gap: 1.5, minWidth: 0 }}
         >
-          <Typography>
+          <Typography
+            sx={{
+              minWidth: 0,
+              fontWeight: member.id === currentMember?.id ? 900 : 400,
+              overflowWrap: "anywhere",
+              textDecoration: member.id === currentMember?.id ? "underline" : "none",
+              textUnderlineOffset: "4px",
+            }}
+          >
             {member.name}
-            {member.id === currentMember?.id ? " (You)" : ""}
           </Typography>
           <Amount amount={project.balance[String(member.id)] ?? 0} />
         </Stack>

@@ -13,7 +13,7 @@ export function RecordTimeline({
   project: api.Project;
   currentMember: api.ProjectMember | null;
 }) {
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const lastRecordRef = useRef<HTMLDivElement | null>(null);
   const records = useMemo(
     () => [...project.records].sort((left, right) => left.id - right.id),
     [project.records],
@@ -21,7 +21,7 @@ export function RecordTimeline({
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      bottomRef.current?.scrollIntoView({ block: "end" });
+      lastRecordRef.current?.scrollIntoView({ block: "end" });
     });
 
     return () => cancelAnimationFrame(frame);
@@ -49,18 +49,18 @@ export function RecordTimeline({
         gap: { xs: 2.5, md: 3 },
         px: { xs: 2, md: 3 },
         pt: { xs: 2.75, md: 3.5 },
-        pb: { xs: "110px", md: 3.5 },
+        pb: { xs: "92px", md: 3.5 },
       }}
     >
-      {records.map((record) => (
-        <RecordCard
+      {records.map((record, index) => (
+        <Box
           key={record.id}
-          project={project}
-          record={record}
-          currentMember={currentMember}
-        />
+          ref={index === records.length - 1 ? lastRecordRef : undefined}
+          sx={{ scrollMarginBottom: { xs: "92px", md: 0 } }}
+        >
+          <RecordCard project={project} record={record} currentMember={currentMember} />
+        </Box>
       ))}
-      <Box ref={bottomRef} aria-hidden="true" sx={{ height: 1 }} />
     </Box>
   );
 }

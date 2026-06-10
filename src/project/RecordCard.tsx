@@ -114,12 +114,10 @@ export function RecordCard({
         <Typography
           sx={{
             minWidth: 0,
-            overflow: "hidden",
             color: "text.secondary",
             fontSize: 15,
             fontWeight: 650,
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            overflowWrap: "anywhere",
           }}
         >
           {actor?.name ?? "Unknown member"}
@@ -142,23 +140,30 @@ export function RecordCard({
           fontSize: { xs: "1.25rem", md: "1.375rem" },
           fontWeight: 650,
           lineHeight: 1.25,
+          overflowWrap: "anywhere",
+          wordBreak: "break-word",
         }}
       >
         {recordTitle(record, project.members)}
       </Typography>
       <Stack
         direction="row"
-        sx={{ alignItems: "end", justifyContent: "space-between", gap: 1.5, mt: 0.75 }}
+        sx={{
+          alignItems: "end",
+          justifyContent: "space-between",
+          gap: 1.5,
+          minWidth: 0,
+          mt: 0.75,
+        }}
       >
         <Typography
           sx={{
             minWidth: 0,
-            overflow: "hidden",
             color: "text.secondary",
             fontSize: 13,
             fontWeight: 650,
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
           }}
         >
           {metadataText}

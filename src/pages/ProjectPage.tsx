@@ -54,17 +54,19 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
       sx={{
         display: { xs: "block", md: "grid" },
         gridTemplateColumns: {
-          md: "minmax(180px, 260px) minmax(360px, 1fr) minmax(280px, 340px)",
-          lg: "minmax(220px, 300px) minmax(480px, 680px) minmax(320px, 460px)",
+          md: "minmax(0, 520px) minmax(300px, 400px)",
+          lg: "minmax(180px, 260px) minmax(0, 520px) minmax(300px, 400px)",
+          xl: "minmax(220px, 300px) minmax(0, 680px) minmax(320px, 460px)",
         },
         gap: { md: 2.25, lg: 3 },
+        justifyContent: { md: "center" },
         minHeight: "100svh",
         px: { xs: 0, md: 3 },
         pt: 0,
         pb: 0,
       }}
     >
-      <Box sx={{ display: { xs: "none", md: "block" } }}>
+      <Box sx={{ display: { xs: "none", md: "none", lg: "block" } }}>
         <ProjectRail
           project={project.data}
           currentEmail={currentEmail}
@@ -112,11 +114,18 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
               variant="contained"
               startIcon={<AddIcon />}
               fullWidth
+              sx={{ minHeight: 56 }}
             >
               Post record
             </Button>
           ) : (
-            <Button component={Link} to={loginPath(location)} variant="contained" fullWidth>
+            <Button
+              component={Link}
+              to={loginPath(location)}
+              variant="contained"
+              fullWidth
+              sx={{ minHeight: 56 }}
+            >
               Join to post
             </Button>
           )}

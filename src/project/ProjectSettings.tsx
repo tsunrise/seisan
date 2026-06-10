@@ -21,11 +21,11 @@ import {
 import { useState } from "react";
 
 import * as api from "../api";
+import { AllowedEmailList } from "../components/AllowedEmailList";
 import { Amount } from "../components/Amount";
 import { InlineAlert } from "../components/InlineAlert";
 import { PanelFrame } from "../components/PanelFrame";
 import { panelFrameSx } from "../components/styles";
-import { parseEmailList } from "../utils";
 
 const memberActionButtonSx = {
   border: 0,
@@ -54,7 +54,6 @@ export function ProjectSettings({
   const [newMemberName, setNewMemberName] = useState("");
   const [visibility, setVisibility] = useState<api.ProjectAcl["type"]>(project.acl.type);
   const [savingVisibility, setSavingVisibility] = useState(false);
-  const [newAllowedEmail, setNewAllowedEmail] = useState("");
   const [editingMember, setEditingMember] = useState<api.ProjectMember | null>(null);
   const [editingName, setEditingName] = useState("");
   const [memberToKick, setMemberToKick] = useState<api.ProjectMember | null>(null);
@@ -87,31 +86,24 @@ export function ProjectSettings({
     }
   }
 
-  async function addAllowedEmails() {
-    const nextEmails = parseEmailList(newAllowedEmail).filter(
-      (email) => !allowedEmails.includes(email),
-    );
-    if (nextEmails.length === 0) {
-      setNewAllowedEmail("");
+  async function updateAllowedEmails(nextEmails: string[]) {
+    const emailsToAdd = nextEmails.filter((email) => !allowedEmails.includes(email));
+    const emailsToRemove = allowedEmails.filter((email) => !nextEmails.includes(email));
+    if (emailsToAdd.length === 0 && emailsToRemove.length === 0) {
       return;
     }
     setError(null);
     try {
-      await api.appendAclEmails(project.id, nextEmails);
-      setNewAllowedEmail("");
+      if (emailsToAdd.length > 0) {
+        await api.appendAclEmails(project.id, emailsToAdd);
+      }
+      if (emailsToRemove.length > 0) {
+        await api.removeAclEmails(project.id, emailsToRemove);
+      }
       onReload();
     } catch {
-      setError("Could not add allowed email.");
-    }
-  }
-
-  async function removeAllowedEmail(email: string) {
-    setError(null);
-    try {
-      await api.removeAclEmails(project.id, [email]);
-      onReload();
-    } catch {
-      setError("Could not remove that allowed email.");
+      setError("Could not update allowed emails.");
+      throw new Error("Could not update allowed emails.");
     }
   }
 
@@ -210,65 +202,13 @@ export function ProjectSettings({
         </TextField>
         {visibility === "restricted" ? (
           <Paper component="section" square sx={panelFrameSx}>
-            <Stack spacing={1.5}>
-              <Typography variant="h2">Allowed emails</Typography>
-              {savingVisibility ? (
-                <Typography color="text.secondary">Updating visibility...</Typography>
-              ) : null}
-              <Stack spacing={1}>
-                {allowedEmails.length === 0 ? (
-                  <Typography color="text.secondary">No extra emails are allowed yet.</Typography>
-                ) : null}
-                {allowedEmails.map((email) => (
-                  <Stack
-                    key={email}
-                    direction="row"
-                    sx={{
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 1.25,
-                      minHeight: 44,
-                      borderBottom: 1,
-                      borderColor: "divider",
-                      pb: 1,
-                    }}
-                  >
-                    <Typography noWrap>{email}</Typography>
-                    {isOwner ? (
-                      <IconButton
-                        color="error"
-                        disabled={!canEditAllowedEmails}
-                        aria-label={`Remove ${email}`}
-                        onClick={() => void removeAllowedEmail(email)}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    ) : null}
-                  </Stack>
-                ))}
-              </Stack>
-              {isOwner ? (
-                <Stack direction={{ xs: "column", sm: "row" }} sx={{ gap: 1.25 }}>
-                  <TextField
-                    type="email"
-                    label="Allowed email"
-                    disabled={!canEditAllowedEmails}
-                    value={newAllowedEmail}
-                    onChange={(event) => setNewAllowedEmail(event.target.value)}
-                    placeholder="name@example.com"
-                    sx={{ flex: 1 }}
-                  />
-                  <Button
-                    variant="outlined"
-                    disabled={!canEditAllowedEmails}
-                    startIcon={<AddIcon />}
-                    onClick={() => void addAllowedEmails()}
-                  >
-                    Add
-                  </Button>
-                </Stack>
-              ) : null}
-            </Stack>
+            <AllowedEmailList
+              emails={allowedEmails}
+              disabled={!canEditAllowedEmails}
+              editable={isOwner}
+              emptyMessage={savingVisibility ? "Updating visibility..." : undefined}
+              onListChange={updateAllowedEmails}
+            />
           </Paper>
         ) : null}
         <Stack
@@ -305,10 +245,10 @@ export function ProjectSettings({
                 <Stack sx={{ minWidth: 0, flex: "1 1 auto" }}>
                   <Stack direction="row" sx={{ alignItems: "center", gap: 0.75, minWidth: 0 }}>
                     <Typography
-                      noWrap
                       sx={{
                         minWidth: 0,
                         fontWeight: isCurrentMember ? 900 : 400,
+                        overflowWrap: "anywhere",
                         textDecoration: isCurrentMember ? "underline" : "none",
                         textUnderlineOffset: "4px",
                       }}
@@ -325,7 +265,10 @@ export function ProjectSettings({
                       </Tooltip>
                     ) : null}
                   </Stack>
-                  <Typography variant="body2" noWrap sx={{ color: "text.secondary" }}>
+                  <Typography
+                    variant="body2"
+                    sx={{ color: "text.secondary", overflowWrap: "anywhere" }}
+                  >
                     {member.linkedEmail ?? "Not yet joined"}
                   </Typography>
                 </Stack>

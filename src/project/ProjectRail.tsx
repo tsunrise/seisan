@@ -3,6 +3,7 @@ import { Button, Stack, Typography } from "@mui/material";
 import { Link } from "react-router";
 
 import type * as api from "../api";
+import { BrandLink } from "../components/BrandLink";
 import { MemberBalanceList } from "../components/MemberBalanceList";
 import { JoinPanel } from "./JoinPanel";
 
@@ -23,6 +24,7 @@ export function ProjectRail({
       spacing={2.25}
       sx={{ alignSelf: "start", position: "sticky", top: 24 }}
     >
+      <BrandLink />
       <Typography variant="h2">{project.name}</Typography>
       <MemberBalanceList project={project} currentMember={currentMember} />
       <JoinPanel
