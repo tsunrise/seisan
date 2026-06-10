@@ -15,6 +15,7 @@ import { RecordDetail } from "../project/RecordDetail";
 import { RecordTimeline } from "../project/RecordTimeline";
 import type { ProjectPanel } from "../types";
 import { findLinkedMember } from "../domain";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { ledgerColors } from "../theme";
 import { loginPath } from "../utils";
 import { NotFoundPage } from "./NotFoundPage";
@@ -29,6 +30,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
   const [reloadKey, reload] = useReducer((value: number) => value + 1, 0);
   const project = useProject(projectId, reloadKey);
   const currentEmail = user.status === "ready" ? (user.data?.email ?? null) : null;
+  useDocumentTitle(project.status === "ready" ? `${project.data.name} - Seisan` : "Seisan");
 
   if (project.status === "loading") {
     return (

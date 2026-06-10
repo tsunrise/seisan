@@ -72,75 +72,80 @@ export function LoginPage() {
 
   return (
     <Box component="main" sx={pageCenterSx}>
-      <Paper
-        component="form"
-        square
-        onSubmit={submit}
-        sx={{ ...panelFrameSx, width: "min(100%, 380px)" }}
-      >
-        <Stack spacing={2}>
-          <Box>
-            <BrandLink sx={{ mb: 1 }} />
-            <Typography variant="h1">{step === "email" ? "Get Started" : "Enter code"}</Typography>
-          </Box>
-          <Typography color="text.secondary">
-            {step === "email"
-              ? "Sign in or create your account."
-              : `We sent a six digit code to ${email}.`}
-          </Typography>
-          {step === "email" ? (
-            <>
-              <TextField
-                label="Email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-              />
-              {requiresTurnstile ? (
-                <Turnstile
-                  siteKey={turnstileSiteKey}
-                  resetKey={turnstileResetKey}
-                  onToken={setTurnstileToken}
-                  onError={handleTurnstileError}
+      <Stack spacing={1.5} sx={{ width: "min(100%, 380px)" }}>
+        <Paper component="form" square onSubmit={submit} sx={panelFrameSx}>
+          <Stack spacing={2}>
+            <Box>
+              <BrandLink sx={{ mb: 1 }} />
+              <Typography variant="h1">
+                {step === "email" ? "Get Started" : "Enter code"}
+              </Typography>
+            </Box>
+            <Typography color="text.secondary">
+              {step === "email"
+                ? "Sign in or create your account."
+                : `We sent a six digit code to ${email}.`}
+            </Typography>
+            {step === "email" ? (
+              <>
+                <TextField
+                  label="Email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
                 />
-              ) : null}
-            </>
-          ) : (
-            <TextField
-              label="Verification code"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              slotProps={{
-                htmlInput: {
-                  pattern: "\\d{6}",
-                  maxLength: 6,
-                },
-              }}
-              value={code}
-              onChange={(event) => setCode(event.target.value.replace(/\D/gu, "").slice(0, 6))}
-              required
-              sx={{
-                "& input": {
-                  fontSize: 24,
-                  letterSpacing: 8,
-                  textAlign: "center",
-                },
-              }}
-            />
-          )}
-          {error ? <InlineAlert>{error}</InlineAlert> : null}
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={submitting || (step === "email" && requiresTurnstile && !turnstileToken)}
-            sx={{ alignSelf: "start" }}
-          >
-            {step === "email" ? "Continue" : "Verify"}
-          </Button>
-        </Stack>
-      </Paper>
+                {requiresTurnstile ? (
+                  <Turnstile
+                    siteKey={turnstileSiteKey}
+                    resetKey={turnstileResetKey}
+                    onToken={setTurnstileToken}
+                    onError={handleTurnstileError}
+                  />
+                ) : null}
+              </>
+            ) : (
+              <TextField
+                label="Verification code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                slotProps={{
+                  htmlInput: {
+                    pattern: "\\d{6}",
+                    maxLength: 6,
+                  },
+                }}
+                value={code}
+                onChange={(event) => setCode(event.target.value.replace(/\D/gu, "").slice(0, 6))}
+                required
+                sx={{
+                  "& input": {
+                    fontSize: 24,
+                    letterSpacing: 8,
+                    textAlign: "center",
+                  },
+                }}
+              />
+            )}
+            {error ? <InlineAlert>{error}</InlineAlert> : null}
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={submitting || (step === "email" && requiresTurnstile && !turnstileToken)}
+              sx={{ alignSelf: "start" }}
+            >
+              {step === "email" ? "Continue" : "Verify"}
+            </Button>
+          </Stack>
+        </Paper>
+        <Paper square sx={{ ...panelFrameSx, p: 2 }}>
+          <Typography sx={{ fontWeight: 750 }}>Split expenses with anyone.</Typography>
+          <Typography color="text.secondary" sx={{ mt: 0.5, fontSize: 14 }}>
+            Seisan is a free tool for shared trips, meals, and everyday group spending.
+          </Typography>
+        </Paper>
+      </Stack>
     </Box>
   );
 }

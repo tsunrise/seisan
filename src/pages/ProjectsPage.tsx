@@ -15,10 +15,12 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router";
 
 import * as api from "../api";
 import { Amount } from "../components/Amount";
+import { BrandLink } from "../components/BrandLink";
 import { InlineAlert } from "../components/InlineAlert";
 import { paperFrameSx } from "../components/styles";
 import { formatRelativeTime } from "../domain";
 import { useCurrentUser } from "../hooks/useCurrentUser";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useProjects } from "../hooks/useProjects";
 import { loginPath } from "../utils";
 
@@ -27,6 +29,7 @@ export function ProjectsPage() {
   const location = useLocation();
   const user = useCurrentUser({ required: true });
   const projects = useProjects(user.status === "ready");
+  useDocumentTitle("Seisan");
 
   if (user.status === "error") {
     return <Navigate to={loginPath(location)} replace />;
@@ -47,17 +50,7 @@ export function ProjectsPage() {
         }}
       >
         <Box>
-          <Typography
-            sx={{
-              color: "text.secondary",
-              fontSize: 13,
-              fontWeight: 900,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-            }}
-          >
-            Seisan
-          </Typography>
+          <BrandLink sx={{ mb: 1 }} />
           <Typography variant="h1" sx={{ whiteSpace: "nowrap" }}>
             Projects
           </Typography>
