@@ -43,26 +43,26 @@ export const theme = createTheme({
   },
   typography: {
     fontFamily:
-      'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
     h1: {
       fontSize: "2rem",
       lineHeight: 1.1,
-      fontWeight: 800,
+      fontWeight: 700,
       letterSpacing: 0,
     },
     h2: {
       fontSize: "1.375rem",
       lineHeight: 1.18,
-      fontWeight: 750,
+      fontWeight: 700,
       letterSpacing: 0,
     },
     h3: {
       fontSize: "1rem",
-      fontWeight: 750,
+      fontWeight: 700,
       letterSpacing: 0,
     },
     button: {
-      fontWeight: 750,
+      fontWeight: 700,
       textTransform: "none",
       letterSpacing: 0,
     },

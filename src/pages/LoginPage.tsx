@@ -148,7 +148,7 @@ export function LoginPage() {
           </Stack>
         </Paper>
         <Paper square sx={{ ...panelFrameSx, p: 2 }}>
-          <Typography sx={{ fontWeight: 750 }}>Split expenses with anyone.</Typography>
+          <Typography sx={{ fontWeight: 700 }}>Split expenses with anyone.</Typography>
           <Typography color="text.secondary" sx={{ mt: 0.5, fontSize: 14 }}>
             Seisan is a free tool for shared trips, meals, and everyday group spending.
           </Typography>
