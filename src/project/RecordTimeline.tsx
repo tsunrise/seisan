@@ -56,7 +56,7 @@ export function RecordTimeline({
         <Box
           key={record.id}
           ref={index === records.length - 1 ? lastRecordRef : undefined}
-          sx={{ scrollMarginBottom: { xs: "92px", md: 0 } }}
+          sx={{ scrollMarginBottom: { xs: "92px", md: 0, lg: 28 } }}
         >
           <RecordCard project={project} record={record} currentMember={currentMember} />
         </Box>
