@@ -1,6 +1,6 @@
 import { Box, Button, Paper, Stack, TextField, Typography } from "@mui/material";
 import type { FormEvent } from "react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
 import * as api from "../api";
@@ -21,9 +21,16 @@ export function LoginPage() {
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const codeInputRef = useRef<HTMLInputElement | null>(null);
   const returnTo = searchParams.get("returnTo") ?? "/projects";
   const requiresTurnstile = shouldUseLoginTurnstile();
   const turnstileSiteKey = getLoginTurnstileSiteKey();
+
+  useEffect(() => {
+    if (step === "code") {
+      codeInputRef.current?.focus();
+    }
+  }, [step]);
 
   const resetTurnstile = useCallback(() => {
     setTurnstileToken(null);
@@ -108,6 +115,7 @@ export function LoginPage() {
             ) : (
               <TextField
                 label="Verification code"
+                inputRef={codeInputRef}
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 slotProps={{
