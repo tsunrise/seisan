@@ -40,9 +40,7 @@ export function JoinPromptPanel({
     <Paper square sx={panelFrameSx}>
       <Stack spacing={1.5}>
         <Typography variant="h2">You are not a member yet.</Typography>
-        <Typography color="text.secondary">
-          Join this project to post new records.
-        </Typography>
+        <Typography color="text.secondary">Join this project to post new records.</Typography>
         <Button
           component={Link}
           to={`/project/${project.id}/join`}

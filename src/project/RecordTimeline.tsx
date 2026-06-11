@@ -1,31 +1,218 @@
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
-import { Box, Paper, Stack, Typography } from "@mui/material";
-import { useEffect, useMemo, useRef } from "react";
+import { Box, CircularProgress, Paper, Stack, Typography } from "@mui/material";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import type * as api from "../api";
 import { panelFrameSx } from "../components/styles";
 import { RecordCard } from "./RecordCard";
 
+type TimelineScrollRestore = {
+  scrollY: number;
+  anchorRecordId: number;
+  anchorTop: number;
+  oldestRecordId: number;
+  savedAt: number;
+};
+
+const TIMELINE_SCROLL_RESTORE_TTL_MS = 10 * 60 * 1000;
+const LOAD_EARLIER_ROOT_MARGIN_PX = 220;
+
 export function RecordTimeline({
   project,
   currentMember,
+  hasMoreRecords = false,
+  loadingOlderRecords = false,
+  onLoadOlderRecords,
+  isActive = true,
+  scrollToLatestKey = 0,
+  restoreScrollKey = "",
 }: {
   project: api.Project;
   currentMember: api.ProjectMember | null;
+  hasMoreRecords?: boolean;
+  loadingOlderRecords?: boolean;
+  onLoadOlderRecords?: () => Promise<void>;
+  isActive?: boolean;
+  scrollToLatestKey?: number;
+  restoreScrollKey?: string;
 }) {
+  const topSentinelRef = useRef<HTMLDivElement | null>(null);
   const lastRecordRef = useRef<HTMLDivElement | null>(null);
+  const initialScrollDoneRef = useRef(false);
+  const preservingScrollRef = useRef(false);
+  const restoreStateRef = useRef<TimelineScrollRestore | null>(readTimelineScroll(project.id));
   const records = useMemo(
     () => [...project.records].sort((left, right) => left.id - right.id),
     [project.records],
   );
 
   useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    const restoreState = readTimelineScroll(project.id);
+    restoreStateRef.current = restoreState;
+    if (restoreState) {
+      initialScrollDoneRef.current = false;
+    }
+  }, [isActive, project.id, restoreScrollKey]);
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    const restoreState = restoreStateRef.current;
+    if (!restoreState || records.length === 0) {
+      return;
+    }
+
+    const anchorIsLoaded = records.some((record) => record.id === restoreState.anchorRecordId);
+    const oldestLoadedRecordId = records[0].id;
+    if (
+      (!anchorIsLoaded || oldestLoadedRecordId > restoreState.oldestRecordId) &&
+      hasMoreRecords &&
+      !loadingOlderRecords &&
+      onLoadOlderRecords
+    ) {
+      void onLoadOlderRecords();
+      return;
+    }
+
+    let secondFrame: number | null = null;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        const anchor = document.querySelector<HTMLElement>(
+          `[data-record-id="${restoreState.anchorRecordId}"]`,
+        );
+        if (anchor) {
+          const topDelta = anchor.getBoundingClientRect().top - restoreState.anchorTop;
+          window.scrollTo(0, window.scrollY + topDelta);
+        } else {
+          window.scrollTo(0, restoreState.scrollY);
+        }
+        clearTimelineScroll(project.id);
+        restoreStateRef.current = null;
+        initialScrollDoneRef.current = true;
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame !== null) {
+        cancelAnimationFrame(secondFrame);
+      }
+    };
+  }, [
+    hasMoreRecords,
+    isActive,
+    loadingOlderRecords,
+    onLoadOlderRecords,
+    project.id,
+    records,
+    restoreScrollKey,
+  ]);
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    if (restoreStateRef.current) {
+      return;
+    }
+
+    initialScrollDoneRef.current = false;
     const frame = requestAnimationFrame(() => {
       lastRecordRef.current?.scrollIntoView({ block: "end" });
+      initialScrollDoneRef.current = true;
     });
 
     return () => cancelAnimationFrame(frame);
-  }, [project.id, records.length]);
+  }, [isActive, project.id, scrollToLatestKey]);
+
+  const loadEarlierRecords = useCallback(async () => {
+    if (
+      !hasMoreRecords ||
+      loadingOlderRecords ||
+      !onLoadOlderRecords ||
+      preservingScrollRef.current ||
+      restoreStateRef.current
+    ) {
+      return;
+    }
+
+    const scrollingElement = document.scrollingElement ?? document.documentElement;
+    const previousScrollHeight = scrollingElement.scrollHeight;
+    const previousScrollTop = window.scrollY;
+    preservingScrollRef.current = true;
+
+    try {
+      await onLoadOlderRecords();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const nextScrollHeight = scrollingElement.scrollHeight;
+          window.scrollTo(0, previousScrollTop + (nextScrollHeight - previousScrollHeight));
+          preservingScrollRef.current = false;
+        });
+      });
+    } catch {
+      preservingScrollRef.current = false;
+    }
+  }, [hasMoreRecords, loadingOlderRecords, onLoadOlderRecords]);
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    const sentinel = topSentinelRef.current;
+    if (!sentinel || !hasMoreRecords || !onLoadOlderRecords) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (
+          !initialScrollDoneRef.current ||
+          preservingScrollRef.current ||
+          restoreStateRef.current
+        ) {
+          return;
+        }
+        if (!topSentinelIsInLoadZone(sentinel)) {
+          return;
+        }
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void loadEarlierRecords();
+        }
+      },
+      { root: null, rootMargin: `${LOAD_EARLIER_ROOT_MARGIN_PX}px 0px 0px 0px`, threshold: 0 },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMoreRecords, isActive, loadEarlierRecords, onLoadOlderRecords]);
+
+  const saveCurrentScroll = useCallback(
+    (recordId: number) => {
+      const anchor = document.querySelector<HTMLElement>(`[data-record-id="${recordId}"]`);
+      const oldestRecordId = records[0]?.id;
+      if (oldestRecordId === undefined) {
+        return;
+      }
+
+      saveTimelineScroll(project.id, {
+        scrollY: window.scrollY,
+        anchorRecordId: recordId,
+        anchorTop: anchor?.getBoundingClientRect().top ?? 0,
+        oldestRecordId,
+        savedAt: Date.now(),
+      });
+    },
+    [project.id, records],
+  );
 
   if (project.records.length === 0) {
     return (
@@ -52,15 +239,108 @@ export function RecordTimeline({
         pb: { xs: "92px", md: 3.5 },
       }}
     >
+      <Box ref={topSentinelRef} sx={{ minHeight: 1 }}>
+        {loadingOlderRecords ? (
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{
+              alignItems: "center",
+              justifyContent: "center",
+              color: "text.secondary",
+              py: 1,
+            }}
+          >
+            <CircularProgress size={16} />
+            <Typography variant="body2">Loading earlier records</Typography>
+          </Stack>
+        ) : null}
+      </Box>
       {records.map((record, index) => (
         <Box
           key={record.id}
+          data-record-id={record.id}
+          onKeyDownCapture={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              saveCurrentScroll(record.id);
+            }
+          }}
+          onPointerDownCapture={(event) => {
+            if (event.target instanceof Element && event.target.closest("a")) {
+              saveCurrentScroll(record.id);
+            }
+          }}
           ref={index === records.length - 1 ? lastRecordRef : undefined}
-          sx={{ scrollMarginBottom: { xs: "92px", md: 0, lg: 28 } }}
+          sx={{ scrollMarginBottom: { xs: "92px", md: 28 } }}
         >
-          <RecordCard project={project} record={record} currentMember={currentMember} />
+          <RecordCard
+            project={project}
+            record={record}
+            currentMember={currentMember}
+            onOpen={saveCurrentScroll}
+          />
         </Box>
       ))}
     </Box>
   );
+}
+
+function timelineScrollKey(projectId: string): string {
+  return `seisan:project-timeline-scroll:${projectId}`;
+}
+
+function topSentinelIsInLoadZone(sentinel: HTMLElement): boolean {
+  const rect = sentinel.getBoundingClientRect();
+  return rect.bottom >= -LOAD_EARLIER_ROOT_MARGIN_PX && rect.top <= window.innerHeight;
+}
+
+function readTimelineScroll(projectId: string): TimelineScrollRestore | null {
+  try {
+    const raw = sessionStorage.getItem(timelineScrollKey(projectId));
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as Partial<TimelineScrollRestore>;
+    if (
+      typeof parsed.scrollY !== "number" ||
+      typeof parsed.anchorRecordId !== "number" ||
+      typeof parsed.anchorTop !== "number" ||
+      typeof parsed.oldestRecordId !== "number" ||
+      typeof parsed.savedAt !== "number"
+    ) {
+      return null;
+    }
+
+    if (Date.now() - parsed.savedAt > TIMELINE_SCROLL_RESTORE_TTL_MS) {
+      clearTimelineScroll(projectId);
+      return null;
+    }
+
+    return {
+      scrollY: parsed.scrollY,
+      anchorRecordId: parsed.anchorRecordId,
+      anchorTop: parsed.anchorTop,
+      oldestRecordId: parsed.oldestRecordId,
+      savedAt: parsed.savedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveTimelineScroll(projectId: string, state: TimelineScrollRestore): void {
+  try {
+    sessionStorage.setItem(timelineScrollKey(projectId), JSON.stringify(state));
+  } catch {
+    // Ignore storage failures; the browser's default behavior still works as a fallback.
+  }
+}
+
+function clearTimelineScroll(projectId: string): void {
+  try {
+    sessionStorage.removeItem(timelineScrollKey(projectId));
+  } catch {
+    // Ignore storage failures; this is only a one-shot scroll hint.
+  }
 }

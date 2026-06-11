@@ -9,12 +9,10 @@ import { ledgerColors } from "../theme";
 export function ProjectHeader({
   project,
   currentMember,
-  currentEmail,
   onSettings,
 }: {
   project: api.Project;
   currentMember: api.ProjectMember | null;
-  currentEmail: string | null;
   onSettings: () => void;
 }) {
   const balance = currentMember ? (project.balance[String(currentMember.id)] ?? 0) : null;

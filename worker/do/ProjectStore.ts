@@ -328,6 +328,7 @@ export class ProjectStore extends DurableObject<Env> {
     return { ok: true, id };
   }
 
+  // Return the biggest `limit` ids smaller than offset
   getRecords(input: {
     publicId?: string;
     callerEmail?: string | null;

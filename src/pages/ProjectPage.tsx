@@ -1,5 +1,5 @@
 import AddIcon from "@mui/icons-material/Add";
-import { Box, Button, CircularProgress } from "@mui/material";
+import { Box, Button, CircularProgress, useMediaQuery, useTheme } from "@mui/material";
 import { useReducer } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 
@@ -25,12 +25,14 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
   const params = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const theme = useTheme();
   const projectId = params.projectId ?? "";
   const recordId = params.recordId ? Number(params.recordId) : null;
   const user = useCurrentUser({ required: false });
   const [reloadKey, reload] = useReducer((value: number) => value + 1, 0);
   const project = useProject(projectId, reloadKey);
   const currentEmail = user.status === "ready" ? (user.data?.email ?? null) : null;
+  const timelineIsVisibleOnDesktop = useMediaQuery(theme.breakpoints.up("md"));
   useDocumentTitle(project.status === "ready" ? `${project.data.name} - Seisan` : "Seisan");
 
   if (project.status === "loading") {
@@ -50,6 +52,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
       ? null
       : (project.data.records.find((record) => record.id === recordId) ?? null);
   const showPanel = panel !== "timeline";
+  const timelineIsVisible = panel === "timeline" || timelineIsVisibleOnDesktop;
 
   return (
     <Box
@@ -85,10 +88,18 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
         <ProjectHeader
           project={project.data}
           currentMember={currentMember}
-          currentEmail={currentEmail}
           onSettings={() => navigate(`/project/${projectId}/settings`)}
         />
-        <RecordTimeline project={project.data} currentMember={currentMember} />
+        <RecordTimeline
+          project={project.data}
+          currentMember={currentMember}
+          hasMoreRecords={project.data.hasMoreRecords}
+          loadingOlderRecords={project.data.loadingOlderRecords}
+          onLoadOlderRecords={project.data.loadOlderRecords}
+          isActive={timelineIsVisible}
+          scrollToLatestKey={reloadKey}
+          restoreScrollKey={panel === "timeline" ? location.key : ""}
+        />
         <Box
           sx={{
             position: "fixed",

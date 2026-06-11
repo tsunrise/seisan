@@ -12,10 +12,12 @@ export function RecordCard({
   project,
   record,
   currentMember,
+  onOpen,
 }: {
   project: api.Project;
   record: api.ProjectRecord;
   currentMember: api.ProjectMember | null;
+  onOpen?: (recordId: number) => void;
 }) {
   const actor = project.members.find((member) => member.id === recordActorMemberId(record));
   const author = project.members.find((member) => member.id === record.authorMemberId);
@@ -50,6 +52,7 @@ export function RecordCard({
     <Paper
       component={Link}
       to={`/project/${project.id}/records/${record.id}`}
+      onClick={() => onOpen?.(record.id)}
       aria-label={`Open record #${record.id}`}
       square={false}
       sx={{
