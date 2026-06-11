@@ -101,10 +101,11 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
           restoreScrollKey={panel === "timeline" ? location.key : ""}
         />
         <Box
+          data-project-mobile-action=""
           sx={{
             position: "fixed",
             right: 16,
-            bottom: 16,
+            bottom: "calc(16px + env(safe-area-inset-bottom))",
             left: 16,
             zIndex: 8,
             display: { xs: "block", md: "none" },

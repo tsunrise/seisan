@@ -16,6 +16,8 @@ type TimelineScrollRestore = {
 
 const TIMELINE_SCROLL_RESTORE_TTL_MS = 10 * 60 * 1000;
 const LOAD_EARLIER_ROOT_MARGIN_PX = 220;
+const MOBILE_ACTION_GAP_PX = 20;
+const MOBILE_BOTTOM_SCROLL_SPACE = "calc(128px + env(safe-area-inset-bottom))";
 
 export function RecordTimeline({
   project,
@@ -89,6 +91,7 @@ export function RecordTimeline({
         if (anchor) {
           const topDelta = anchor.getBoundingClientRect().top - restoreState.anchorTop;
           window.scrollTo(0, window.scrollY + topDelta);
+          keepElementAboveMobileAction(anchor);
         } else {
           window.scrollTo(0, restoreState.scrollY);
         }
@@ -125,7 +128,7 @@ export function RecordTimeline({
 
     initialScrollDoneRef.current = false;
     const frame = requestAnimationFrame(() => {
-      lastRecordRef.current?.scrollIntoView({ block: "end" });
+      scrollElementToTimelineEnd(lastRecordRef.current);
       initialScrollDoneRef.current = true;
     });
 
@@ -236,7 +239,7 @@ export function RecordTimeline({
         gap: { xs: 2.5, md: 3 },
         px: { xs: 2, md: 3 },
         pt: { xs: 2.75, md: 3.5 },
-        pb: { xs: "92px", md: 3.5 },
+        pb: { xs: MOBILE_BOTTOM_SCROLL_SPACE, md: 3.5 },
       }}
     >
       <Box ref={topSentinelRef} sx={{ minHeight: 1 }}>
@@ -271,7 +274,7 @@ export function RecordTimeline({
             }
           }}
           ref={index === records.length - 1 ? lastRecordRef : undefined}
-          sx={{ scrollMarginBottom: { xs: "92px", md: 28 } }}
+          sx={{ scrollMarginBottom: { xs: MOBILE_BOTTOM_SCROLL_SPACE, md: 28 } }}
         >
           <RecordCard
             project={project}
@@ -292,6 +295,30 @@ function timelineScrollKey(projectId: string): string {
 function topSentinelIsInLoadZone(sentinel: HTMLElement): boolean {
   const rect = sentinel.getBoundingClientRect();
   return rect.bottom >= -LOAD_EARLIER_ROOT_MARGIN_PX && rect.top <= window.innerHeight;
+}
+
+function scrollElementToTimelineEnd(element: HTMLElement | null): void {
+  if (!element) {
+    return;
+  }
+
+  element.scrollIntoView({ block: "end" });
+  keepElementAboveMobileAction(element);
+  requestAnimationFrame(() => keepElementAboveMobileAction(element));
+}
+
+function keepElementAboveMobileAction(element: HTMLElement): void {
+  const action = document.querySelector<HTMLElement>("[data-project-mobile-action]");
+  if (!action || getComputedStyle(action).display === "none") {
+    return;
+  }
+
+  const actionTop = action.getBoundingClientRect().top;
+  const elementBottom = element.getBoundingClientRect().bottom;
+  const overlap = elementBottom - (actionTop - MOBILE_ACTION_GAP_PX);
+  if (overlap > 0) {
+    window.scrollTo({ top: window.scrollY + overlap, behavior: "auto" });
+  }
 }
 
 function readTimelineScroll(projectId: string): TimelineScrollRestore | null {
