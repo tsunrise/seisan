@@ -109,8 +109,43 @@ export function recordTitle(record: ProjectRecord, members: ProjectMember[]): st
   return `Reverted #${description.id}`;
 }
 
+export function recordDetailTitle(record: ProjectRecord, members: ProjectMember[]): string {
+  const description = record.description;
+  if (description.type === "expense") {
+    return `${formatMemberList(
+      members,
+      Object.keys(description.paid).map(Number),
+    )} paid ${formatCents(sumMoney(description.paid))} for ${description.name}`;
+  }
+
+  if (description.type === "transfer") {
+    return `${memberName(members, description.from)} transferred ${memberName(
+      members,
+      description.to,
+    )} ${formatCents(description.amount)}`;
+  }
+
+  return recordTitle(record, members);
+}
+
 export function recordSubtitle(record: ProjectRecord, members: ProjectMember[]): string {
   return `Posted by ${memberName(members, record.authorMemberId)}`;
+}
+
+function formatMemberList(members: ProjectMember[], memberIds: number[]): string {
+  if (memberIds.length === 0) {
+    return "Someone";
+  }
+  if (memberIds.length === 1) {
+    return memberName(members, memberIds[0]);
+  }
+  if (memberIds.length === 2) {
+    return `${memberName(members, memberIds[0])} and ${memberName(members, memberIds[1])}`;
+  }
+  return `${memberIds
+    .slice(0, -1)
+    .map((memberId) => memberName(members, memberId))
+    .join(", ")}, and ${memberName(members, memberIds[memberIds.length - 1])}`;
 }
 
 export function sumMoney(map: MoneyByMemberId): number {
