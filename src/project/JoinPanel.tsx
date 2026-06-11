@@ -2,7 +2,6 @@ import CheckIcon from "@mui/icons-material/Check";
 import {
   Button,
   FormControl,
-  Paper,
   Radio,
   RadioGroup,
   Stack,
@@ -10,11 +9,11 @@ import {
   Typography,
 } from "@mui/material";
 import { useState } from "react";
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 
 import * as api from "../api";
 import { InlineAlert } from "../components/InlineAlert";
-import { panelFrameSx } from "../components/styles";
+import { PanelFrame } from "../components/PanelFrame";
 import { loginPath } from "../utils";
 
 export function JoinPanel({
@@ -22,15 +21,14 @@ export function JoinPanel({
   currentEmail,
   currentMember,
   onReload,
-  placement = "timeline",
 }: {
   project: api.Project;
   currentEmail: string | null;
   currentMember: api.ProjectMember | null;
   onReload: () => void;
-  placement?: "timeline" | "rail";
 }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const unlinkedMembers = project.members.filter(
     (member) => !member.deleted && !member.linkedEmail,
   );
@@ -41,22 +39,26 @@ export function JoinPanel({
   const [error, setError] = useState<string | null>(null);
 
   if (currentMember) {
-    return null;
+    return (
+      <PanelFrame title="Join project" backTo={`/project/${project.id}`}>
+        <InlineAlert>You are already a member of this project.</InlineAlert>
+      </PanelFrame>
+    );
   }
-
-  const displaySx =
-    placement === "timeline" ? { display: { xs: "block", md: "none" }, m: 2.5 } : undefined;
 
   if (!currentEmail) {
     return (
-      <Paper square sx={{ ...panelFrameSx, ...displaySx }}>
+      <PanelFrame title="Join project" backTo={`/project/${project.id}`}>
         <Stack spacing={1.5}>
-          <Typography color="text.secondary">Viewing as guest.</Typography>
+          <Typography variant="h2">Join this project</Typography>
+          <Typography color="text.secondary">
+            Sign in to claim your member and add records when you are ready.
+          </Typography>
           <Button component={Link} to={loginPath(location)} variant="contained" fullWidth>
             Sign in to join
           </Button>
         </Stack>
-      </Paper>
+      </PanelFrame>
     );
   }
 
@@ -69,6 +71,7 @@ export function JoinPanel({
         await api.joinProject(project.id, { name });
       }
       onReload();
+      navigate(`/project/${project.id}`, { replace: true });
     } catch {
       setError("Could not join this project.");
     }
@@ -77,7 +80,7 @@ export function JoinPanel({
   const canJoin = selection.startsWith("member:") || name.trim().length > 0;
 
   return (
-    <Paper square sx={{ ...panelFrameSx, ...displaySx }}>
+    <PanelFrame title="Join project" backTo={`/project/${project.id}`}>
       <Stack spacing={1.5}>
         <Typography variant="h2">Join this project as</Typography>
         <FormControl>
@@ -126,6 +129,6 @@ export function JoinPanel({
           Join
         </Button>
       </Stack>
-    </Paper>
+    </PanelFrame>
   );
 }

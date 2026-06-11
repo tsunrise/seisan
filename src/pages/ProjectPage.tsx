@@ -7,6 +7,7 @@ import { useCurrentUser } from "../hooks/useCurrentUser";
 import { useProject } from "../hooks/useProject";
 import { DesktopPlaceholder } from "../project/DesktopPlaceholder";
 import { JoinPanel } from "../project/JoinPanel";
+import { JoinPromptPanel } from "../project/JoinPromptPanel";
 import { NewRecordPanel } from "../project/NewRecordPanel";
 import { ProjectHeader } from "../project/ProjectHeader";
 import { ProjectRail } from "../project/ProjectRail";
@@ -69,12 +70,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
       }}
     >
       <Box sx={{ display: { xs: "none", md: "none", lg: "block" } }}>
-        <ProjectRail
-          project={project.data}
-          currentEmail={currentEmail}
-          currentMember={currentMember}
-          onReload={reload}
-        />
+        <ProjectRail project={project.data} currentMember={currentMember} />
       </Box>
       <Box
         component="section"
@@ -91,12 +87,6 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
           currentMember={currentMember}
           currentEmail={currentEmail}
           onSettings={() => navigate(`/project/${projectId}/settings`)}
-        />
-        <JoinPanel
-          project={project.data}
-          currentEmail={currentEmail}
-          currentMember={currentMember}
-          onReload={reload}
         />
         <RecordTimeline project={project.data} currentMember={currentMember} />
         <Box
@@ -119,6 +109,16 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
               sx={{ minHeight: 56 }}
             >
               Post record
+            </Button>
+          ) : currentEmail ? (
+            <Button
+              component={Link}
+              to={`/project/${projectId}/join`}
+              variant="contained"
+              fullWidth
+              sx={{ minHeight: 56 }}
+            >
+              Join to post
             </Button>
           ) : (
             <Button
@@ -144,6 +144,14 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
           p: { xs: showPanel ? 2.25 : 0, md: 0 },
         }}
       >
+        {panel === "join" ? (
+          <JoinPanel
+            project={project.data}
+            currentEmail={currentEmail}
+            currentMember={currentMember}
+            onReload={reload}
+          />
+        ) : null}
         {panel === "newRecord" ? (
           <NewRecordPanel project={project.data} currentMember={currentMember} onPosted={reload} />
         ) : null}
@@ -165,7 +173,11 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
           />
         ) : null}
         {panel === "timeline" ? (
-          <DesktopPlaceholder project={project.data} currentMember={currentMember} />
+          currentMember ? (
+            <DesktopPlaceholder project={project.data} currentMember={currentMember} />
+          ) : (
+            <JoinPromptPanel project={project.data} currentEmail={currentEmail} />
+          )
         ) : null}
       </Box>
     </Box>

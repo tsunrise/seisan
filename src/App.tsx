@@ -14,6 +14,7 @@ export default function App() {
       <Route path="/projects" element={<ProjectsPage />} />
       <Route path="/projects/new" element={<CreateProjectPage />} />
       <Route path="/project/:projectId" element={<ProjectPage panel="timeline" />} />
+      <Route path="/project/:projectId/join" element={<ProjectPage panel="join" />} />
       <Route path="/project/:projectId/records/new" element={<ProjectPage panel="newRecord" />} />
       <Route
         path="/project/:projectId/records/:recordId"

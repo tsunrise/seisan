@@ -5,18 +5,13 @@ import { Link } from "react-router";
 import type * as api from "../api";
 import { BrandLink } from "../components/BrandLink";
 import { MemberBalanceList } from "../components/MemberBalanceList";
-import { JoinPanel } from "./JoinPanel";
 
 export function ProjectRail({
   project,
-  currentEmail,
   currentMember,
-  onReload,
 }: {
   project: api.Project;
-  currentEmail: string | null;
   currentMember: api.ProjectMember | null;
-  onReload: () => void;
 }) {
   return (
     <Stack
@@ -27,13 +22,6 @@ export function ProjectRail({
       <BrandLink />
       <Typography variant="h2">{project.name}</Typography>
       <MemberBalanceList project={project} currentMember={currentMember} />
-      <JoinPanel
-        project={project}
-        currentEmail={currentEmail}
-        currentMember={currentMember}
-        onReload={onReload}
-        placement="rail"
-      />
       <Button
         component={Link}
         to={`/project/${project.id}/settings`}

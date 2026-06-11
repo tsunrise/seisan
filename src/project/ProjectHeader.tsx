@@ -18,6 +18,7 @@ export function ProjectHeader({
   onSettings: () => void;
 }) {
   const balance = currentMember ? (project.balance[String(currentMember.id)] ?? 0) : null;
+  const identityLabel = currentMember?.name ?? null;
 
   return (
     <Stack
@@ -46,10 +47,11 @@ export function ProjectHeader({
           >
             {project.name}
           </Typography>
-          <Typography sx={{ mt: 0.75, fontWeight: 700 }}>
-            {currentMember?.name ?? (currentEmail ? "Unlinked" : "Guest")}{" "}
-            {balance !== null ? <Amount amount={balance} /> : null}
-          </Typography>
+          {identityLabel ? (
+            <Typography sx={{ mt: 0.75, fontWeight: 700 }}>
+              {identityLabel} {balance !== null ? <Amount amount={balance} /> : null}
+            </Typography>
+          ) : null}
         </Box>
         <IconButton onClick={onSettings} aria-label="Project settings">
           <MoreHorizIcon />

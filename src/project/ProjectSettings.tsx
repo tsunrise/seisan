@@ -265,12 +265,14 @@ export function ProjectSettings({
                       </Tooltip>
                     ) : null}
                   </Stack>
-                  <Typography
-                    variant="body2"
-                    sx={{ color: "text.secondary", overflowWrap: "anywhere" }}
-                  >
-                    {member.linkedEmail ?? "Not yet joined"}
-                  </Typography>
+                  {currentEmail ? (
+                    <Typography
+                      variant="body2"
+                      sx={{ color: "text.secondary", overflowWrap: "anywhere" }}
+                    >
+                      {member.linkedEmail ?? "Not yet joined"}
+                    </Typography>
+                  ) : null}
                 </Stack>
                 <Stack direction="row" sx={{ alignItems: "center", gap: 0.75, flex: "0 0 auto" }}>
                   <Amount amount={balance} />

@@ -9,7 +9,7 @@ export interface User {
   email: string;
 }
 
-export type ProjectPanel = "timeline" | "newRecord" | "recordDetail" | "settings";
+export type ProjectPanel = "timeline" | "join" | "newRecord" | "recordDetail" | "settings";
 
 export type SplitMode = "equal" | "ratio" | "custom";
 
