@@ -15,6 +15,10 @@ Core pieces:
 - `worker/do/*.ts`: Durable Object classes. Keep one DO class per file.
 - `src/`: React UI built with hooks, React Router, and Material UI.
 - `src/api.ts`: browser API client for `/api/*`.
+- `src/domain.ts`: frontend domain formatting and pure record helpers, including money, dates, record summaries, and record detail titles.
+- `src/components/styles.ts`: shared MUI frame and surface style objects.
+- `src/project/recordActor.ts`: record actor/subject derivation for timeline display.
+- `src/project/timelineScroll.ts`: timeline scroll restoration, infinite-load sentinel helpers, and mobile fixed-action clearance.
 - `scripts/client.ts` and `scripts/client-cli.ts`: Node CLI API client.
 - `test/*.test.ts`: Worker-runtime Vitest tests.
 
@@ -45,6 +49,8 @@ pnpm test
 pnpm run build
 ```
 
+`pnpm run build` intentionally emits no production source maps (`vite.config.ts` has `build.sourcemap = false`). In the sandbox, Wrangler may print a log-write warning for `~/Library/Preferences/.wrangler/logs`; if the command exits successfully and Vite completes, report the warning but do not treat it as a build failure by itself.
+
 ## Local Configuration
 
 - Copy `.dev.vars.example` to `.dev.vars` for local development.
@@ -67,6 +73,22 @@ pnpm run build
 - Keep auth identity in Hono context as `identity`.
 - `requireAuth` requires a valid session; `optionalAuth` permits unauthenticated public project reads.
 
+## Worker Code Style
+
+- Keep `worker/index.ts` focused on Hono route wiring, request parsing, auth middleware application, RPC calls, and HTTP response mapping. Push domain validation and derivation into `worker/project.ts`, `worker/auth.ts`, or DO methods.
+- Prefer small response helpers in `worker/index.ts` such as `unauthorized()`, `invalidRequest()`, `notFound()`, `forbidden()`, `conflict()`, and central mapper functions for repeated DO error unions.
+- Validate JSON request bodies with `parseJson(context, schema)` and zod schemas. Use `safeParse()` inside DO RPC methods for public RPC inputs, even if the route already validated the request.
+- Keep schemas near the domain they validate: auth schemas in `worker/auth.ts`, project/member/record schemas in `worker/project.ts`.
+- Normalize boundary data immediately. Emails should go through `normalizeEmail()` or `normalizedEmailSchema`; project and member names should go through the project normalization helpers.
+- Use explicit `{ ok: true, ... } | { ok: false, error: "..." }` unions for expected domain results. Do not throw for normal user/domain errors such as forbidden, invalid input, not found, already linked, or conflict.
+- Keep error strings stable and narrow. When adding a new DO error string, update the relevant HTTP mapper and tests in the same change.
+- Use constants from `worker/constants.ts` or `worker/project.ts` for limits, TTLs, cache timings, and money bounds. Avoid new route-local magic numbers.
+- Use Web Crypto through helpers in `worker/crypto.ts` for hashes, random tokens, login codes, JWT signing, and timing-safe comparison. Do not use `Math.random()` or direct string equality for secrets/tokens.
+- For post-response or best-effort work from routes, use `context.executionCtx.waitUntil(...)`. For DO best-effort work, use `this.ctx.waitUntil(...)`. Always catch and log failures inside the scheduled promise.
+- Do not destructure `waitUntil` or other methods that depend on platform object binding.
+- Use `Response.json(...)` or `context.json(...)` consistently with the surrounding route. Return `204` with an empty body for successful no-content mutation responses.
+- Keep comments sparse and attached to non-obvious invariants, security reminders, or temporary backfills. Avoid comments that simply restate the SQL or TypeScript.
+
 ## Durable Objects And Storage
 
 - Durable Object classes belong in `worker/do/`, one class per file.
@@ -77,6 +99,14 @@ pnpm run build
 - `PROJECT_REGISTRY_CACHE` is a KV cache for public project ID to ProjectStore DO ID lookup. The registry DO is authoritative.
 - `ProjectStore` queues project summary syncs with a DO alarm. Use `setAlarmIfNotAlready()` style logic so repeated mutations inside the delay window do not reschedule or fan out.
 - `ProjectStore.alarm()` syncs summary data to `ProjectsRegistry.syncProjectSummary()`. Keep this summary good enough for project lists; it does not need to be perfectly fresh.
+- Public DO methods should follow the local pattern: check initialization/access first, validate RPC input, perform the minimal SQL reads/writes, queue summary/cache side effects after successful state changes, and return a typed result union.
+- `ProjectStore` access checks should go through `getProjectAccess()` or `getOwnerAccess()` so owner/public/restricted behavior stays centralized.
+- For SQL rows, define narrow row interfaces that extend `Record<string, SqlStorageValue>`. Use typed `sql.exec<Row>(...)` calls and parameter placeholders rather than string interpolation for values.
+- Prefer `.toArray()[0] ?? null` or explicit `undefined` checks for single-row reads. Keep JSON parsing/serialization at the storage boundary.
+- Use `transactionSync()` for related multi-write state changes, especially when updating rows plus counters, balances, membership rows, project metadata, or initialized state. Queue alarms/cache writes only after the transaction has succeeded.
+- Store extensible record data as JSON (`description_json`, `delta_json`) and keep schema-specific validation in TypeScript/zod instead of adding schema columns for every future record type.
+- Keep DO helper methods private when they are internal implementation details. Put pure row conversion helpers near the bottom of the file.
+- When a `ProjectStore` mutation affects project-list data, call `queueProjectSummarySync()` rather than writing registry summary rows or Cache API entries inline.
 
 ### Durable Object SQL Migrations
 
@@ -124,8 +154,18 @@ pnpm run build
 - Keep large rendering modules split into separate files under `src/pages`, `src/project`, `src/components`, or `src/hooks`.
 - API calls from the browser go through `src/api.ts` and use relative `/api/*` URLs.
 - Preserve the mobile-first ledger/chat-like project timeline. Desktop should use the existing multi-pane layout, not a stretched mobile view.
+- Mobile uses a single active panel. Pad-width layouts show the main timeline plus right panel. Wider desktop layouts show left rail, center timeline, and right panel.
+- Project timelines render oldest-to-newest and initial project loads scroll to the latest record. Infinite loading fetches older records when the user scrolls upward, and prepending older records must preserve the visible scroll position.
+- Timeline scroll restoration and fixed-action overlap handling belong in `src/project/timelineScroll.ts`. Do not duplicate sessionStorage, DOM measurement, iOS Safari safe-area, or mobile bottom CTA clearance logic inside rendering components.
+- The mobile timeline CTA is marked with `data-project-mobile-action`; keep that marker or update `timelineScroll.ts` at the same time. This is required so initial scroll and restore logic keep the latest bubble clear of the fixed action, especially on iPhone Safari.
+- Record cards should only make the bubble clickable, not the surrounding timeline lane. Keep hover states subtle and consistent with the bubble tone.
+- Shared record text, money, timestamp, and title formatting belongs in `src/domain.ts`. Components should call helpers such as `recordTitle`, `recordDetailTitle`, `formatCents`, and timestamp formatters instead of duplicating formatting rules.
+- Keep record actor/subject selection in `src/project/recordActor.ts` so avatar direction and record summaries stay consistent.
+- Use `BrandLink` for the logo plus `SEISAN` brand mark. The logo asset is `public/seisan-logo.svg`, and `index.html` uses it as the favicon.
+- Route titles are controlled with `useDocumentTitle`: root/project-list pages use `Seisan`; project routes use `<Project Name> - Seisan`.
 - Avoid in-app explanatory text about how the UI works unless it is actual product copy.
 - Use `lucide` only if it is already installed; this repo currently uses MUI icons.
+- For SEO-facing shell content, update `index.html` metadata rather than adding marketing-only UI to app routes.
 
 ## Testing Notes
 
@@ -137,6 +177,9 @@ pnpm run build
 - Mock external services such as Email and Turnstile in tests; tests should not depend on real network calls.
 - Keep malformed schema tests for zod-covered request bodies.
 - After changing bindings or Wrangler config, regenerate `worker-configuration.d.ts`.
+- For frontend-only changes, usually run `pnpm run typecheck:frontend`, `pnpm run format:check`, and `pnpm run lint`. Run `pnpm run build` when touching routing, theme/styles, Vite config, shared imports, or assets used by the production bundle.
+- Use browser verification when changing visible layout, responsive behavior, scrolling, or user flows, or when explicitly requested. Do not run full browser-flow checks for every small code cleanup.
+- When changing timeline pagination or scroll restoration, verify the main cases when practical: initial latest-record positioning, loading older records without scroll jumps, record detail navigation and back, and mobile fixed action clearance.
 
 ## Editing Conventions
 
