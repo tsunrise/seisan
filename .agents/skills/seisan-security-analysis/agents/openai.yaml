@@ -1,0 +1,4 @@
+interface:
+  display_name: "Seisan Security Analysis"
+  short_description: "Local Worker red-team workflow"
+  default_prompt: "Use $seisan-security-analysis to run a local-only security assessment and write the red-team report."
