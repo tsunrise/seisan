@@ -26,6 +26,24 @@ Treat `active/` as the reporting inbox for newly found issues. Keep `metadata.js
 
 Use IDs like `RT-1`, `RT-2`, `RT-10`, and `RT-11`; do not zero-pad the numeric suffix. Allocate the next ID from `metadata.json.nextId`, then increment it. If `metadata.json` is missing, inspect existing filenames and choose the next unused number.
 
+Do not edit `red-team/metadata.json` manually. Use the report-management script for all metadata changes and report moves:
+
+```bash
+uv run --script .agents/skills/seisan-security-analysis/scripts/red_team_reports.py <command>
+```
+
+If `uv` cannot write its default cache, prefix commands with `UV_CACHE_DIR=/private/tmp/uv-cache`.
+
+Script commands:
+
+- `new --severity <severity> --title <title> --summary <summary>` creates an active report and updates metadata.
+- `resolve <id> --resolution "Fixed|Risk Accepted|Not Valid" --details <text>` moves an active report to `resolved/`, adds resolution boilerplate, and updates metadata.
+- `sync` rebuilds `metadata.json` from active and resolved markdown files.
+- `validate` checks report and metadata consistency.
+- `list` prints all reports from metadata.
+
+Agents may edit markdown report bodies manually, but must run `sync` afterward. Agents must not hand-edit metadata.
+
 ## Scan Agent: State And Server Lifecycle
 
 Always control the local dev server and local Worker state yourself.
@@ -102,7 +120,16 @@ Classify platform behavior that cannot be faithfully reproduced locally as sourc
 
 ## Scan Agent: Report Output
 
-Write one dedicated markdown report per distinct issue in:
+Write one dedicated markdown report per distinct issue by using the script:
+
+```bash
+uv run --script .agents/skills/seisan-security-analysis/scripts/red_team_reports.py new \
+  --severity "High" \
+  --title "Short Vulnerability Title" \
+  --summary "One-paragraph summary of the vulnerability."
+```
+
+The script creates:
 
 `red-team/active/<id>-<vuln-slug>-<YYYYMMDD-HHMMSS>.md`
 
@@ -127,7 +154,12 @@ Commit: <commit>
 
 Do not include a suggested-fix section in active reports. The fixing agent owns implementation strategy.
 
-After writing issue files, update `red-team/metadata.json` with each issue's `id`, `status`, `severity`, `title`, `file`, `date`, and `commit`.
+After editing issue files, run:
+
+```bash
+uv run --script .agents/skills/seisan-security-analysis/scripts/red_team_reports.py sync
+uv run --script .agents/skills/seisan-security-analysis/scripts/red_team_reports.py validate
+```
 
 ## Resolution Agent Workflow
 
@@ -138,14 +170,22 @@ When asked to resolve a red-team issue:
 3. Implement the narrowest fix that resolves that issue without broad unrelated refactors.
 4. Add or update focused tests proving the issue is fixed or no longer valid.
 5. Run the narrowest relevant verification commands.
-6. Move the report from `red-team/active/` to `red-team/resolved/`.
+6. Move the report from `red-team/active/` to `red-team/resolved/` with the script:
+
+   ```bash
+   uv run --script .agents/skills/seisan-security-analysis/scripts/red_team_reports.py resolve RT-1 \
+     --resolution "Fixed" \
+     --details "Describe how the issue was resolved and verified."
+   ```
+
 7. Rename the resolved file as:
 
    `red-team/resolved/<id>-<severity-slug>-<title-slug>-<YYYYMMDD-HHMMSS>.md`
 
-8. Add a `Resolution: Fixed`, `Resolution: Risk Accepted`, or `Resolution: Not Valid` field directly below the `Commit:` field.
-9. Add a `## Resolution` section explaining what changed, how it was verified, and any residual risk.
-10. Update `red-team/metadata.json` so the issue status and file path match the resolved report.
+   The script handles the move, rename, `Resolution:` field, `## Resolution` section, and metadata update.
+
+8. Edit the resolved markdown manually if the generated resolution details need polish.
+9. Run `validate`.
 
 Resolved report format:
 
