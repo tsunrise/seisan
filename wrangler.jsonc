@@ -19,6 +19,8 @@
   "vars": {
     "LOGIN_EMAIL_FROM": "no-reply@dev.seisan.waga.me",
     "LOCAL_DEV_LOGIN_CODE": "123456",
+    "ADMIN_ACCESS_AUD": "",
+    "ADMIN_ACCESS_TEAM_DOMAIN": "",
   },
   "secrets": {
     "required": ["AUTH_SECRET", "TURNSTILE_SECRET_KEY"],
@@ -32,6 +34,10 @@
     {
       "binding": "PROJECT_REGISTRY_CACHE",
       "id": "5fbf9df51a4d49b88d3a2aecff2e2ba8",
+    },
+    {
+      "binding": "CONFIGS",
+      "id": "69f9ead42e6a4f589d9d3c3d823a3dcb",
     },
   ],
   "durable_objects": {
@@ -48,6 +54,10 @@
         "name": "PROJECT_STORE",
         "class_name": "ProjectStore",
       },
+      {
+        "name": "LIMITS_STORE",
+        "class_name": "LimitsStore",
+      },
     ],
   },
   "migrations": [
@@ -58,6 +68,10 @@
     {
       "tag": "v2",
       "new_sqlite_classes": ["ProjectsRegistry", "ProjectStore"],
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["LimitsStore"],
     },
   ],
   "send_email": [
@@ -70,6 +84,8 @@
       "vars": {
         "LOGIN_EMAIL_FROM": "login@example.com",
         "LOCAL_DEV_LOGIN_CODE": "",
+        "ADMIN_ACCESS_AUD": "test-aud",
+        "ADMIN_ACCESS_TEAM_DOMAIN": "https://team.test",
       },
       "secrets": {
         "required": ["AUTH_SECRET", "TURNSTILE_SECRET_KEY"],
@@ -80,6 +96,9 @@
         },
         {
           "binding": "PROJECT_REGISTRY_CACHE",
+        },
+        {
+          "binding": "CONFIGS",
         },
       ],
       "durable_objects": {
@@ -96,6 +115,10 @@
             "name": "PROJECT_STORE",
             "class_name": "ProjectStore",
           },
+          {
+            "name": "LIMITS_STORE",
+            "class_name": "LimitsStore",
+          },
         ],
       },
       "migrations": [
@@ -107,6 +130,10 @@
           "tag": "v2",
           "new_sqlite_classes": ["ProjectsRegistry", "ProjectStore"],
         },
+        {
+          "tag": "v3",
+          "new_sqlite_classes": ["LimitsStore"],
+        },
       ],
       "send_email": [
         {
@@ -117,10 +144,17 @@
     "dev": {
       "preview_urls": false,
       "workers_dev": false,
-      "routes": [{ "pattern": "dev.seisan.waga.me", "custom_domain": true }],
+      "routes": [
+        {
+          "pattern": "dev.seisan.waga.me",
+          "custom_domain": true,
+        },
+      ],
       "vars": {
         "LOGIN_EMAIL_FROM": "no-reply@dev.seisan.waga.me",
         "LOCAL_DEV_LOGIN_CODE": "",
+        "ADMIN_ACCESS_AUD": "",
+        "ADMIN_ACCESS_TEAM_DOMAIN": "",
       },
       "secrets": {
         "required": ["AUTH_SECRET", "TURNSTILE_SECRET_KEY"],
@@ -135,6 +169,10 @@
           "binding": "PROJECT_REGISTRY_CACHE",
           "id": "5fbf9df51a4d49b88d3a2aecff2e2ba8",
         },
+        {
+          "binding": "CONFIGS",
+          "id": "69f9ead42e6a4f589d9d3c3d823a3dcb",
+        },
       ],
       "durable_objects": {
         "bindings": [
@@ -150,6 +188,10 @@
             "name": "PROJECT_STORE",
             "class_name": "ProjectStore",
           },
+          {
+            "name": "LIMITS_STORE",
+            "class_name": "LimitsStore",
+          },
         ],
       },
       "migrations": [
@@ -160,6 +202,10 @@
         {
           "tag": "v2",
           "new_sqlite_classes": ["ProjectsRegistry", "ProjectStore"],
+        },
+        {
+          "tag": "v3",
+          "new_sqlite_classes": ["LimitsStore"],
         },
       ],
       "send_email": [
@@ -173,8 +219,15 @@
       "vars": {
         "LOGIN_EMAIL_FROM": "no-reply@seisan.waga.me",
         "LOCAL_DEV_LOGIN_CODE": "",
+        "ADMIN_ACCESS_AUD": "",
+        "ADMIN_ACCESS_TEAM_DOMAIN": "",
       },
-      "routes": [{ "pattern": "seisan.waga.me", "custom_domain": true }],
+      "routes": [
+        {
+          "pattern": "seisan.waga.me",
+          "custom_domain": true,
+        },
+      ],
       "secrets": {
         "required": ["AUTH_SECRET", "TURNSTILE_SECRET_KEY"],
       },
@@ -187,6 +240,10 @@
         {
           "binding": "PROJECT_REGISTRY_CACHE",
           "id": "0b22fc0923f441fc8518c18fe9bf0659",
+        },
+        {
+          "binding": "CONFIGS",
+          "id": "631f1962518b49e78ff823299a14c9f1",
         },
       ],
       "durable_objects": {
@@ -203,6 +260,10 @@
             "name": "PROJECT_STORE",
             "class_name": "ProjectStore",
           },
+          {
+            "name": "LIMITS_STORE",
+            "class_name": "LimitsStore",
+          },
         ],
       },
       "migrations": [
@@ -213,6 +274,10 @@
         {
           "tag": "v2",
           "new_sqlite_classes": ["ProjectsRegistry", "ProjectStore"],
+        },
+        {
+          "tag": "v3",
+          "new_sqlite_classes": ["LimitsStore"],
         },
       ],
       "send_email": [

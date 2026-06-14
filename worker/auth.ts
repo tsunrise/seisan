@@ -4,34 +4,20 @@ import { z } from "zod";
 
 import { SESSION_COOKIE_NAME } from "./constants";
 import { sha256Hex, verifySessionToken } from "./crypto";
-
-function normalizeLoginEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
-
-export const loginAttemptSchema = z.object({
-  email: z.email().transform(normalizeLoginEmail),
-  turnstileToken: z.string().min(1).max(2048).optional(),
-});
-
-export const loginVerifySchema = z.object({
-  id: z.string().regex(/^[0-9A-Za-z]{32}$/u),
-  email: z.email().transform(normalizeLoginEmail),
-  code: z.string().regex(/^\d{6}$/u),
-});
+import { ErrorResponse } from "./error";
 
 export interface Identity {
   email: string;
 }
 
-export type AppEnv = {
+export type EnvWithIdentity = {
   Bindings: Env;
   Variables: {
     identity: Identity | undefined;
   };
 };
 
-export type AppContext = Context<AppEnv>;
+export type AppContext = Context<EnvWithIdentity>;
 
 export async function parseJson<T>(
   context: AppContext,
@@ -83,15 +69,15 @@ export function getRequiredIdentity(context: AppContext): Identity {
   return identity;
 }
 
-export const optionalAuth: MiddlewareHandler<AppEnv> = async (context, next) => {
+export const optionalAuth: MiddlewareHandler<EnvWithIdentity> = async (context, next) => {
   context.set("identity", (await authenticate(context)) ?? undefined);
   await next();
 };
 
-export const requireAuth: MiddlewareHandler<AppEnv> = async (context, next) => {
+export const requireAuth: MiddlewareHandler<EnvWithIdentity> = async (context, next) => {
   const identity = await authenticate(context);
   if (!identity) {
-    return context.json({ error: "unauthorized" }, 401);
+    return ErrorResponse.unauthorized();
   }
 
   context.set("identity", identity);

@@ -1,20 +1,13 @@
 import { DurableObject } from "cloudflare:workers";
 
-import {
-  PROJECTS_PER_USER_LIMIT,
-  type ProjectMember,
-  type ProjectSummary,
-  type WithSyncTime,
-  normalizedEmailSchema,
-  projectIdSchema,
-  projectRegistryCacheKey,
-  serializeProjectRegistryCacheValue,
-} from "../project";
+import { type ProjectMember, type ProjectSummary, type WithSyncTime, ProjectId } from "../project";
+import { LimitsPolicy, type ProductLimits } from "../limits";
 import { backfill, runSqlMigrations, type SqlMigration } from "./migrations";
 
 interface ProjectRow extends Record<string, SqlStorageValue> {
   id: string;
   do_id: string;
+  owner_email: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -94,6 +87,17 @@ export class ProjectsRegistry extends DurableObject<Env> {
       `CREATE INDEX IF NOT EXISTS project_summaries_updated_idx
         ON project_summaries(updated_at DESC)`,
     ],
+    [
+      `ALTER TABLE projects ADD COLUMN owner_email TEXT`,
+      `UPDATE projects
+       SET owner_email = (
+        SELECT owner_email
+        FROM project_summaries
+        WHERE project_summaries.project_id = projects.id
+       )
+       WHERE owner_email IS NULL`,
+      `CREATE INDEX IF NOT EXISTS projects_owner_email_idx ON projects(owner_email)`,
+    ],
   ];
 
   private readonly bindings: Env;
@@ -109,43 +113,47 @@ export class ProjectsRegistry extends DurableObject<Env> {
     id: string;
     doId: string;
     ownerEmail: string;
+    limits: ProductLimits;
     nowMs: number;
   }):
     | { ok: true }
     | { ok: false; error: "already_exists" | "invalid_input" | "project_limit_exceeded" } {
-    const projectId = projectIdSchema.safeParse(input.id);
-    const ownerEmail = normalizedEmailSchema.safeParse(input.ownerEmail);
-    if (!projectId.success || !ownerEmail.success || !durableObjectIdRegex.test(input.doId)) {
+    if (!durableObjectIdRegex.test(input.doId)) {
       return { ok: false, error: "invalid_input" };
     }
 
     const existing = this.ctx.storage.sql
-      .exec<ProjectRow>("SELECT id FROM projects WHERE id = ?", projectId.data)
+      .exec<ProjectRow>("SELECT id FROM projects WHERE id = ?", input.id)
       .toArray()[0];
     if (existing) {
       return { ok: false, error: "already_exists" };
     }
-    if (this.countProjectsForEmail(ownerEmail.data) >= PROJECTS_PER_USER_LIMIT) {
+    const policy = new LimitsPolicy(input.limits);
+    if (
+      !policy.allowsAdditionalLinkedProject(this.countProjectsForEmail(input.ownerEmail)) ||
+      !policy.allowsAdditionalOwnedProject(this.countOwnedProjectsForEmail(input.ownerEmail))
+    ) {
       return { ok: false, error: "project_limit_exceeded" };
     }
 
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec(
-        `INSERT INTO projects (id, do_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?)`,
-        projectId.data,
+        `INSERT INTO projects (id, do_id, owner_email, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        input.id,
         input.doId,
+        input.ownerEmail,
         input.nowMs,
         input.nowMs,
       );
       this.insertProjectMember({
-        projectId: projectId.data,
-        email: ownerEmail.data,
+        projectId: input.id,
+        email: input.ownerEmail,
         nowMs: input.nowMs,
       });
     });
     this.scheduleProjectCacheWrite({
-      id: projectId.data,
+      id: input.id,
       doId: input.doId,
     });
 
@@ -155,27 +163,26 @@ export class ProjectsRegistry extends DurableObject<Env> {
   addProjectMember(input: {
     id: string;
     email: string;
+    limits: ProductLimits;
     nowMs: number;
   }):
     | { ok: true; alreadyMember: boolean }
     | { ok: false; error: "invalid_input" | "not_found" | "project_limit_exceeded" } {
-    const projectId = projectIdSchema.safeParse(input.id);
-    const email = normalizedEmailSchema.safeParse(input.email);
-    if (!projectId.success || !email.success) {
-      return { ok: false, error: "invalid_input" };
-    }
-
-    if (!this.hasProject(projectId.data)) {
+    if (!this.hasProject(input.id)) {
       return { ok: false, error: "not_found" };
     }
-    const alreadyMember = this.hasProjectMember(projectId.data, email.data);
-    if (!alreadyMember && this.countProjectsForEmail(email.data) >= PROJECTS_PER_USER_LIMIT) {
+    const alreadyMember = this.hasProjectMember(input.id, input.email);
+    const policy = new LimitsPolicy(input.limits);
+    if (
+      !alreadyMember &&
+      !policy.allowsAdditionalLinkedProject(this.countProjectsForEmail(input.email))
+    ) {
       return { ok: false, error: "project_limit_exceeded" };
     }
 
     this.insertProjectMember({
-      projectId: projectId.data,
-      email: email.data,
+      projectId: input.id,
+      email: input.email,
       nowMs: input.nowMs,
     });
     return { ok: true, alreadyMember };
@@ -185,16 +192,10 @@ export class ProjectsRegistry extends DurableObject<Env> {
     id: string;
     email: string;
   }): { ok: true } | { ok: false; error: "invalid_input" } {
-    const projectId = projectIdSchema.safeParse(input.id);
-    const email = normalizedEmailSchema.safeParse(input.email);
-    if (!projectId.success || !email.success) {
-      return { ok: false, error: "invalid_input" };
-    }
-
     this.ctx.storage.sql.exec(
       "DELETE FROM project_members WHERE email = ? AND project_id = ?",
-      email.data,
-      projectId.data,
+      input.email,
+      input.id,
     );
     return { ok: true };
   }
@@ -202,28 +203,19 @@ export class ProjectsRegistry extends DurableObject<Env> {
   syncProjectSummary(
     input: ProjectSummarySyncInput,
   ): { ok: true } | { ok: false; error: "invalid_input" | "not_found" } {
-    const projectId = projectIdSchema.safeParse(input.id);
-    const ownerEmail = normalizedEmailSchema.safeParse(input.owner);
-    if (!projectId.success || !ownerEmail.success) {
-      return { ok: false, error: "invalid_input" };
-    }
-    if (!this.hasProject(projectId.data)) {
+    if (!this.hasProject(input.id)) {
       return { ok: false, error: "not_found" };
     }
 
     const members = new Map<string, ProjectSummarySyncMember>();
     for (const member of input.members) {
-      const parsedEmail = normalizedEmailSchema.safeParse(member.email);
-      if (!parsedEmail.success) {
-        return { ok: false, error: "invalid_input" };
-      }
-      members.set(parsedEmail.data, {
-        email: parsedEmail.data,
+      members.set(member.email, {
+        email: member.email,
         member: member.member,
         balance: member.balance,
       });
     }
-    if (!members.has(ownerEmail.data)) {
+    if (!members.has(input.owner)) {
       return { ok: false, error: "invalid_input" };
     }
 
@@ -237,11 +229,16 @@ export class ProjectsRegistry extends DurableObject<Env> {
           owner_email = excluded.owner_email,
           updated_at = excluded.updated_at,
           summary_synced_at = excluded.summary_synced_at`,
-        projectId.data,
+        input.id,
         input.name,
-        ownerEmail.data,
+        input.owner,
         input.updatedAt,
         input.lastSyncAt,
+      );
+      this.ctx.storage.sql.exec(
+        "UPDATE projects SET owner_email = ? WHERE id = ?",
+        input.owner,
+        input.id,
       );
 
       const memberEmails = [...members.keys()];
@@ -250,14 +247,11 @@ export class ProjectsRegistry extends DurableObject<Env> {
         this.ctx.storage.sql.exec(
           `DELETE FROM project_members
            WHERE project_id = ? AND email NOT IN (${placeholders})`,
-          projectId.data,
+          input.id,
           ...memberEmails,
         );
       } else {
-        this.ctx.storage.sql.exec(
-          "DELETE FROM project_members WHERE project_id = ?",
-          projectId.data,
-        );
+        this.ctx.storage.sql.exec("DELETE FROM project_members WHERE project_id = ?", input.id);
       }
 
       for (const member of members.values()) {
@@ -270,7 +264,7 @@ export class ProjectsRegistry extends DurableObject<Env> {
             member_json = excluded.member_json,
             balance_cents = excluded.balance_cents`,
           member.email,
-          projectId.data,
+          input.id,
           input.lastSyncAt,
           input.updatedAt,
           JSON.stringify(member.member),
@@ -285,7 +279,7 @@ export class ProjectsRegistry extends DurableObject<Env> {
   async lookupProject(
     id: string,
   ): Promise<{ ok: true; doId: string } | { ok: false; error: "not_found" }> {
-    const projectId = projectIdSchema.safeParse(id);
+    const projectId = ProjectId.safeParse(id);
     if (!projectId.success) {
       return { ok: false, error: "not_found" };
     }
@@ -311,11 +305,6 @@ export class ProjectsRegistry extends DurableObject<Env> {
     | { ok: true; projects: Array<WithSyncTime<ProjectSummary>> }
     | { ok: false; error: "invalid_input" }
   > {
-    const callerEmail = normalizedEmailSchema.safeParse(input.callerEmail);
-    if (!callerEmail.success) {
-      return { ok: false, error: "invalid_input" };
-    }
-
     await this.runProjectSummaryBackfill();
 
     const projects = this.ctx.storage.sql
@@ -333,7 +322,7 @@ export class ProjectsRegistry extends DurableObject<Env> {
          JOIN project_summaries ON project_summaries.project_id = projects.id
          WHERE project_members.email = ?
          ORDER BY project_summaries.updated_at DESC`,
-        callerEmail.data,
+        input.callerEmail,
       )
       .toArray()
       .map((project) => ({
@@ -425,6 +414,16 @@ export class ProjectsRegistry extends DurableObject<Env> {
     );
   }
 
+  private countOwnedProjectsForEmail(email: string): number {
+    return (
+      this.ctx.storage.sql
+        .exec<
+          { count: number } & Record<string, SqlStorageValue>
+        >("SELECT COUNT(*) AS count FROM projects WHERE owner_email = ?", email)
+        .toArray()[0]?.count ?? 0
+    );
+  }
+
   private insertProjectMember(input: { projectId: string; email: string; nowMs: number }): void {
     this.ctx.storage.sql.exec(
       `INSERT INTO project_members (email, project_id, created_at, updated_at)
@@ -456,7 +455,7 @@ export class ProjectsRegistry extends DurableObject<Env> {
       return;
     }
 
-    const key = projectRegistryCacheKey(project.id);
+    const key = ProjectsRegistry.projectRefCacheKey(project.id);
     const cachedValue = await this.bindings.PROJECT_REGISTRY_CACHE.get(key);
     if (cachedValue === null) {
       await this.writeProjectCache({ id: project.id, doId: project.do_id });
@@ -465,9 +464,17 @@ export class ProjectsRegistry extends DurableObject<Env> {
 
   private async writeProjectCache(project: { id: string; doId: string }): Promise<void> {
     await this.bindings.PROJECT_REGISTRY_CACHE.put(
-      projectRegistryCacheKey(project.id),
-      serializeProjectRegistryCacheValue({ doId: project.doId }),
+      ProjectsRegistry.projectRefCacheKey(project.id),
+      ProjectsRegistry.serializeProjectRef({ doId: project.doId }),
     );
+  }
+
+  private static projectRefCacheKey(projectId: string): string {
+    return `project:${projectId}`;
+  }
+
+  private static serializeProjectRef(project: { doId: string }): string {
+    return JSON.stringify({ doId: project.doId });
   }
 }
 

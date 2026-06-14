@@ -1,253 +1,40 @@
-import { env } from "cloudflare:workers";
+import { runInDurableObject } from "cloudflare:test";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { BUILTIN_DEFAULT_LIMITS, LimitsKvStore } from "../worker/limits";
+import { PROJECTS_REGISTRY_NAME } from "../worker/project";
 import {
-  createExecutionContext,
-  runDurableObjectAlarm,
-  runInDurableObject,
-  waitOnExecutionContext,
-} from "cloudflare:test";
-import { describe, expect, it, vi } from "vitest";
+  authHeaders,
+  cleanupWorkerTestState,
+  createMember,
+  createProject,
+  dispatch,
+  getProject,
+  jsonBody,
+  limitsDocument,
+  listProjectsFromRegistry,
+  makeEnv,
+  parseProjectRefCacheValue,
+  projectRefCacheKey,
+  putDefaultLimits,
+  putUserLimits,
+  runProjectSummaryAlarm,
+  serializeProjectRefCacheValue,
+  waitForProjectCacheMissRepair,
+  type ProjectResponse,
+  type ProjectSummaryResponse,
+} from "./workerTestHelpers";
 
-import { SESSION_COOKIE_NAME } from "../worker/constants";
-import { signSessionToken } from "../worker/crypto";
-import { backfill } from "../worker/do/migrations";
-import worker from "../worker/index";
-import {
-  MAX_MONEY_CENTS,
-  PROJECTS_REGISTRY_NAME,
-  PROJECTS_PER_USER_LIMIT,
-  parseProjectRegistryCacheValue,
-  projectRegistryCacheKey,
-  serializeProjectRegistryCacheValue,
-  type ProjectMember,
-} from "../worker/project";
-
-const AUTH_SECRET = "test-auth-secret-at-least-32-bytes";
-const LOGIN_EMAIL_FROM = "login@example.com";
-const PROJECTS_LIST_CACHE_NAME = "seisan-projects";
-const PROJECTS_LIST_CACHE_HOST = "cache.seisan.waga.me";
-
-interface TestEnv {
-  env: Env;
-}
-
-interface ProjectResponse {
-  id: string;
-  name: string;
-  owner: string;
-  acl: { type: "public" } | { type: "restricted"; emails: string[] };
-  members: ProjectMember[];
-  records: unknown[];
-  balance: Record<string, number>;
-}
-
-interface ProjectSummaryResponse {
-  projects: Array<{
-    id: string;
-    name: string;
-    owner: string;
-    member: ProjectMember | null;
-    balance: number | null;
-    updatedAt: number;
-    lastSyncAt: number;
-  }>;
-}
-
-function makeEnv(overrides: Partial<Env> = {}): TestEnv {
-  return {
-    env: {
-      ...env,
-      AUTH_SECRET,
-      LOGIN_EMAIL_FROM,
-      SEND_EMAIL: { send: vi.fn() } as unknown as SendEmail,
-      ...overrides,
-    } as Env,
-  };
-}
-
-async function dispatch(path: string, testEnv: Env, init: RequestInit = {}): Promise<Response> {
-  const apiPath = path.startsWith("/api/") ? path : `/api${path}`;
-  const request = new Request(`https://seisan.test${apiPath}`, init);
-  const context = createExecutionContext();
-  const response = await worker.fetch(
-    request as Request<unknown, IncomingRequestCfProperties>,
-    testEnv,
-    context,
-  );
-  await waitOnExecutionContext(context);
-  return response;
-}
-
-async function authHeaders(email = "owner@example.com"): Promise<HeadersInit> {
-  const { token } = await signSessionToken(email, AUTH_SECRET);
-  return { Cookie: `${SESSION_COOKIE_NAME}=${token}` };
-}
-
-function jsonBody(
-  method: "POST" | "PUT" | "PATCH" | "DELETE",
-  body: unknown,
-  headers?: HeadersInit,
-): RequestInit {
-  return {
-    method,
-    headers: { "Content-Type": "application/json", ...(headers ?? {}) },
-    body: JSON.stringify(body),
-  };
-}
-
-async function createProject(
-  testEnv: Env,
-  input: {
-    acl?: { type: "public" } | { type: "restricted"; emails: string[] };
-    owner?: string;
-    ownerMemberName?: string;
-    name?: string;
-  } = {},
-): Promise<ProjectResponse> {
-  const response = await dispatch(
-    "/project",
-    testEnv,
-    jsonBody(
-      "PUT",
-      {
-        name: input.name ?? "Day Trip",
-        acl: input.acl ?? { type: "public" },
-        ownerMemberName: input.ownerMemberName,
-      },
-      await authHeaders(input.owner ?? "owner@example.com"),
-    ),
-  );
-  expect(response.status).toBe(201);
-  const body = (await response.json()) as ProjectResponse;
-  await waitForProjectCache(testEnv, body.id);
-  return body;
-}
-
-async function getProject(
-  testEnv: Env,
-  projectId: string,
-  email = "owner@example.com",
-): Promise<ProjectResponse> {
-  const response = await dispatch(`/project/${projectId}`, testEnv, {
-    headers: await authHeaders(email),
-  });
-  expect(response.status).toBe(200);
-  return (await response.json()) as ProjectResponse;
-}
-
-async function createMember(
-  testEnv: Env,
-  projectId: string,
-  name: string,
-  email = "owner@example.com",
-): Promise<ProjectMember> {
-  const response = await dispatch(
-    `/project/${projectId}/members`,
-    testEnv,
-    jsonBody("POST", { name }, await authHeaders(email)),
-  );
-  expect(response.status).toBe(201);
-  return ((await response.json()) as { member: ProjectMember }).member;
-}
-
-async function waitForProjectCache(testEnv: Env, projectId: string) {
-  const cacheKey = projectRegistryCacheKey(projectId);
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const cacheValue = await testEnv.PROJECT_REGISTRY_CACHE.get(cacheKey);
-    const cachedProject = parseProjectRegistryCacheValue(cacheValue ?? "");
-    if (cachedProject) {
-      return cachedProject;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
+function countResponseStatuses(responses: Response[]): Partial<Record<number, number>> {
+  const counts: Partial<Record<number, number>> = {};
+  for (const response of responses) {
+    counts[response.status] = (counts[response.status] ?? 0) + 1;
   }
-  throw new Error(`Timed out waiting for project registry cache for ${projectId}`);
+  return counts;
 }
 
-async function waitForProjectCacheMissRepair(testEnv: Env, projectId: string) {
-  const cacheKey = projectRegistryCacheKey(projectId);
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const cacheValue = await testEnv.PROJECT_REGISTRY_CACHE.get(cacheKey);
-    if (parseProjectRegistryCacheValue(cacheValue ?? "")) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  throw new Error(`Timed out waiting for project registry cache repair for ${projectId}`);
-}
-
-async function getProjectsListCacheResponse(email: string): Promise<Response | undefined> {
-  const cache = await caches.open(PROJECTS_LIST_CACHE_NAME);
-  return cache.match(projectsListCacheRequest(email));
-}
-
-function projectsListCacheRequest(email: string): Request {
-  return new Request(`https://${PROJECTS_LIST_CACHE_HOST}/projects/${encodeURIComponent(email)}`);
-}
-
-async function getProjectStoreStub(
-  testEnv: Env,
-  projectId: string,
-): Promise<DurableObjectStub<import("../worker/index").ProjectStore>> {
-  const cachedProject = await waitForProjectCache(testEnv, projectId);
-  return testEnv.PROJECT_STORE.get(testEnv.PROJECT_STORE.idFromString(cachedProject.doId));
-}
-
-async function getProjectSummaryAlarm(testEnv: Env, projectId: string): Promise<number | null> {
-  const stub = await getProjectStoreStub(testEnv, projectId);
-  return runInDurableObject(stub, async (_instance, state) => state.storage.getAlarm());
-}
-
-async function runProjectSummaryAlarm(testEnv: Env, projectId: string): Promise<boolean> {
-  const stub = await getProjectStoreStub(testEnv, projectId);
-  const alarm = await runInDurableObject(stub, async (_instance, state) =>
-    state.storage.getAlarm(),
-  );
-  if (alarm === null) {
-    throw new Error(
-      `Expected project summary alarm to be configured for ${projectId} after waitOnExecutionContext`,
-    );
-  }
-  return runDurableObjectAlarm(stub);
-}
-
-async function listProjectsFromRegistry(
-  testEnv: Env,
-  email: string,
-): Promise<ProjectSummaryResponse["projects"]> {
-  const listed = await testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME).listProjects({
-    callerEmail: email,
-  });
-  if (!listed.ok) {
-    throw new Error(`Registry list failed: ${listed.error}`);
-  }
-  return listed.projects;
-}
-
-describe("project worker", () => {
-  it("runs durable object backfills only once per unique marker", async () => {
-    const { env: testEnv } = makeEnv();
-    const stub = testEnv.PROJECT_STORE.getByName(`backfill-${crypto.randomUUID()}`);
-
-    await runInDurableObject(stub, async (_instance, state) => {
-      let calls = 0;
-      await backfill(state, "backfill-a", async () => {
-        calls += 1;
-        return null;
-      });
-      await backfill(state, "backfill-a", async () => {
-        calls += 1;
-        return null;
-      });
-      expect(calls).toBe(1);
-      await expect(state.storage.get<string>("dbBackfillState")).resolves.toBe("backfill-a");
-
-      await backfill(state, "backfill-b", async () => {
-        calls += 1;
-        return null;
-      });
-      expect(calls).toBe(2);
-      await expect(state.storage.get<string>("dbBackfillState")).resolves.toBe("backfill-b");
-    });
-  });
+describe("project routes", () => {
+  afterEach(cleanupWorkerTestState);
 
   it("rejects malformed project IDs before touching lookup storage", async () => {
     const cacheGet = vi.fn(() => {
@@ -314,7 +101,7 @@ describe("project worker", () => {
   it("repairs missing cache for older registry rows after lookup", async () => {
     const { env: testEnv } = makeEnv();
     const project = await createProject(testEnv);
-    const cacheKey = projectRegistryCacheKey(project.id);
+    const cacheKey = projectRefCacheKey(project.id);
     await testEnv.PROJECT_REGISTRY_CACHE.delete(cacheKey);
     await runInDurableObject(
       testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
@@ -334,40 +121,7 @@ describe("project worker", () => {
     expect(response.status).toBe(200);
     await waitForProjectCacheMissRepair(testEnv, project.id);
     const cacheValue = await testEnv.PROJECT_REGISTRY_CACHE.get(cacheKey);
-    expect(parseProjectRegistryCacheValue(cacheValue ?? "")?.doId).toMatch(/^[0-9a-f]{64}$/u);
-  });
-
-  it("does not block project registration when registry-owned cache writes fail", async () => {
-    const projectId = crypto.randomUUID();
-    const cachePut = vi.fn(() => Promise.reject(new Error("kv unavailable")));
-    const failingCache = {
-      put: cachePut,
-    } as unknown as KVNamespace;
-    const { env: testEnv } = makeEnv();
-    const registry = testEnv.PROJECTS_REGISTRY.getByName(`projects-${projectId}`);
-
-    const registered = await runInDurableObject(registry, async (instance) => {
-      const registryInstance = instance as unknown as {
-        bindings: Env;
-        registerProject: typeof registry.registerProject;
-      };
-      registryInstance.bindings = {
-        ...testEnv,
-        PROJECT_REGISTRY_CACHE: failingCache,
-      };
-      return registryInstance.registerProject({
-        id: projectId,
-        doId: testEnv.PROJECT_STORE.newUniqueId().toString(),
-        ownerEmail: "owner@example.com",
-        nowMs: Date.now(),
-      });
-    });
-
-    expect(registered).toEqual({ ok: true });
-    for (let attempt = 0; attempt < 20 && cachePut.mock.calls.length === 0; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    expect(cachePut).toHaveBeenCalledOnce();
+    expect(parseProjectRefCacheValue(cacheValue ?? "")?.doId).toMatch(/^[0-9a-f]{64}$/u);
   });
 
   it("maps stale cache entries pointing to uninitialized project DOs to 404", async () => {
@@ -375,8 +129,8 @@ describe("project worker", () => {
     const projectId = crypto.randomUUID();
     const projectDoId = testEnv.PROJECT_STORE.newUniqueId().toString();
     await testEnv.PROJECT_REGISTRY_CACHE.put(
-      projectRegistryCacheKey(projectId),
-      serializeProjectRegistryCacheValue({ doId: projectDoId }),
+      projectRefCacheKey(projectId),
+      serializeProjectRefCacheValue({ doId: projectDoId }),
     );
 
     const response = await dispatch(`/project/${projectId}`, testEnv, {
@@ -386,329 +140,34 @@ describe("project worker", () => {
     expect(response.status).toBe(404);
   });
 
-  it("persists project names, lists linked projects, and allows owner rename", async () => {
-    const { env: testEnv } = makeEnv();
-    const project = await createProject(testEnv, {
-      name: "Road Trip",
-      ownerMemberName: "Alice",
-    });
-
-    expect(project).toMatchObject({
-      name: "Road Trip",
-      owner: "owner@example.com",
-      members: [{ id: 1, name: "Alice", linkedEmail: "owner@example.com" }],
-    });
-
-    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
-    const listed = await dispatch("/projects", testEnv, {
-      headers: await authHeaders("owner@example.com"),
-    });
-    expect(listed.status).toBe(200);
-    const listedBody = (await listed.json()) as ProjectSummaryResponse;
-    expect(listedBody.projects).toContainEqual(
-      expect.objectContaining({
-        id: project.id,
-        name: "Road Trip",
-        owner: "owner@example.com",
-        member: expect.objectContaining({
-          id: 1,
-          name: "Alice",
-          linkedEmail: "owner@example.com",
-        }),
-        balance: 0,
-        lastSyncAt: expect.any(Number),
-      }),
-    );
-
-    const outsiderList = await dispatch("/projects", testEnv, {
-      headers: await authHeaders("outsider@example.com"),
-    });
-    expect(outsiderList.status).toBe(200);
-    expect(await outsiderList.json()).toEqual({ projects: [] });
-
-    const outsiderRename = await dispatch(
-      `/project/${project.id}`,
-      testEnv,
-      jsonBody("PATCH", { name: "Beach Trip" }, await authHeaders("outsider@example.com")),
-    );
-    expect(outsiderRename.status).toBe(403);
-
-    const ownerRename = await dispatch(
-      `/project/${project.id}`,
-      testEnv,
-      jsonBody("PATCH", { name: "Beach Trip" }, await authHeaders("owner@example.com")),
-    );
-    expect(ownerRename.status).toBe(200);
-    expect(await ownerRename.json()).toEqual({ name: "Beach Trip" });
-
-    const renamed = await getProject(testEnv, project.id);
-    expect(renamed.name).toBe("Beach Trip");
-  });
-
-  it("caches the registry-backed projects response for one minute", async () => {
-    const { env: testEnv } = makeEnv();
-    const owner = `response-cache-${crypto.randomUUID()}@example.com`;
-    const project = await createProject(testEnv, {
-      owner,
-      name: "Response Cache",
-      ownerMemberName: "Alice",
-    });
-    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
-
-    const firstList = await dispatch("/projects", testEnv, {
-      headers: await authHeaders(owner),
-    });
-    expect(firstList.status).toBe(200);
-    expect(((await firstList.json()) as ProjectSummaryResponse).projects).toContainEqual(
-      expect.objectContaining({
-        id: project.id,
-        name: "Response Cache",
-        member: expect.objectContaining({ id: 1, name: "Alice" }),
-        balance: 0,
-        lastSyncAt: expect.any(Number),
-      }),
-    );
-
-    const cached = await getProjectsListCacheResponse(owner);
-    expect(cached).toBeDefined();
-    expect(cached?.headers.get("Cache-Control")).toBe("s-maxage=10");
-
-    const cachedList = await dispatch(
-      "/projects",
-      {
-        ...testEnv,
-        PROJECTS_REGISTRY: {
-          getByName: () => {
-            throw new Error("PROJECTS_REGISTRY should not be touched on projects cache hit");
-          },
-        } as unknown as Env["PROJECTS_REGISTRY"],
-      } as Env,
-      {
-        headers: await authHeaders(owner),
-      },
-    );
-    expect(cachedList.status).toBe(200);
-    if (!cached) {
-      throw new Error("Expected projects list response to be cached");
-    }
-    expect(await cachedList.json()).toEqual(await cached.clone().json());
-  });
-
-  it("serves projects from registry summaries on cache miss without activating project stores", async () => {
-    const { env: testEnv } = makeEnv();
-    const owner = `registry-summary-${crypto.randomUUID()}@example.com`;
-    const project = await createProject(testEnv, {
-      owner,
-      name: "Registry Summary",
-      ownerMemberName: "Alice",
-    });
-    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
-    await (await caches.open(PROJECTS_LIST_CACHE_NAME)).delete(projectsListCacheRequest(owner));
-
-    const response = await dispatch(
-      "/projects",
-      {
-        ...testEnv,
-        PROJECT_STORE: {
-          get: () => {
-            throw new Error("PROJECT_STORE should not be touched when listing projects");
-          },
-        } as unknown as Env["PROJECT_STORE"],
-      } as Env,
-      {
-        headers: await authHeaders(owner),
-      },
-    );
-
-    expect(response.status).toBe(200);
-    expect(((await response.json()) as ProjectSummaryResponse).projects).toContainEqual(
-      expect.objectContaining({
-        id: project.id,
-        name: "Registry Summary",
-        balance: 0,
-      }),
-    );
-  });
-
-  // TODO: remove this after backfill 20260607-project-summary is fully done.
-  it("backfills missing registry summaries before listing caller projects", async () => {
-    const { env: testEnv } = makeEnv();
-    const owner = `registry-backfill-${crypto.randomUUID()}@example.com`;
-    const project = await createProject(testEnv, {
-      owner,
-      name: "Backfilled Summary",
-      ownerMemberName: "Alice",
-    });
-    await (await caches.open(PROJECTS_LIST_CACHE_NAME)).delete(projectsListCacheRequest(owner));
-
-    await runInDurableObject(
-      testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
-      async (_instance, state) => {
-        await state.storage.delete("dbBackfillState");
-        state.storage.sql.exec("DELETE FROM project_summaries WHERE project_id = ?", project.id);
-        const count =
-          state.storage.sql
-            .exec<
-              { count: number } & Record<string, SqlStorageValue>
-            >("SELECT COUNT(*) AS count FROM project_summaries WHERE project_id = ?", project.id)
-            .toArray()[0]?.count ?? 0;
-        expect(count).toBe(0);
-      },
-    );
-
-    const response = await dispatch("/projects", testEnv, {
-      headers: await authHeaders(owner),
-    });
-
-    expect(response.status).toBe(200);
-    expect(((await response.json()) as ProjectSummaryResponse).projects).toContainEqual(
-      expect.objectContaining({
-        id: project.id,
-        name: "Backfilled Summary",
-        balance: 0,
-        member: expect.objectContaining({ id: 1, name: "Alice" }),
-        lastSyncAt: expect.any(Number),
-      }),
-    );
-
-    await runInDurableObject(
-      testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
-      async (_instance, state) => {
-        const count =
-          state.storage.sql
-            .exec<
-              { count: number } & Record<string, SqlStorageValue>
-            >("SELECT COUNT(*) AS count FROM project_summaries WHERE project_id = ?", project.id)
-            .toArray()[0]?.count ?? 0;
-        expect(count).toBe(1);
-      },
-    );
-  });
-
-  it("batches project summary updates behind a single durable object alarm", async () => {
-    const { env: testEnv } = makeEnv();
-    const owner = `summary-batch-${crypto.randomUUID()}@example.com`;
-    const project = await createProject(testEnv, {
-      owner,
-      name: "Summary Batch",
-      ownerMemberName: "Alice",
-    });
-    const firstAlarm = await getProjectSummaryAlarm(testEnv, project.id);
-    expect(firstAlarm).toEqual(expect.any(Number));
-    const stub = await getProjectStoreStub(testEnv, project.id);
-
-    const bob = await createMember(testEnv, project.id, "Bob", owner);
-
-    const expense = await dispatch(
-      `/project/${project.id}`,
-      testEnv,
-      jsonBody(
-        "POST",
-        {
-          delta: { "1": -1000, "2": 1000 },
-          description: {
-            type: "expense",
-            name: "Snacks",
-            paid: { "1": 1000 },
-            liability: { [String(bob.id)]: 1000 },
-          },
-        },
-        await authHeaders(owner),
-      ),
-    );
-    expect(expense.status).toBe(201);
-
-    const nextAlarm = await getProjectSummaryAlarm(testEnv, project.id);
-    expect(nextAlarm).toBe(firstAlarm);
-
-    expect(await runDurableObjectAlarm(stub)).toBe(true);
-    const projects = await listProjectsFromRegistry(testEnv, owner);
-    expect(projects).toContainEqual(
-      expect.objectContaining({
-        id: project.id,
-        name: "Summary Batch",
-        balance: -1000,
-        member: expect.objectContaining({ id: 1, name: "Alice" }),
-        lastSyncAt: expect.any(Number),
-      }),
-    );
-  });
-
-  it("does not refresh project summaries on project reads", async () => {
-    const { env: testEnv } = makeEnv();
-    const owner = `summary-read-${crypto.randomUUID()}@example.com`;
-    const project = await createProject(testEnv, {
-      owner,
-      name: "Read Only Summary",
-      ownerMemberName: "Alice",
-    });
-    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
-    expect(await getProjectSummaryAlarm(testEnv, project.id)).toBeNull();
-
-    const summaryBefore = (await listProjectsFromRegistry(testEnv, owner)).find(
-      (summary) => summary.id === project.id,
-    );
-    expect(summaryBefore?.lastSyncAt).toEqual(expect.any(Number));
-
-    const read = await getProject(testEnv, project.id, owner);
-    expect(read.id).toBe(project.id);
-    expect(await getProjectSummaryAlarm(testEnv, project.id)).toBeNull();
-
-    const summaryAfter = (await listProjectsFromRegistry(testEnv, owner)).find(
-      (summary) => summary.id === project.id,
-    );
-    expect(summaryAfter?.lastSyncAt).toBe(summaryBefore?.lastSyncAt);
-  });
-
-  it("syncs joined and unlinked members into registry project summaries", async () => {
-    const { env: testEnv } = makeEnv();
-    const memberEmail = `summary-member-${crypto.randomUUID()}@example.com`;
-    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
-    const bob = await createMember(testEnv, project.id, "Bob");
-
-    const bobJoin = await dispatch(
-      `/project/${project.id}/join`,
-      testEnv,
-      jsonBody("POST", { memberId: bob.id }, await authHeaders(memberEmail)),
-    );
-    expect(bobJoin.status).toBe(201);
-
-    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
-    await expect(listProjectsFromRegistry(testEnv, memberEmail)).resolves.toContainEqual(
-      expect.objectContaining({
-        id: project.id,
-        member: expect.objectContaining({ id: bob.id, name: "Bob", linkedEmail: memberEmail }),
-      }),
-    );
-
-    const bobLeave = await dispatch(`/project/${project.id}/leave`, testEnv, {
-      method: "POST",
-      headers: await authHeaders(memberEmail),
-    });
-    expect(bobLeave.status).toBe(204);
-
-    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
-    await expect(listProjectsFromRegistry(testEnv, memberEmail)).resolves.not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ id: project.id })]),
-    );
-  });
-
   it("enforces a per-user project cap before creating another project store", async () => {
     const { env: testEnv } = makeEnv();
     const owner = `cap-${crypto.randomUUID()}@example.com`;
+    const linkedProjectCapLimits = {
+      ...BUILTIN_DEFAULT_LIMITS,
+      projects: {
+        ...BUILTIN_DEFAULT_LIMITS.projects,
+        maxOwnedProjects: Number.MAX_SAFE_INTEGER,
+      },
+    };
     await runInDurableObject(
       testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
       async (instance) => {
         const registry = instance as unknown as {
-          registerProject(input: { id: string; doId: string; ownerEmail: string; nowMs: number }): {
-            ok: boolean;
-          };
+          registerProject(input: {
+            id: string;
+            doId: string;
+            ownerEmail: string;
+            limits: typeof BUILTIN_DEFAULT_LIMITS;
+            nowMs: number;
+          }): { ok: boolean };
         };
-        for (let index = 0; index < PROJECTS_PER_USER_LIMIT; index += 1) {
+        for (let index = 0; index < BUILTIN_DEFAULT_LIMITS.projects.maxLinkedProjects; index += 1) {
           const registered = registry.registerProject({
             id: crypto.randomUUID(),
             doId: testEnv.PROJECT_STORE.newUniqueId().toString(),
             ownerEmail: owner,
+            limits: linkedProjectCapLimits,
             nowMs: Date.now() + index,
           });
           expect(registered.ok).toBe(true);
@@ -731,6 +190,391 @@ describe("project worker", () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({ error: "project_limit_exceeded" });
+  });
+
+  it("enforces user limits for owned project caps", async () => {
+    const { env: testEnv } = makeEnv();
+    const owner = `owned-cap-${crypto.randomUUID()}@example.com`;
+    await putUserLimits(
+      testEnv,
+      owner,
+      limitsDocument({
+        projects: { maxOwnedProjects: 1, maxLinkedProjects: 5 },
+      }),
+    );
+
+    await createProject(testEnv, { owner });
+    const response = await dispatch(
+      "/project",
+      testEnv,
+      jsonBody(
+        "PUT",
+        {
+          name: "Second Project",
+          acl: { type: "public" },
+        },
+        await authHeaders(owner),
+      ),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "project_limit_exceeded" });
+  });
+
+  it("returns specific limit errors for project creation field limits", async () => {
+    const { env: testEnv } = makeEnv();
+
+    const projectNameOwner = `project-name-limit-${crypto.randomUUID()}@example.com`;
+    await putUserLimits(
+      testEnv,
+      projectNameOwner,
+      limitsDocument({
+        projects: { maxProjectNameLength: 3 },
+      }),
+    );
+    const projectNameResponse = await dispatch(
+      "/project",
+      testEnv,
+      jsonBody(
+        "PUT",
+        {
+          name: "Long",
+          acl: { type: "public" },
+        },
+        await authHeaders(projectNameOwner),
+      ),
+    );
+    expect(projectNameResponse.status).toBe(409);
+    expect(await projectNameResponse.json()).toEqual({ error: "project_limit_exceeded" });
+
+    const memberNameOwner = `member-name-limit-${crypto.randomUUID()}@example.com`;
+    await putUserLimits(
+      testEnv,
+      memberNameOwner,
+      limitsDocument({
+        projects: { maxMemberNameLength: 3 },
+      }),
+    );
+    const memberNameResponse = await dispatch(
+      "/project",
+      testEnv,
+      jsonBody(
+        "PUT",
+        {
+          name: "Trip",
+          acl: { type: "public" },
+          ownerMemberName: "Long",
+        },
+        await authHeaders(memberNameOwner),
+      ),
+    );
+    expect(memberNameResponse.status).toBe(409);
+    expect(await memberNameResponse.json()).toEqual({ error: "member_limit_exceeded" });
+
+    const aclOwner = `acl-limit-${crypto.randomUUID()}@example.com`;
+    await putUserLimits(
+      testEnv,
+      aclOwner,
+      limitsDocument({
+        projects: { maxAclEmails: 1 },
+      }),
+    );
+    const aclResponse = await dispatch(
+      "/project",
+      testEnv,
+      jsonBody(
+        "PUT",
+        {
+          name: "Trip",
+          acl: { type: "restricted", emails: ["one@example.com", "two@example.com"] },
+        },
+        await authHeaders(aclOwner),
+      ),
+    );
+    expect(aclResponse.status).toBe(409);
+    expect(await aclResponse.json()).toEqual({ error: "acl_limit_exceeded" });
+  });
+
+  it("enforces user limits for linked project caps when joining", async () => {
+    const { env: testEnv } = makeEnv();
+    const memberEmail = `linked-cap-${crypto.randomUUID()}@example.com`;
+    await putUserLimits(
+      testEnv,
+      memberEmail,
+      limitsDocument({
+        projects: { maxLinkedProjects: 1, maxOwnedProjects: 5 },
+      }),
+    );
+    const firstProject = await createProject(testEnv, {
+      owner: `first-owner-${crypto.randomUUID()}@example.com`,
+    });
+    const secondProject = await createProject(testEnv, {
+      owner: `second-owner-${crypto.randomUUID()}@example.com`,
+    });
+
+    const firstJoin = await dispatch(
+      `/project/${firstProject.id}/join`,
+      testEnv,
+      jsonBody("POST", { name: "Member" }, await authHeaders(memberEmail)),
+    );
+    expect(firstJoin.status).toBe(201);
+
+    const secondJoin = await dispatch(
+      `/project/${secondProject.id}/join`,
+      testEnv,
+      jsonBody("POST", { name: "Member" }, await authHeaders(memberEmail)),
+    );
+    expect(secondJoin.status).toBe(409);
+    expect(await secondJoin.json()).toEqual({ error: "project_limit_exceeded" });
+  });
+
+  it("enforces owner limits for record caps", async () => {
+    const { env: testEnv } = makeEnv();
+    const owner = `record-cap-${crypto.randomUUID()}@example.com`;
+    await putUserLimits(
+      testEnv,
+      owner,
+      limitsDocument({
+        records: { maxRecordsPerOwnedProject: 1 },
+      }),
+    );
+    const project = await createProject(testEnv, { owner });
+
+    for (const [index, expectedStatus] of [201, 409].entries()) {
+      const response = await dispatch(
+        `/project/${project.id}`,
+        testEnv,
+        jsonBody(
+          "POST",
+          {
+            delta: {},
+            description: {
+              type: "expense",
+              name: `Record ${index + 1}`,
+              paid: { "1": 100 },
+              liability: { "1": 100 },
+            },
+          },
+          await authHeaders(owner),
+        ),
+      );
+      expect(response.status).toBe(expectedStatus);
+      if (expectedStatus === 409) {
+        expect(await response.json()).toEqual({ error: "record_limit_exceeded" });
+      }
+    }
+  });
+
+  it("enforces member caps under concurrent owner writes without server errors", async () => {
+    const { env: testEnv } = makeEnv();
+    const owner = `member-concurrency-${crypto.randomUUID()}@example.com`;
+    await putUserLimits(
+      testEnv,
+      owner,
+      limitsDocument({
+        projects: { maxMembersPerProject: 5 },
+      }),
+    );
+    const project = await createProject(testEnv, { owner });
+    const headers = await authHeaders(owner);
+
+    const responses = await Promise.all(
+      Array.from({ length: 12 }, (_, index) =>
+        dispatch(
+          `/project/${project.id}/members`,
+          testEnv,
+          jsonBody("POST", { name: `Concurrent Member ${index}` }, headers),
+        ),
+      ),
+    );
+
+    const statuses = countResponseStatuses(responses);
+    expect(statuses[500] ?? 0).toBe(0);
+    expect(statuses[201]).toBe(4);
+    expect(statuses[409]).toBe(8);
+    for (const response of responses.filter((candidate) => candidate.status === 409)) {
+      expect(await response.json()).toEqual({ error: "member_limit_exceeded" });
+    }
+
+    const projectAfterWrites = await getProject(testEnv, project.id, owner);
+    expect(projectAfterWrites.members).toHaveLength(5);
+    expect(new Set(projectAfterWrites.members.map((member) => member.id)).size).toBe(5);
+  });
+
+  it("enforces record caps under concurrent posts without server errors", async () => {
+    const { env: testEnv } = makeEnv();
+    const owner = `record-concurrency-${crypto.randomUUID()}@example.com`;
+    await putUserLimits(
+      testEnv,
+      owner,
+      limitsDocument({
+        records: { maxRecordsPerOwnedProject: 5 },
+      }),
+    );
+    const project = await createProject(testEnv, { owner });
+    const headers = await authHeaders(owner);
+
+    const responses = await Promise.all(
+      Array.from({ length: 12 }, (_, index) =>
+        dispatch(
+          `/project/${project.id}`,
+          testEnv,
+          jsonBody(
+            "POST",
+            {
+              delta: {},
+              description: {
+                type: "expense",
+                name: `Concurrent Record ${index}`,
+                paid: { "1": 100 },
+                liability: { "1": 100 },
+              },
+            },
+            headers,
+          ),
+        ),
+      ),
+    );
+
+    const statuses = countResponseStatuses(responses);
+    expect(statuses[500] ?? 0).toBe(0);
+    expect(statuses[201]).toBe(5);
+    expect(statuses[409]).toBe(7);
+    for (const response of responses.filter((candidate) => candidate.status === 409)) {
+      expect(await response.json()).toEqual({ error: "record_limit_exceeded" });
+    }
+
+    const projectAfterWrites = await getProject(testEnv, project.id, owner);
+    expect(projectAfterWrites.records).toHaveLength(5);
+    const recordIds = projectAfterWrites.records.map((record) => (record as { id: number }).id);
+    expect(new Set(recordIds).size).toBe(5);
+  });
+
+  it("uses default and user limits for record pagination", async () => {
+    const { env: testEnv } = makeEnv();
+    const owner = `pagination-${crypto.randomUUID()}@example.com`;
+    await putDefaultLimits(
+      testEnv,
+      limitsDocument({
+        records: { defaultPageSize: 1, maxPageSize: 1 },
+      }),
+    );
+    await putUserLimits(
+      testEnv,
+      owner,
+      limitsDocument({
+        records: { defaultPageSize: 3, maxPageSize: 3 },
+      }),
+    );
+    const project = await createProject(testEnv, { owner });
+    for (const name of ["First", "Second"]) {
+      const response = await dispatch(
+        `/project/${project.id}`,
+        testEnv,
+        jsonBody(
+          "POST",
+          {
+            delta: {},
+            description: {
+              type: "expense",
+              name,
+              paid: { "1": 100 },
+              liability: { "1": 100 },
+            },
+          },
+          await authHeaders(owner),
+        ),
+      );
+      expect(response.status).toBe(201);
+    }
+
+    const publicTooLarge = await dispatch(`/project/${project.id}?limit=2`, testEnv);
+    expect(publicTooLarge.status).toBe(409);
+    expect(await publicTooLarge.json()).toEqual({ error: "record_limit_exceeded" });
+
+    const ownerPage = await dispatch(`/project/${project.id}?limit=3`, testEnv, {
+      headers: await authHeaders(owner),
+    });
+    expect(ownerPage.status).toBe(200);
+    expect(((await ownerPage.json()) as ProjectResponse).records).toHaveLength(2);
+  });
+
+  it("falls back to built-in limits for invalid KV limits data", async () => {
+    const { env: testEnv } = makeEnv();
+    const owner = `invalid-limit-${crypto.randomUUID()}@example.com`;
+    await testEnv.CONFIGS.put(
+      LimitsKvStore.userKey(owner),
+      JSON.stringify({ records: { defaultPageSize: 1 } }),
+    );
+    const project = await createProject(testEnv, { owner });
+
+    const response = await dispatch(
+      `/project/${project.id}?limit=${BUILTIN_DEFAULT_LIMITS.records.maxPageSize}`,
+      testEnv,
+      {
+        headers: await authHeaders(owner),
+      },
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it("enforces user limits for money amount and balance caps", async () => {
+    const { env: testEnv } = makeEnv();
+    const owner = `money-cap-${crypto.randomUUID()}@example.com`;
+    await putUserLimits(
+      testEnv,
+      owner,
+      limitsDocument({
+        money: { maxAmountCents: 100, maxBalanceCents: 100 },
+      }),
+    );
+    const project = await createProject(testEnv, { owner, ownerMemberName: "Alice" });
+    await createMember(testEnv, project.id, "Bob", owner);
+
+    const oversized = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          delta: { "1": -101, "2": 101 },
+          description: { type: "transfer", from: 1, to: 2, amount: 101 },
+        },
+        await authHeaders(owner),
+      ),
+    );
+    expect(oversized.status).toBe(409);
+    expect(await oversized.json()).toEqual({ error: "money_limit_exceeded" });
+
+    const maxTransfer = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          delta: { "1": -100, "2": 100 },
+          description: { type: "transfer", from: 1, to: 2, amount: 100 },
+        },
+        await authHeaders(owner),
+      ),
+    );
+    expect(maxTransfer.status).toBe(201);
+
+    const overflow = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          delta: { "1": -1, "2": 1 },
+          description: { type: "transfer", from: 1, to: 2, amount: 1 },
+        },
+        await authHeaders(owner),
+      ),
+    );
+    expect(overflow.status).toBe(409);
+    expect(await overflow.json()).toEqual({ error: "money_limit_exceeded" });
   });
 
   it("creates restricted projects and enforces ACLs separately from members", async () => {
@@ -899,7 +743,7 @@ describe("project worker", () => {
     ]);
 
     expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
-    const bobProjects = await dispatch("/projects", testEnv, {
+    const bobProjects = await dispatch("/registry", testEnv, {
       headers: await authHeaders("member@example.com"),
     });
     expect(bobProjects.status).toBe(200);
@@ -940,18 +784,22 @@ describe("project worker", () => {
       jsonBody(
         "POST",
         {
-          delta: { "1": -MAX_MONEY_CENTS - 1, "2": MAX_MONEY_CENTS + 1 },
+          delta: {
+            "1": -BUILTIN_DEFAULT_LIMITS.money.maxAmountCents - 1,
+            "2": BUILTIN_DEFAULT_LIMITS.money.maxAmountCents + 1,
+          },
           description: {
             type: "transfer",
             from: 1,
             to: 2,
-            amount: MAX_MONEY_CENTS + 1,
+            amount: BUILTIN_DEFAULT_LIMITS.money.maxAmountCents + 1,
           },
         },
         await authHeaders(),
       ),
     );
-    expect(oversized.status).toBe(400);
+    expect(oversized.status).toBe(409);
+    expect(await oversized.json()).toEqual({ error: "money_limit_exceeded" });
 
     const firstMaxTransfer = await dispatch(
       `/project/${project.id}`,
@@ -959,12 +807,15 @@ describe("project worker", () => {
       jsonBody(
         "POST",
         {
-          delta: { "1": -MAX_MONEY_CENTS, "2": MAX_MONEY_CENTS },
+          delta: {
+            "1": -BUILTIN_DEFAULT_LIMITS.money.maxAmountCents,
+            "2": BUILTIN_DEFAULT_LIMITS.money.maxAmountCents,
+          },
           description: {
             type: "transfer",
             from: 1,
             to: 2,
-            amount: MAX_MONEY_CENTS,
+            amount: BUILTIN_DEFAULT_LIMITS.money.maxAmountCents,
           },
         },
         await authHeaders(),
@@ -989,10 +840,14 @@ describe("project worker", () => {
         await authHeaders(),
       ),
     );
-    expect(overflow.status).toBe(400);
+    expect(overflow.status).toBe(409);
+    expect(await overflow.json()).toEqual({ error: "money_limit_exceeded" });
 
     const view = await getProject(testEnv, project.id);
-    expect(view.balance).toEqual({ "1": -MAX_MONEY_CENTS, "2": MAX_MONEY_CENTS });
+    expect(view.balance).toEqual({
+      "1": -BUILTIN_DEFAULT_LIMITS.money.maxAmountCents,
+      "2": BUILTIN_DEFAULT_LIMITS.money.maxAmountCents,
+    });
     expect(view.records).toMatchObject([{ id: 1 }]);
   });
 
@@ -1162,7 +1017,7 @@ describe("project worker", () => {
     expect(bobJoin.status).toBe(201);
 
     expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
-    const bobProjectsBeforeLeave = await dispatch("/projects", testEnv, {
+    const bobProjectsBeforeLeave = await dispatch("/registry", testEnv, {
       headers: await authHeaders(memberEmail),
     });
     expect(bobProjectsBeforeLeave.status).toBe(200);
@@ -1454,29 +1309,5 @@ describe("project worker", () => {
 
     const response = await getProject(testEnv, project.id);
     expect(response).toMatchObject({ balance: {}, records: [{ id: 2 }, { id: 1 }] });
-  });
-
-  it("runs migrations for project durable objects", async () => {
-    const { env: testEnv } = makeEnv();
-    const project = await createProject(testEnv);
-    const cacheValue = await testEnv.PROJECT_REGISTRY_CACHE.get(
-      projectRegistryCacheKey(project.id),
-    );
-    const cachedProject = parseProjectRegistryCacheValue(cacheValue ?? "");
-    expect(cachedProject?.doId).toMatch(/^[0-9a-f]{64}$/u);
-
-    await runInDurableObject(
-      testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
-      async (_instance, state) => {
-        await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(3);
-      },
-    );
-    await runInDurableObject(
-      testEnv.PROJECT_STORE.get(testEnv.PROJECT_STORE.idFromString(cachedProject?.doId ?? "")),
-      async (_instance, state) => {
-        await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(2);
-        await expect(state.storage.get<boolean>("initialized")).resolves.toBe(true);
-      },
-    );
   });
 });

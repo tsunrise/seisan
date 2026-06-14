@@ -1,41 +1,25 @@
 import { DurableObject } from "cloudflare:workers";
 
+import { normalizeEmail, normalizedEmailSchema } from "../email";
 import {
-  MAX_BALANCE_CENTS,
   PROJECTS_REGISTRY_NAME,
   PROJECT_SUMMARY_SYNC_DELAY_MS,
-  PROJECT_RECORD_MAX_LIMIT,
-  defaultMemberNameForEmail,
-  deriveDescriptionDelta,
-  memberNameSchema,
-  moneyMapSchema,
-  moneyMapsEqual,
-  negateMoneyMap,
-  normalizeEmail,
-  normalizeMemberNameForUnique,
-  normalizedEmailSchema,
-  projectAclEmailsSchema,
-  type ProjectAclType,
-  projectAclSchema,
-  projectAclTypeSchema,
-  projectJoinSchema,
-  projectMemberCreateSchema,
-  projectMemberEmailUnlinkSchema,
-  projectMemberPatchSchema,
-  projectIdSchema,
-  projectNameSchema,
-  projectRenameSchema,
-  recordDescriptionSchema,
-  sumMoneyMap,
-  type MoneyByMemberId,
+  MoneyByMemberIdUtils,
+  ProjectNameUtils,
+  ProjectId,
+  ProjectEmailsUtils,
   type ProjectAcl,
-  type ProjectJoinInput,
+  type ProjectAclType,
+  type ProjectJoin,
   type ProjectMember,
   type ProjectMemberPatch,
   type ProjectRecord,
   type ProjectSummary,
   type RecordDescription,
+  type MoneyByMemberId,
 } from "../project";
+import { BUILTIN_DEFAULT_LIMITS, LimitsKvStore, LimitsPolicy } from "../limits";
+import { LazyRefresh } from "../utils/auto_update";
 import { runSqlMigrations, type SqlMigration } from "./migrations";
 import type { ProjectSummarySyncInput } from "./ProjectsRegistry";
 
@@ -79,6 +63,7 @@ interface BalanceRow extends Record<string, SqlStorageValue> {
 }
 
 const INITIALIZED_KEY = "initialized";
+const OWNER_LIMITS_POLICY_TTL_SECONDS = 10;
 
 type ProjectStoreError =
   | "uninitialized"
@@ -89,7 +74,12 @@ type ProjectStoreError =
   | "already_reverted"
   | "already_linked"
   | "already_deleted"
-  | "nonzero_balance";
+  | "nonzero_balance"
+  | "project_limit_exceeded"
+  | "member_limit_exceeded"
+  | "record_limit_exceeded"
+  | "acl_limit_exceeded"
+  | "money_limit_exceeded";
 
 export class ProjectStore extends DurableObject<Env> {
   static readonly migrations: SqlMigration[] = [
@@ -138,6 +128,8 @@ export class ProjectStore extends DurableObject<Env> {
 
   private initialized = false;
   private readonly bindings: Env;
+  private ownerLimitsPolicy: LazyRefresh<LimitsPolicy> | null = null;
+  private ownerLimitsPolicyEmail: string | null = null;
 
   constructor(state: DurableObjectState, env: Env) {
     super(state, env);
@@ -157,30 +149,55 @@ export class ProjectStore extends DurableObject<Env> {
     nowMs: number;
   }): Promise<
     | { ok: true; members: ProjectMember[] }
-    | { ok: false; error: "already_initialized" | "invalid_input" }
+    | {
+        ok: false;
+        error:
+          | "already_initialized"
+          | "invalid_input"
+          | "project_limit_exceeded"
+          | "member_limit_exceeded"
+          | "acl_limit_exceeded";
+      }
   > {
     if (this.initialized) {
       return { ok: false, error: "already_initialized" };
     }
 
-    const parsedAcl = projectAclSchema.safeParse(input.acl);
-    const parsedPublicId = projectIdSchema.safeParse(input.publicId);
-    const parsedName = projectNameSchema.safeParse(input.name);
+    const parsedPublicId = ProjectId.safeParse(input.publicId);
     const parsedOwnerEmail = normalizeProjectEmail(input.ownerEmail);
-    const parsedOwnerMemberName = memberNameSchema.safeParse(
-      input.ownerMemberName ?? defaultMemberNameForEmail(input.ownerEmail),
-    );
-    if (
-      !parsedAcl.success ||
-      !parsedPublicId.success ||
-      !parsedName.success ||
-      !parsedOwnerEmail ||
-      !parsedOwnerMemberName.success
-    ) {
+    if (!parsedPublicId.success || !parsedOwnerEmail) {
       return { ok: false, error: "invalid_input" };
     }
 
-    const acl = parsedAcl.data;
+    const policy = new LimitsPolicy(
+      await new LimitsKvStore(this.bindings.CONFIGS).load(parsedOwnerEmail),
+    );
+    if (this.initialized) {
+      return { ok: false, error: "already_initialized" };
+    }
+
+    const acl =
+      input.acl.type === "restricted"
+        ? { type: "restricted" as const, emails: ProjectEmailsUtils.uniqueSorted(input.acl.emails) }
+        : input.acl;
+    const name = ProjectNameUtils.normalizeProject(input.name);
+    const ownerMemberName = ProjectNameUtils.normalizeMember(
+      input.ownerMemberName ??
+        ProjectStore.defaultMemberNameForEmail(
+          input.ownerEmail,
+          policy.projects.maxMemberNameLength,
+        ),
+    );
+    if (!policy.allowsProjectName(name)) {
+      return { ok: false, error: "project_limit_exceeded" };
+    }
+    if (!policy.allowsMemberName(ownerMemberName)) {
+      return { ok: false, error: "member_limit_exceeded" };
+    }
+    if (acl.type === "restricted" && !policy.allowsAclEmailCount(acl.emails.length)) {
+      return { ok: false, error: "acl_limit_exceeded" };
+    }
+
     const members = this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("DELETE FROM balances");
       this.ctx.storage.sql.exec("DELETE FROM records");
@@ -190,9 +207,9 @@ export class ProjectStore extends DurableObject<Env> {
       this.ctx.storage.sql.exec(
         `INSERT INTO project_meta
           (id, public_id, name, owner_email, acl_type, next_record_id, next_member_id, created_at, updated_at)
-         VALUES (1, ?, ?, ?, ?, 1, 2, ?, ?)`,
+        VALUES (1, ?, ?, ?, ?, 1, 2, ?, ?)`,
         parsedPublicId.data,
-        parsedName.data,
+        name,
         parsedOwnerEmail,
         acl.type,
         input.nowMs,
@@ -207,7 +224,7 @@ export class ProjectStore extends DurableObject<Env> {
 
       this.insertMember({
         id: 1,
-        name: parsedOwnerMemberName.data,
+        name: ownerMemberName,
         linkedEmail: parsedOwnerEmail,
         nowMs: input.nowMs,
       });
@@ -223,59 +240,82 @@ export class ProjectStore extends DurableObject<Env> {
     };
   }
 
-  postRecord(input: {
+  async postRecord(input: {
     callerEmail: string;
-    delta: MoneyByMemberId;
+    delta: Record<string, number>;
     description: RecordDescription;
     nowMs: number;
-  }):
+  }): Promise<
     | { ok: true; id: number }
     | {
         ok: false;
-        error: "uninitialized" | "forbidden" | "invalid_record" | "not_found" | "already_reverted";
-      } {
-    const access = this.getProjectAccess(input.callerEmail);
-    if (!access.ok) {
-      return access;
+        error:
+          | "uninitialized"
+          | "forbidden"
+          | "invalid_record"
+          | "not_found"
+          | "already_reverted"
+          | "record_limit_exceeded"
+          | "money_limit_exceeded";
+      }
+  > {
+    const policy = await this.loadOwnerLimitsPolicy();
+
+    const metadata = this.getProjectMetadata(input.callerEmail);
+    if (!metadata.ok) {
+      return metadata;
     }
-    if (!access.email) {
+    if (!metadata.email) {
       return { ok: false, error: "forbidden" };
     }
 
-    const authorMember = this.getActiveLinkedMember(access.email);
+    const authorMember = this.getActiveLinkedMember(metadata.email);
     if (!authorMember) {
       return { ok: false, error: "forbidden" };
     }
 
-    const parsedDescription = recordDescriptionSchema.safeParse(input.description);
-    const parsedDelta = moneyMapSchema.safeParse(input.delta);
-    if (!parsedDescription.success || !parsedDelta.success) {
+    let description: RecordDescription;
+    let delta: MoneyByMemberId;
+    try {
+      description = ProjectStore.normalizeRecordDescription(input.description);
+      delta = MoneyByMemberIdUtils.normalize(input.delta);
+    } catch {
       return { ok: false, error: "invalid_record" };
     }
 
-    const description = parsedDescription.data;
+    const limitExceededError = this.getDescriptionLimitExceededError(description, policy);
+    if (limitExceededError) {
+      return { ok: false, error: limitExceededError };
+    }
+    if (!policy.allowsMoneyMap(delta)) {
+      return { ok: false, error: "money_limit_exceeded" };
+    }
+    if (!policy.allowsAdditionalOwnedProjectRecord(this.countRecords())) {
+      return { ok: false, error: "record_limit_exceeded" };
+    }
+
     const resolvedDelta = this.resolveDelta(description);
     if (!resolvedDelta.ok) {
       return resolvedDelta;
     }
 
     if (
-      !moneyMapsEqual(parsedDelta.data, resolvedDelta.delta) ||
-      sumMoneyMap(resolvedDelta.delta) !== 0
+      !MoneyByMemberIdUtils.equals(delta, resolvedDelta.delta) ||
+      MoneyByMemberIdUtils.sum(resolvedDelta.delta) !== 0
     ) {
       return { ok: false, error: "invalid_record" };
     }
 
     // Require every member referenced by either the description or delta to be active.
     const referencedMemberIds = new Set<number>();
-    for (const memberId of Object.keys(resolvedDelta.delta)) {
+    for (const memberId of MoneyByMemberIdUtils.members(resolvedDelta.delta)) {
       referencedMemberIds.add(Number(memberId));
     }
     if (description.type === "expense") {
-      for (const memberId of Object.keys(description.paid)) {
+      for (const memberId of MoneyByMemberIdUtils.members(description.paid)) {
         referencedMemberIds.add(Number(memberId));
       }
-      for (const memberId of Object.keys(description.liability)) {
+      for (const memberId of MoneyByMemberIdUtils.members(description.liability)) {
         referencedMemberIds.add(Number(memberId));
       }
     }
@@ -297,11 +337,11 @@ export class ProjectStore extends DurableObject<Env> {
       }
     }
 
-    if (!this.canApplyBalanceDelta(resolvedDelta.delta)) {
-      return { ok: false, error: "invalid_record" };
+    if (!this.canApplyBalanceDelta(resolvedDelta.delta, policy)) {
+      return { ok: false, error: "money_limit_exceeded" };
     }
 
-    const id = access.meta.next_record_id;
+    const id = metadata.meta.next_record_id;
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec(
         `INSERT INTO records
@@ -329,12 +369,12 @@ export class ProjectStore extends DurableObject<Env> {
   }
 
   // Return the biggest `limit` ids smaller than offset
-  getRecords(input: {
+  async getRecords(input: {
     publicId?: string;
     callerEmail?: string | null;
     limit: number;
     offset: number;
-  }):
+  }): Promise<
     | {
         ok: true;
         name: string;
@@ -342,17 +382,18 @@ export class ProjectStore extends DurableObject<Env> {
         acl: ProjectAcl;
         members: ProjectMember[];
         records: ProjectRecord[];
-        balance: MoneyByMemberId;
+        balance: Record<string, number>;
         updatedAt: number;
       }
-    | { ok: false; error: "uninitialized" | "forbidden" } {
-    const access = this.getProjectAccess(input.callerEmail);
-    if (!access.ok) {
-      return access;
+    | { ok: false; error: "uninitialized" | "forbidden" }
+  > {
+    const metadata = this.getProjectMetadata(input.callerEmail);
+    if (!metadata.ok) {
+      return metadata;
     }
-    this.persistPublicIdIfMissing(access.meta, input.publicId);
+    this.persistPublicIdIfMissing(metadata.meta, input.publicId);
 
-    const limit = Math.min(PROJECT_RECORD_MAX_LIMIT, Math.max(1, Math.floor(input.limit)));
+    const limit = input.limit;
     const offset = Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, Math.floor(input.offset)));
     const records = this.ctx.storage.sql
       .exec<RecordRow>(
@@ -376,13 +417,13 @@ export class ProjectStore extends DurableObject<Env> {
 
     return {
       ok: true,
-      name: access.meta.name,
-      owner: access.meta.owner_email,
-      acl: this.getAcl(access.meta),
-      members: this.getMembersForResponse({ includeLinkedEmails: access.email !== null }),
+      name: metadata.meta.name,
+      owner: metadata.meta.owner_email,
+      acl: this.getAcl(metadata.meta),
+      members: this.getMembersForResponse({ includeLinkedEmails: metadata.email !== null }),
       records,
       balance,
-      updatedAt: access.meta.updated_at,
+      updatedAt: metadata.meta.updated_at,
     };
   }
 
@@ -390,17 +431,17 @@ export class ProjectStore extends DurableObject<Env> {
     callerEmail: string;
     publicId: string;
   }): { ok: true; project: ProjectSummary } | { ok: false; error: "uninitialized" | "forbidden" } {
-    const access = this.getProjectAccess(input.callerEmail);
-    if (!access.ok) {
-      return access;
+    const metadata = this.getProjectMetadata(input.callerEmail);
+    if (!metadata.ok) {
+      return metadata;
     }
-    this.persistPublicIdIfMissing(access.meta, input.publicId);
-    if (!access.email) {
+    this.persistPublicIdIfMissing(metadata.meta, input.publicId);
+    if (!metadata.email) {
       return { ok: false, error: "forbidden" };
     }
 
-    const requesterMember = this.getLinkedMember(access.email);
-    if (!access.isOwner && !requesterMember) {
+    const requesterMember = this.getLinkedMember(metadata.email);
+    if (!metadata.isOwner && !requesterMember) {
       return { ok: false, error: "forbidden" };
     }
 
@@ -417,96 +458,107 @@ export class ProjectStore extends DurableObject<Env> {
       ok: true,
       project: {
         id: input.publicId,
-        name: access.meta.name,
-        owner: access.meta.owner_email,
+        name: metadata.meta.name,
+        owner: metadata.meta.owner_email,
         member: requesterMember
           ? memberForResponse(requesterMember, { includeLinkedEmails: true })
           : null,
         balance,
-        updatedAt: access.meta.updated_at,
+        updatedAt: metadata.meta.updated_at,
       },
     };
   }
 
-  renameProject(input: {
+  async renameProject(input: {
     callerEmail: string;
     name: string;
     nowMs: number;
-  }):
+  }): Promise<
     | { ok: true; name: string }
-    | { ok: false; error: "uninitialized" | "forbidden" | "invalid_input" } {
+    | { ok: false; error: "uninitialized" | "forbidden" | "project_limit_exceeded" }
+  > {
+    const policy = await this.loadOwnerLimitsPolicy();
+
     const ownerAccess = this.getOwnerAccess(input.callerEmail);
     if (!ownerAccess.ok) {
       return ownerAccess;
     }
 
-    const parsed = projectRenameSchema.safeParse({ name: input.name });
-    if (!parsed.success) {
-      return { ok: false, error: "invalid_input" };
+    const name = ProjectNameUtils.normalizeProject(input.name);
+    if (!policy.allowsProjectName(name)) {
+      return { ok: false, error: "project_limit_exceeded" };
     }
 
     this.ctx.storage.sql.exec(
       "UPDATE project_meta SET name = ?, updated_at = ? WHERE id = 1",
-      parsed.data.name,
+      name,
       input.nowMs,
     );
     this.queueProjectSummarySync();
-    return { ok: true, name: parsed.data.name };
+    return { ok: true, name };
   }
 
-  createMember(input: {
+  async createMember(input: {
     callerEmail: string;
     name: string;
     nowMs: number;
-  }): { ok: true; member: ProjectMember } | { ok: false; error: ProjectStoreError } {
-    // initialization checked in `getProjectAccess`
-    const access = this.getProjectAccess(input.callerEmail);
-    if (!access.ok) {
-      return access;
+  }): Promise<{ ok: true; member: ProjectMember } | { ok: false; error: ProjectStoreError }> {
+    const policy = await this.loadOwnerLimitsPolicy();
+
+    // initialization checked in `getProjectMetadata`
+    const metadata = this.getProjectMetadata(input.callerEmail);
+    if (!metadata.ok) {
+      return metadata;
     }
-    if (!access.isOwner) {
+    if (!metadata.isOwner) {
       return { ok: false, error: "forbidden" };
     }
 
-    const parsed = projectMemberCreateSchema.safeParse({ name: input.name });
-    if (!parsed.success || this.hasActiveMemberName(parsed.data.name)) {
+    const name = ProjectNameUtils.normalizeMember(input.name);
+    if (!policy.allowsMemberName(name)) {
+      return { ok: false, error: "member_limit_exceeded" };
+    }
+    if (this.hasActiveMemberName(name)) {
       return { ok: false, error: "invalid_input" };
+    }
+    if (!policy.allowsAdditionalMember(this.countActiveMembers())) {
+      return { ok: false, error: "member_limit_exceeded" };
     }
 
     const member = this.createNextMember({
-      name: parsed.data.name,
+      name,
       linkedEmail: null,
       nowMs: input.nowMs,
-      meta: access.meta,
     });
+    if (!member) {
+      return { ok: false, error: "uninitialized" };
+    }
     this.queueProjectSummarySync();
     return { ok: true, member: memberForResponse(member, { includeLinkedEmails: true }) };
   }
 
-  joinProject(input: {
+  async joinProject(input: {
     callerEmail: string;
-    join: ProjectJoinInput;
+    join: ProjectJoin;
     nowMs: number;
-  }): { ok: true; member: ProjectMember } | { ok: false; error: ProjectStoreError } {
-    const access = this.getProjectAccess(input.callerEmail);
-    if (!access.ok) {
-      return access;
+  }): Promise<{ ok: true; member: ProjectMember } | { ok: false; error: ProjectStoreError }> {
+    const policy = await this.loadOwnerLimitsPolicy();
+
+    const metadata = this.getProjectMetadata(input.callerEmail);
+    if (!metadata.ok) {
+      return metadata;
     }
-    if (!access.email) {
+    if (!metadata.email) {
       return { ok: false, error: "forbidden" };
     }
 
-    const parsed = projectJoinSchema.safeParse(input.join);
-    if (!parsed.success) {
-      return { ok: false, error: "invalid_input" };
-    }
-    if (this.getLinkedMember(access.email)) {
+    if (this.getLinkedMember(metadata.email)) {
       return { ok: false, error: "already_linked" };
     }
 
-    if ("memberId" in parsed.data) {
+    if ("memberId" in input.join) {
       // claim unlinked member
-      const member = this.getMember(parsed.data.memberId);
+      const member = this.getMember(input.join.memberId);
       if (!member || member.deleted_at !== null) {
         return { ok: false, error: "not_found" };
       }
@@ -515,7 +567,7 @@ export class ProjectStore extends DurableObject<Env> {
       }
       this.ctx.storage.sql.exec(
         "UPDATE members SET linked_email = ?, updated_at = ? WHERE id = ?",
-        access.email,
+        metadata.email,
         input.nowMs,
         member.id,
       );
@@ -523,23 +575,32 @@ export class ProjectStore extends DurableObject<Env> {
       return {
         ok: true,
         member: memberForResponse(
-          { ...member, linked_email: access.email },
+          { ...member, linked_email: metadata.email },
           { includeLinkedEmails: true },
         ),
       };
     }
 
     // create new member
-    if (this.hasActiveMemberName(parsed.data.name)) {
+    const name = ProjectNameUtils.normalizeMember(input.join.name);
+    if (!policy.allowsMemberName(name)) {
+      return { ok: false, error: "member_limit_exceeded" };
+    }
+    if (this.hasActiveMemberName(name)) {
       return { ok: false, error: "invalid_input" };
+    }
+    if (!policy.allowsAdditionalMember(this.countActiveMembers())) {
+      return { ok: false, error: "member_limit_exceeded" };
     }
 
     const member = this.createNextMember({
-      name: parsed.data.name,
-      linkedEmail: access.email,
+      name,
+      linkedEmail: metadata.email,
       nowMs: input.nowMs,
-      meta: access.meta,
     });
+    if (!member) {
+      return { ok: false, error: "uninitialized" };
+    }
     this.queueProjectSummarySync();
     return { ok: true, member: memberForResponse(member, { includeLinkedEmails: true }) };
   }
@@ -548,18 +609,18 @@ export class ProjectStore extends DurableObject<Env> {
     callerEmail: string;
     nowMs: number;
   }): { ok: true; removedLinkedEmail: string } | { ok: false; error: ProjectStoreError } {
-    const access = this.getProjectAccess(input.callerEmail);
-    if (!access.ok) {
-      return access;
+    const metadata = this.getProjectMetadata(input.callerEmail);
+    if (!metadata.ok) {
+      return metadata;
     }
-    if (!access.email) {
+    if (!metadata.email) {
       return { ok: false, error: "forbidden" };
     }
-    if (access.isOwner) {
+    if (metadata.isOwner) {
       return { ok: false, error: "forbidden" };
     }
 
-    const member = this.getLinkedMember(access.email);
+    const member = this.getLinkedMember(metadata.email);
     if (!member) {
       return { ok: false, error: "forbidden" };
     }
@@ -570,25 +631,23 @@ export class ProjectStore extends DurableObject<Env> {
       member.id,
     );
     this.queueProjectSummarySync();
-    return { ok: true, removedLinkedEmail: access.email };
+    return { ok: true, removedLinkedEmail: metadata.email };
   }
 
-  patchMember(input: {
+  async patchMember(input: {
     callerEmail: string;
     memberId: number;
     patch: ProjectMemberPatch;
     nowMs: number;
-  }):
+  }): Promise<
     | { ok: true; member: ProjectMember; removedLinkedEmail?: string }
-    | { ok: false; error: ProjectStoreError } {
-    const access = this.getProjectAccess(input.callerEmail);
-    if (!access.ok) {
-      return access;
-    }
+    | { ok: false; error: ProjectStoreError }
+  > {
+    const policy = "name" in input.patch ? await this.loadOwnerLimitsPolicy() : null;
 
-    const parsed = projectMemberPatchSchema.safeParse(input.patch);
-    if (!parsed.success) {
-      return { ok: false, error: "invalid_input" };
+    const metadata = this.getProjectMetadata(input.callerEmail);
+    if (!metadata.ok) {
+      return metadata;
     }
 
     const member = this.getMember(input.memberId);
@@ -599,29 +658,36 @@ export class ProjectStore extends DurableObject<Env> {
       return { ok: false, error: "already_deleted" };
     }
 
-    const requesterOwnsMember = member.linked_email === access.email;
-    if (!access.isOwner && !requesterOwnsMember) {
+    const requesterOwnsMember = member.linked_email === metadata.email;
+    if (!metadata.isOwner && !requesterOwnsMember) {
       return { ok: false, error: "forbidden" };
     }
 
     let nextMember = member;
-    if ("name" in parsed.data) {
-      const normalizedName = normalizeMemberNameForUnique(parsed.data.name);
-      if (this.hasActiveMemberName(parsed.data.name, member.id)) {
+    if ("name" in input.patch) {
+      const name = ProjectNameUtils.normalizeMember(input.patch.name);
+      const normalizedName = ProjectStore.normalizeMemberNameForUnique(name);
+      if (!policy?.allowsMemberName(name)) {
+        return { ok: false, error: "member_limit_exceeded" };
+      }
+      if (this.hasActiveMemberName(name, member.id)) {
         return { ok: false, error: "invalid_input" };
       }
       this.ctx.storage.sql.exec(
         "UPDATE members SET name = ?, normalized_name = ?, updated_at = ? WHERE id = ?",
-        parsed.data.name,
+        name,
         normalizedName,
         input.nowMs,
         member.id,
       );
-      nextMember = { ...nextMember, name: parsed.data.name, normalized_name: normalizedName };
+      nextMember = { ...nextMember, name, normalized_name: normalizedName };
     }
 
     let removedLinkedEmail: string | undefined;
-    if ("email" in parsed.data) {
+    if ("email" in input.patch) {
+      if (input.patch.email !== "") {
+        return { ok: false, error: "invalid_input" };
+      }
       this.ctx.storage.sql.exec(
         "UPDATE members SET linked_email = NULL, updated_at = ? WHERE id = ?",
         input.nowMs,
@@ -644,11 +710,11 @@ export class ProjectStore extends DurableObject<Env> {
     memberId: number;
     nowMs: number;
   }): { ok: true; removedLinkedEmail?: string } | { ok: false; error: ProjectStoreError } {
-    const access = this.getProjectAccess(input.callerEmail);
-    if (!access.ok) {
-      return access;
+    const metadata = this.getProjectMetadata(input.callerEmail);
+    if (!metadata.ok) {
+      return metadata;
     }
-    if (!access.isOwner) {
+    if (!metadata.isOwner) {
       return { ok: false, error: "forbidden" };
     }
 
@@ -690,15 +756,15 @@ export class ProjectStore extends DurableObject<Env> {
       return ownerAccess;
     }
 
-    const parsed = projectMemberEmailUnlinkSchema.safeParse({ email: input.email });
-    if (!parsed.success) {
+    const email = normalizeProjectEmail(input.email);
+    if (!email) {
       return { ok: false, error: "invalid_input" };
     }
-    if (parsed.data.email === ownerAccess.meta.owner_email) {
+    if (email === ownerAccess.meta.owner_email) {
       return { ok: false, error: "forbidden" };
     }
 
-    const member = this.getLinkedMember(parsed.data.email);
+    const member = this.getLinkedMember(email);
     if (!member) {
       return { ok: false, error: "not_found" };
     }
@@ -709,24 +775,30 @@ export class ProjectStore extends DurableObject<Env> {
       member.id,
     );
     this.queueProjectSummarySync();
-    return { ok: true, removedLinkedEmail: parsed.data.email };
+    return { ok: true, removedLinkedEmail: email };
   }
 
-  appendEmailsToAcl(input: {
+  async appendEmailsToAcl(input: {
     callerEmail: string;
     emails: string[];
-  }): { ok: true } | { ok: false; error: "uninitialized" | "forbidden" | "invalid_input" } {
+  }): Promise<{ ok: true } | { ok: false; error: ProjectStoreError }> {
+    const policy = await this.loadOwnerLimitsPolicy();
+
     const ownerAccess = this.getOwnerAccess(input.callerEmail);
     if (!ownerAccess.ok) {
       return ownerAccess;
     }
 
-    const parsed = projectAclEmailsSchema.safeParse({ emails: input.emails });
-    if (!parsed.success) {
+    if (input.emails.length === 0) {
       return { ok: false, error: "invalid_input" };
     }
+    const emails = ProjectEmailsUtils.uniqueSorted(input.emails);
 
-    for (const email of parsed.data.emails) {
+    if (!policy.allowsAclEmailCount(this.countAclEmailsAfterAppend(emails))) {
+      return { ok: false, error: "acl_limit_exceeded" };
+    }
+
+    for (const email of emails) {
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO acl_allowed_list (email) VALUES (?)", email);
     }
     this.touchProject();
@@ -742,12 +814,12 @@ export class ProjectStore extends DurableObject<Env> {
       return ownerAccess;
     }
 
-    const parsed = projectAclEmailsSchema.safeParse({ emails: input.emails });
-    if (!parsed.success) {
+    if (input.emails.length === 0) {
       return { ok: false, error: "invalid_input" };
     }
+    const emails = ProjectEmailsUtils.uniqueSorted(input.emails);
 
-    for (const email of parsed.data.emails) {
+    for (const email of emails) {
       this.ctx.storage.sql.exec("DELETE FROM acl_allowed_list WHERE email = ?", email);
     }
     this.touchProject();
@@ -763,14 +835,13 @@ export class ProjectStore extends DurableObject<Env> {
       return ownerAccess;
     }
 
-    const parsed = projectAclTypeSchema.safeParse({ type: input.type });
-    if (!parsed.success) {
+    if (input.type !== "public" && input.type !== "restricted") {
       return { ok: false, error: "invalid_input" };
     }
 
     this.ctx.storage.sql.exec(
       "UPDATE project_meta SET acl_type = ?, updated_at = ? WHERE id = 1",
-      parsed.data.type,
+      input.type,
       Date.now(),
     );
     this.queueProjectSummarySync();
@@ -801,7 +872,7 @@ export class ProjectStore extends DurableObject<Env> {
       return { ok: false, error: "uninitialized" };
     }
     if (input.publicId) {
-      const parsed = projectIdSchema.safeParse(input.publicId);
+      const parsed = ProjectId.safeParse(input.publicId);
       if (!parsed.success) {
         return { ok: false, error: "invalid_input" };
       }
@@ -823,7 +894,48 @@ export class ProjectStore extends DurableObject<Env> {
     return { ok: true };
   }
 
-  private getProjectAccess(
+  private async loadOwnerLimitsPolicy(): Promise<LimitsPolicy> {
+    const ownerEmail = this.getMeta()?.owner_email;
+    if (!ownerEmail) {
+      return new LimitsPolicy(BUILTIN_DEFAULT_LIMITS);
+    }
+
+    if (!this.ownerLimitsPolicy || this.ownerLimitsPolicyEmail !== ownerEmail) {
+      const limits = new LimitsKvStore(this.bindings.CONFIGS);
+      this.ownerLimitsPolicyEmail = ownerEmail;
+      this.ownerLimitsPolicy = new LazyRefresh(
+        async () => new LimitsPolicy(await limits.load(ownerEmail)),
+        OWNER_LIMITS_POLICY_TTL_SECONDS,
+        this.ctx,
+      );
+    }
+
+    return this.ownerLimitsPolicy.value();
+  }
+
+  private getDescriptionLimitExceededError(
+    description: RecordDescription,
+    policy: LimitsPolicy,
+  ): "record_limit_exceeded" | "money_limit_exceeded" | null {
+    if (description.type === "expense") {
+      if (!policy.allowsExpenseName(description.name)) {
+        return "record_limit_exceeded";
+      }
+      if (
+        !policy.allowsMoneyMap(description.paid) ||
+        !policy.allowsMoneyMap(description.liability)
+      ) {
+        return "money_limit_exceeded";
+      }
+      return null;
+    }
+    if (description.type === "transfer") {
+      return policy.allowsMoneyAmount(description.amount) ? null : "money_limit_exceeded";
+    }
+    return null;
+  }
+
+  private getProjectMetadata(
     callerEmail: string | null | undefined,
   ):
     | { ok: true; email: string | null; isOwner: boolean; meta: ProjectMetaRow }
@@ -955,7 +1067,7 @@ export class ProjectStore extends DurableObject<Env> {
   }
 
   private hasActiveMemberName(name: string, exceptMemberId?: number): boolean {
-    const normalizedName = normalizeMemberNameForUnique(name);
+    const normalizedName = ProjectStore.normalizeMemberNameForUnique(name);
     const rows =
       exceptMemberId === undefined
         ? this.ctx.storage.sql
@@ -974,25 +1086,58 @@ export class ProjectStore extends DurableObject<Env> {
     return rows[0] !== undefined;
   }
 
+  private countActiveMembers(): number {
+    return (
+      this.ctx.storage.sql
+        .exec<
+          { count: number } & Record<string, SqlStorageValue>
+        >("SELECT COUNT(*) AS count FROM members WHERE deleted_at IS NULL")
+        .toArray()[0]?.count ?? 0
+    );
+  }
+
+  private countRecords(): number {
+    return Math.max(0, (this.getMeta()?.next_record_id ?? 1) - 1);
+  }
+
+  private countAclEmailsAfterAppend(emails: string[]): number {
+    const allEmails = new Set(
+      this.ctx.storage.sql
+        .exec<AclAllowedListRow>("SELECT email FROM acl_allowed_list")
+        .toArray()
+        .map((row) => row.email),
+    );
+    for (const email of emails) {
+      allEmails.add(email);
+    }
+    return allEmails.size;
+  }
+
   private createNextMember(input: {
     name: string;
     linkedEmail: string | null;
     nowMs: number;
-    meta: ProjectMetaRow;
-  }): MemberRow {
-    const id = input.meta.next_member_id;
-    this.insertMember({
-      id,
-      name: input.name,
-      linkedEmail: input.linkedEmail,
-      nowMs: input.nowMs,
+  }): MemberRow | null {
+    return this.ctx.storage.transactionSync(() => {
+      const meta = this.getMeta();
+      if (!meta) {
+        return null;
+      }
+
+      const id = meta.next_member_id;
+      this.insertMember({
+        id,
+        name: input.name,
+        linkedEmail: input.linkedEmail,
+        nowMs: input.nowMs,
+      });
+      this.ctx.storage.sql.exec(
+        "UPDATE project_meta SET next_member_id = ?, updated_at = ? WHERE id = 1",
+        id + 1,
+        input.nowMs,
+      );
+      return this.getMember(id) as MemberRow;
     });
-    this.ctx.storage.sql.exec(
-      "UPDATE project_meta SET next_member_id = ?, updated_at = ? WHERE id = 1",
-      id + 1,
-      input.nowMs,
-    );
-    return this.getMember(id) as MemberRow;
   }
 
   private insertMember(input: {
@@ -1007,7 +1152,7 @@ export class ProjectStore extends DurableObject<Env> {
        VALUES (?, ?, ?, ?, NULL, ?, ?)`,
       input.id,
       input.name,
-      normalizeMemberNameForUnique(input.name),
+      ProjectStore.normalizeMemberNameForUnique(input.name),
       input.linkedEmail,
       input.nowMs,
       input.nowMs,
@@ -1015,7 +1160,7 @@ export class ProjectStore extends DurableObject<Env> {
   }
 
   private applyBalanceDelta(delta: MoneyByMemberId): void {
-    for (const [memberId, amount] of Object.entries(delta)) {
+    for (const [memberId, amount] of MoneyByMemberIdUtils.entries(delta)) {
       this.ctx.storage.sql.exec(
         `INSERT INTO balances (member_id, amount_cents)
          VALUES (?, ?)
@@ -1030,8 +1175,8 @@ export class ProjectStore extends DurableObject<Env> {
     }
   }
 
-  private canApplyBalanceDelta(delta: MoneyByMemberId): boolean {
-    for (const [memberId, amount] of Object.entries(delta)) {
+  private canApplyBalanceDelta(delta: MoneyByMemberId, policy: LimitsPolicy): boolean {
+    for (const [memberId, amount] of MoneyByMemberIdUtils.entries(delta)) {
       const currentBalance =
         this.ctx.storage.sql
           .exec<BalanceRow>(
@@ -1040,7 +1185,7 @@ export class ProjectStore extends DurableObject<Env> {
           )
           .toArray()[0]?.amount_cents ?? 0;
       const nextBalance = currentBalance + amount;
-      if (!Number.isSafeInteger(nextBalance) || Math.abs(nextBalance) > MAX_BALANCE_CENTS) {
+      if (!policy.allowsBalanceAmount(nextBalance)) {
         return false;
       }
     }
@@ -1059,7 +1204,7 @@ export class ProjectStore extends DurableObject<Env> {
     if (meta.public_id || !publicId) {
       return;
     }
-    const parsed = projectIdSchema.safeParse(publicId);
+    const parsed = ProjectId.safeParse(publicId);
     if (!parsed.success) {
       return;
     }
@@ -1119,7 +1264,7 @@ export class ProjectStore extends DurableObject<Env> {
     | { ok: true; delta: MoneyByMemberId }
     | { ok: false; error: "invalid_record" | "not_found" | "already_reverted" } {
     if (description.type !== "revert") {
-      const delta = deriveDescriptionDelta(description);
+      const delta = ProjectStore.deriveDescriptionDelta(description);
       if (!delta) {
         return { ok: false, error: "invalid_record" };
       }
@@ -1146,7 +1291,59 @@ export class ProjectStore extends DurableObject<Env> {
       return { ok: false, error: "already_reverted" };
     }
 
-    return { ok: true, delta: negateMoneyMap(JSON.parse(target.delta_json) as MoneyByMemberId) };
+    return {
+      ok: true,
+      delta: MoneyByMemberIdUtils.negate(JSON.parse(target.delta_json) as MoneyByMemberId),
+    };
+  }
+
+  private static defaultMemberNameForEmail(email: string, maxLength: number): string {
+    const localPart = normalizeEmail(email).split("@")[0] ?? "";
+    return ProjectNameUtils.normalizeMember(localPart || "Member").slice(0, maxLength);
+  }
+
+  private static normalizeMemberNameForUnique(name: string): string {
+    return ProjectNameUtils.normalizeMember(name).toLowerCase();
+  }
+
+  private static deriveDescriptionDelta(
+    description: RecordDescription,
+    revertTargetDelta?: MoneyByMemberId,
+  ): MoneyByMemberId | null {
+    if (description.type === "expense") {
+      const delta: MoneyByMemberId = {};
+      for (const [memberId, amount] of MoneyByMemberIdUtils.entries(description.liability)) {
+        MoneyByMemberIdUtils.add(delta, memberId, amount);
+      }
+      for (const [memberId, amount] of MoneyByMemberIdUtils.entries(description.paid)) {
+        MoneyByMemberIdUtils.add(delta, memberId, -amount);
+      }
+      return delta;
+    }
+
+    if (description.type === "transfer") {
+      return MoneyByMemberIdUtils.normalize({
+        [String(description.from)]: -description.amount,
+        [String(description.to)]: description.amount,
+      });
+    }
+
+    if (!revertTargetDelta) {
+      return null;
+    }
+    return MoneyByMemberIdUtils.negate(revertTargetDelta);
+  }
+
+  private static normalizeRecordDescription(description: RecordDescription): RecordDescription {
+    if (description.type !== "expense") {
+      return description;
+    }
+
+    return {
+      ...description,
+      paid: MoneyByMemberIdUtils.normalize(description.paid),
+      liability: MoneyByMemberIdUtils.normalize(description.liability),
+    };
   }
 }
 

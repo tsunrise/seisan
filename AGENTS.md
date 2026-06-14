@@ -4,14 +4,17 @@ Guidance for coding agents working in this repository.
 
 ## Project Overview
 
-Seisan is a Cloudflare Worker application with a React frontend. The Worker serves all API routes under `/api/*` and serves the React single-page app for non-API routes.
+Seisan is a Cloudflare Worker application with a React frontend, for managing group expenses. The Worker serves all API routes under `/api/*` and serves the React single-page app for non-API routes.
 
 Core pieces:
 
 - `worker/index.ts`: Hono Worker entrypoint and HTTP route wiring.
 - `worker/auth.ts`: request schemas, auth middleware, identity handling.
 - `worker/project.ts`: project schemas, project helpers, shared project types.
-- `worker/projectCache.ts`: transparent Cache API wrapper for `/api/projects` responses.
+- `worker/routes/login.ts`: login, logout, and identity route handling.
+- `worker/routes/registry.ts`: `/api/registry` route handling and transparent Cache API wrapper for registry list responses.
+- `worker/routes/project.ts`: `/api/project*` route handling and route-local project lookup helpers.
+- `worker/routes/admin.ts`: admin limits API and Cloudflare Access middleware.
 - `worker/do/*.ts`: Durable Object classes. Keep one DO class per file.
 - `src/`: React UI built with hooks, React Router, and Material UI.
 - `src/api.ts`: browser API client for `/api/*`.
@@ -79,6 +82,10 @@ pnpm run build
 - Prefer small response helpers in `worker/index.ts` such as `unauthorized()`, `invalidRequest()`, `notFound()`, `forbidden()`, `conflict()`, and central mapper functions for repeated DO error unions.
 - Validate JSON request bodies with `parseJson(context, schema)` and zod schemas. Use `safeParse()` inside DO RPC methods for public RPC inputs, even if the route already validated the request.
 - Keep schemas near the domain they validate: auth schemas in `worker/auth.ts`, project/member/record schemas in `worker/project.ts`.
+- Name zod schema values in PascalCase without a `Schema` suffix, and export the inferred type beside the schema with the same identifier, for example `export const MoneyMap = ...; export type MoneyMap = z.infer<typeof MoneyMap>;`. If an existing domain type would conflict with a different schema shape, choose a precise schema name instead of using a `*Schema` suffix.
+- Use zod at trust and serialization boundaries: request bodies, route params, stored JSON, RPC inputs, and external service payloads. Do not add zod schemas for values that are only constructed internally; use TypeScript unions, interfaces, or object types for those.
+- Prefer grouping cohesive behavior behind small named classes or objects instead of exporting clusters of top-level helper functions. If logic owns a binding, cache, storage namespace, policy, or shared state, model it as a focused class such as `LimitsKvStore` or `LimitsPolicy`.
+- Keep top-level functions limited to small pure helpers, response helpers, schema builders, and file-local row conversion utilities. Avoid exporting standalone key builders, parse/serialize helpers, or limit-check functions when they naturally belong to a store, policy, or domain object.
 - Normalize boundary data immediately. Emails should go through `normalizeEmail()` or `normalizedEmailSchema`; project and member names should go through the project normalization helpers.
 - Use explicit `{ ok: true, ... } | { ok: false, error: "..." }` unions for expected domain results. Do not throw for normal user/domain errors such as forbidden, invalid input, not found, already linked, or conflict.
 - Keep error strings stable and narrow. When adding a new DO error string, update the relevant HTTP mapper and tests in the same change.
@@ -95,7 +102,7 @@ pnpm run build
 - Use SQLite storage APIs for DO state; keep mutations that must be atomic inside a transaction.
 - Be careful with shutdown behavior: if a method writes multiple related pieces of storage state, prefer a transaction or leave an inline TODO if a future transaction is needed.
 - `ProjectStore` owns project state, members, ACL data, records, and balances.
-- `ProjectsRegistry` owns public project ID to ProjectStore DO ID mapping, project membership index rows, and cached project summaries for `/api/projects`.
+- `ProjectsRegistry` owns public project ID to ProjectStore DO ID mapping, project membership index rows, and cached project summaries for `/api/registry`.
 - `PROJECT_REGISTRY_CACHE` is a KV cache for public project ID to ProjectStore DO ID lookup. The registry DO is authoritative.
 - `ProjectStore` queues project summary syncs with a DO alarm. Use `setAlarmIfNotAlready()` style logic so repeated mutations inside the delay window do not reschedule or fan out.
 - `ProjectStore.alarm()` syncs summary data to `ProjectsRegistry.syncProjectSummary()`. Keep this summary good enough for project lists; it does not need to be perfectly fresh.
@@ -141,8 +148,8 @@ pnpm run build
 
 ## Project List Caching
 
-- `/api/projects` first checks the Cache API via `worker/projectCache.ts`.
-- On Cache API miss, `/api/projects` should call `ProjectsRegistry.listProjects()` only. It should not activate all linked `ProjectStore` DOs.
+- `/api/registry` first checks the Cache API via `worker/routes/registry.ts`.
+- On Cache API miss, `/api/registry` should call `ProjectsRegistry.listProjects()` only. It should not activate all linked `ProjectStore` DOs.
 - Cache API entries are transparent response caches with `s-maxage=10`. Do not patch, delete, or carry custom expiry metadata for project-list Cache API entries.
 - The project summary `lastSyncAt` comes from `ProjectsRegistry` summary rows, not from Cache API write time.
 - Mutations that affect project-list summaries should queue a `ProjectStore` alarm rather than writing the Cache API directly.

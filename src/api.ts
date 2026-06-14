@@ -94,7 +94,7 @@ export async function logout(): Promise<void> {
 
 export async function listProjects(): Promise<Array<WithSyncTime<ProjectSummary>>> {
   const response = await requestJson<{ projects: Array<WithSyncTime<ProjectSummary>> }>(
-    "/api/projects",
+    "/api/registry",
   );
   return response.projects;
 }
