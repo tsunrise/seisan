@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "activeDir": "active",
+  "resolvedDir": "resolved",
+  "nextId": 9,
+  "issues": [
+    {
+      "id": "RT-1",
+      "status": "active",
+      "severity": "High",
+      "title": "Oversized Money Maps Produce 500s",
+      "file": "active/rt-1-oversized-money-maps-produce-500s-20260614-141328.md",
+      "date": "2026-06-14 14:13:28 PDT",
+      "commit": "25f932606bd064aa29331732e190ef814c8889e6"
+    },
+    {
+      "id": "RT-2",
+      "status": "active",
+      "severity": "High",
+      "title": "Missing Origin and CSRF Protection on Cookie Mutations",
+      "file": "active/rt-2-missing-origin-and-csrf-protection-on-cookie-mutations-20260614-141328.md",
+      "date": "2026-06-14 14:13:28 PDT",
+      "commit": "25f932606bd064aa29331732e190ef814c8889e6"
+    },
+    {
+      "id": "RT-3",
+      "status": "active",
+      "severity": "High",
+      "title": "Linked Emails Leak to Authenticated Non-Members",
+      "file": "active/rt-3-linked-emails-leak-to-authenticated-non-members-20260614-141328.md",
+      "date": "2026-06-14 14:13:28 PDT",
+      "commit": "25f932606bd064aa29331732e190ef814c8889e6"
+    },
+    {
+      "id": "RT-4",
+      "status": "active",
+      "severity": "Medium",
+      "title": "Lowered Limits Can Stay Stale",
+      "file": "active/rt-4-lowered-limits-can-stay-stale-20260614-141328.md",
+      "date": "2026-06-14 14:13:28 PDT",
+      "commit": "25f932606bd064aa29331732e190ef814c8889e6"
+    },
+    {
+      "id": "RT-5",
+      "status": "active",
+      "severity": "Medium",
+      "title": "Per-Email Quotas Are Alias-Friendly",
+      "file": "active/rt-5-per-email-quotas-are-alias-friendly-20260614-141328.md",
+      "date": "2026-06-14 14:13:28 PDT",
+      "commit": "25f932606bd064aa29331732e190ef814c8889e6"
+    },
+    {
+      "id": "RT-6",
+      "status": "active",
+      "severity": "Medium",
+      "title": "Login Email Billing Fan-Out",
+      "file": "active/rt-6-login-email-billing-fan-out-20260614-141328.md",
+      "date": "2026-06-14 14:13:28 PDT",
+      "commit": "25f932606bd064aa29331732e190ef814c8889e6"
+    },
+    {
+      "id": "RT-7",
+      "status": "active",
+      "severity": "Low/Medium",
+      "title": "Random UUID Lookup Spray Has No Negative Cache",
+      "file": "active/rt-7-random-uuid-lookup-spray-has-no-negative-cache-20260614-141328.md",
+      "date": "2026-06-14 14:13:28 PDT",
+      "commit": "25f932606bd064aa29331732e190ef814c8889e6"
+    },
+    {
+      "id": "RT-8",
+      "status": "active",
+      "severity": "Product Risk",
+      "title": "Public Projects Let Attackers Claim Unlinked Members",
+      "file": "active/rt-8-public-projects-let-attackers-claim-unlinked-members-20260614-141328.md",
+      "date": "2026-06-14 14:13:28 PDT",
+      "commit": "25f932606bd064aa29331732e190ef814c8889e6"
+    }
+  ]
+}
