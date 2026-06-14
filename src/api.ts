@@ -34,12 +34,15 @@ export interface ProjectRecord {
   createdAt: number;
 }
 
-export interface Project {
+export interface ProjectCreated {
   id: string;
   name: string;
   owner: string;
   acl: ProjectAcl;
   members: ProjectMember[];
+}
+
+export interface Project extends ProjectCreated {
   records: ProjectRecord[];
   balance: MoneyByMemberId;
   updatedAt: number;
@@ -103,7 +106,7 @@ export async function createProject(input: {
   name: string;
   ownerMemberName?: string;
   acl: ProjectAcl;
-}): Promise<Project> {
+}): Promise<ProjectCreated> {
   return requestJson("/api/project", {
     method: "PUT",
     body: input,
