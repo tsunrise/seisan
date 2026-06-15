@@ -18,7 +18,12 @@ import {
   type RecordDescription,
   type MoneyByMemberId,
 } from "../project";
-import { BUILTIN_DEFAULT_LIMITS, LimitsKvStore, LimitsPolicy } from "../limits";
+import {
+  ABSOLUTE_LIST_LIMIT,
+  BUILTIN_DEFAULT_LIMITS,
+  LimitsKvStore,
+  LimitsPolicy,
+} from "../limits";
 import { LazyRefresh } from "../utils/auto_update";
 import { runSqlMigrations, type SqlMigration } from "./migrations";
 import type { ProjectSummarySyncInput } from "./ProjectsRegistry";
@@ -60,6 +65,10 @@ interface RecordRow extends Record<string, SqlStorageValue> {
 interface BalanceRow extends Record<string, SqlStorageValue> {
   member_id: number;
   amount_cents: number;
+}
+
+interface ActiveMemberIdRow extends Record<string, SqlStorageValue> {
+  id: number;
 }
 
 const INITIALIZED_KEY = "initialized";
@@ -277,6 +286,9 @@ export class ProjectStore extends DurableObject<Env> {
     let description: RecordDescription;
     let delta: MoneyByMemberId;
     try {
+      if (ProjectStore.hasOversizedRecordMoneyMap(input.delta, input.description)) {
+        return { ok: false, error: "invalid_record" };
+      }
       description = ProjectStore.normalizeRecordDescription(input.description);
       delta = MoneyByMemberIdUtils.normalize(input.delta);
     } catch {
@@ -297,6 +309,9 @@ export class ProjectStore extends DurableObject<Env> {
     const resolvedDelta = this.resolveDelta(description);
     if (!resolvedDelta.ok) {
       return resolvedDelta;
+    }
+    if (ProjectStore.hasOversizedMoneyMap(resolvedDelta.delta)) {
+      return { ok: false, error: "invalid_record" };
     }
 
     if (
@@ -324,16 +339,11 @@ export class ProjectStore extends DurableObject<Env> {
       referencedMemberIds.add(description.to);
     }
     if (referencedMemberIds.size > 0) {
-      const memberIds = [...referencedMemberIds];
-      const placeholders = memberIds.map(() => "?").join(", ");
-      const activeCount =
-        this.ctx.storage.sql
-          .exec<
-            { count: number } & Record<string, SqlStorageValue>
-          >(`SELECT COUNT(*) AS count FROM members WHERE id IN (${placeholders}) AND deleted_at IS NULL`, ...memberIds)
-          .toArray()[0]?.count ?? 0;
-      if (activeCount !== memberIds.length) {
-        return { ok: false, error: "invalid_record" };
+      const activeMemberIds = this.getActiveMemberIds();
+      for (const memberId of referencedMemberIds) {
+        if (!activeMemberIds.has(memberId)) {
+          return { ok: false, error: "invalid_record" };
+        }
       }
     }
 
@@ -1055,6 +1065,15 @@ export class ProjectStore extends DurableObject<Env> {
     );
   }
 
+  private getActiveMemberIds(): Set<number> {
+    return new Set(
+      this.ctx.storage.sql
+        .exec<ActiveMemberIdRow>("SELECT id FROM members WHERE deleted_at IS NULL")
+        .toArray()
+        .map((row) => row.id),
+    );
+  }
+
   private getMembersForResponse(options: { includeLinkedEmails: boolean }): ProjectMember[] {
     return this.ctx.storage.sql
       .exec<MemberRow>(
@@ -1344,6 +1363,29 @@ export class ProjectStore extends DurableObject<Env> {
       paid: MoneyByMemberIdUtils.normalize(description.paid),
       liability: MoneyByMemberIdUtils.normalize(description.liability),
     };
+  }
+
+  private static hasOversizedRecordMoneyMap(
+    delta: Record<string, number>,
+    description: RecordDescription,
+  ): boolean {
+    if (ProjectStore.hasOversizedMoneyMap(delta)) {
+      return true;
+    }
+    return (
+      description.type === "expense" &&
+      (ProjectStore.hasOversizedMoneyMap(description.paid) ||
+        ProjectStore.hasOversizedMoneyMap(description.liability))
+    );
+  }
+
+  private static hasOversizedMoneyMap(map: unknown): boolean {
+    return (
+      typeof map === "object" &&
+      map !== null &&
+      !Array.isArray(map) &&
+      Object.keys(map).length > ABSOLUTE_LIST_LIMIT
+    );
   }
 }
 

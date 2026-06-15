@@ -1,7 +1,7 @@
 import { runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { BUILTIN_DEFAULT_LIMITS, LimitsKvStore } from "../worker/limits";
+import { ABSOLUTE_LIST_LIMIT, BUILTIN_DEFAULT_LIMITS, LimitsKvStore } from "../worker/limits";
 import { PROJECTS_REGISTRY_NAME } from "../worker/project";
 import {
   authHeaders,
@@ -849,6 +849,64 @@ describe("project routes", () => {
       "2": BUILTIN_DEFAULT_LIMITS.money.maxAmountCents,
     });
     expect(view.records).toMatchObject([{ id: 1 }]);
+  });
+
+  it("rejects money maps that exceed the absolute entry limit", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+    const oversizedDelta = Object.fromEntries(
+      Array.from({ length: ABSOLUTE_LIST_LIMIT + 1 }, (_, index) => [String(index + 1), 1]),
+    );
+
+    const response = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          delta: oversizedDelta,
+          description: {
+            type: "transfer",
+            from: 1,
+            to: 2,
+            amount: 1,
+          },
+        },
+        await authHeaders(),
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_request" });
+  });
+
+  it("rejects many fake member references without a server error", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+    const liability = Object.fromEntries(
+      Array.from({ length: 100 }, (_, index) => [String(index + 2), 1]),
+    );
+
+    const response = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          delta: { "1": -100, ...liability },
+          description: {
+            type: "expense",
+            name: "Fake members",
+            paid: { "1": 100 },
+            liability,
+          },
+        },
+        await authHeaders(),
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_request" });
   });
 
   it("paginates records with an exclusive id offset", async () => {

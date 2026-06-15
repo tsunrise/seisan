@@ -50,8 +50,16 @@ function makeMoneyMapSchema(options: { nonNegative: boolean }) {
   return z
     .record(z.string(), valueSchema)
     .superRefine((input, context) => {
+      const memberIds = Object.keys(input);
+      if (memberIds.length > ABSOLUTE_LIST_LIMIT) {
+        context.addIssue({
+          code: "custom",
+          message: "Money map has too many entries.",
+        });
+      }
+
       const seen = new Set<string>();
-      for (const memberId of Object.keys(input)) {
+      for (const memberId of memberIds) {
         if (!isMemberIdKey(memberId)) {
           context.addIssue({
             code: "custom",

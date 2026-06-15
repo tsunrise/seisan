@@ -6,12 +6,13 @@
   "issues": [
     {
       "id": "RT-1",
-      "status": "active",
+      "status": "resolved",
       "severity": "High",
       "title": "Oversized Money Maps Produce 500s",
-      "file": "active/rt-1-oversized-money-maps-produce-500s-20260614-141328.md",
+      "file": "resolved/rt-1-high-oversized-money-maps-produce-500s-20260614-155013.md",
       "date": "2026-06-14 14:13:28 PDT",
-      "commit": "25f932606bd064aa29331732e190ef814c8889e6"
+      "commit": "25f932606bd064aa29331732e190ef814c8889e6",
+      "resolution": "Fixed"
     },
     {
       "id": "RT-2",
