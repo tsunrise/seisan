@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { z } from "zod";
 
 import { normalizeEmail, normalizedEmailSchema } from "../email";
 import {
@@ -25,16 +26,34 @@ import {
   LimitsPolicy,
 } from "../limits";
 import { LazyRefresh } from "../utils/auto_update";
-import { runSqlMigrations, type SqlMigration } from "./migrations";
+import { backfill, runSqlMigrations } from "./migrations";
 import type { ProjectSummarySyncInput } from "./ProjectsRegistry";
+import { projectStoreMigrations } from "./migrations/ProjectStore.migration";
 
-interface ProjectMetaRow extends Record<string, SqlStorageValue> {
+const ProjectMetadata = z.object({
+  public_id: ProjectId.nullable(),
+  name: z.string().min(1),
+  owner_email: normalizedEmailSchema,
+  acl_type: z.enum(["public", "restricted"]),
+  acl_allowed_list: z
+    .array(normalizedEmailSchema)
+    .max(ABSOLUTE_LIST_LIMIT)
+    .transform(ProjectEmailsUtils.uniqueSorted),
+  next_record_id: z.number().int().positive(),
+  next_member_id: z.number().int().positive(),
+  created_at: z.number().int().nonnegative(),
+  updated_at: z.number().int().nonnegative(),
+});
+type ProjectMetadata = z.infer<typeof ProjectMetadata>;
+
+interface LegacyProjectMetaRow extends Record<string, SqlStorageValue> {
   public_id: string | null;
   name: string;
   owner_email: string;
   acl_type: "public" | "restricted";
   next_record_id: number;
   next_member_id: number;
+  created_at: number;
   updated_at: number;
 }
 
@@ -72,6 +91,8 @@ interface ActiveMemberIdRow extends Record<string, SqlStorageValue> {
 }
 
 const INITIALIZED_KEY = "initialized";
+const PROJECT_METADATA_KEY = "projectMetadata";
+const PROJECT_METADATA_BACKFILL_NAME = "20260615-project-metadata-kv";
 const OWNER_LIMITS_POLICY_TTL_SECONDS = 10;
 
 type ProjectStoreError =
@@ -91,52 +112,11 @@ type ProjectStoreError =
   | "money_limit_exceeded";
 
 export class ProjectStore extends DurableObject<Env> {
-  static readonly migrations: SqlMigration[] = [
-    [
-      `CREATE TABLE IF NOT EXISTS project_meta (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        name TEXT NOT NULL,
-        owner_email TEXT NOT NULL,
-        acl_type TEXT NOT NULL CHECK (acl_type IN ('public', 'restricted')),
-        next_record_id INTEGER NOT NULL,
-        next_member_id INTEGER NOT NULL,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      )`,
-      `CREATE TABLE IF NOT EXISTS acl_allowed_list (
-        email TEXT PRIMARY KEY
-      )`,
-      `CREATE TABLE IF NOT EXISTS members (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        normalized_name TEXT NOT NULL,
-        linked_email TEXT UNIQUE,
-        deleted_at INTEGER,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      )`,
-      `CREATE UNIQUE INDEX IF NOT EXISTS members_active_normalized_name_idx
-        ON members(normalized_name)
-        WHERE deleted_at IS NULL`,
-      `CREATE TABLE IF NOT EXISTS records (
-        id INTEGER PRIMARY KEY,
-        author_member_id INTEGER NOT NULL,
-        description_type TEXT NOT NULL,
-        description_json TEXT NOT NULL,
-        delta_json TEXT NOT NULL,
-        reverts_record_id INTEGER UNIQUE,
-        created_at INTEGER NOT NULL
-      )`,
-      `CREATE TABLE IF NOT EXISTS balances (
-        member_id INTEGER PRIMARY KEY,
-        amount_cents INTEGER NOT NULL
-      )`,
-    ],
-    [`ALTER TABLE project_meta ADD COLUMN public_id TEXT`],
-  ];
+  static readonly migrations = projectStoreMigrations;
 
   private initialized = false;
   private readonly bindings: Env;
+  private projectMetadata: ProjectMetadata | null = null;
   private ownerLimitsPolicy: LazyRefresh<LimitsPolicy> | null = null;
   private ownerLimitsPolicyEmail: string | null = null;
 
@@ -146,6 +126,13 @@ export class ProjectStore extends DurableObject<Env> {
     state.blockConcurrencyWhile(async () => {
       await runSqlMigrations(state, ProjectStore.migrations);
       this.initialized = (await state.storage.get<boolean>(INITIALIZED_KEY)) === true;
+      if (this.initialized) {
+        await this.runProjectMetadataBackfill();
+        this.projectMetadata = this.readProjectMetadata();
+        if (!this.projectMetadata) {
+          this.initialized = false;
+        }
+      }
     });
   }
 
@@ -207,29 +194,22 @@ export class ProjectStore extends DurableObject<Env> {
       return { ok: false, error: "acl_limit_exceeded" };
     }
 
+    const metadata: ProjectMetadata = {
+      public_id: parsedPublicId.data,
+      name,
+      owner_email: parsedOwnerEmail,
+      acl_type: acl.type,
+      acl_allowed_list: acl.type === "restricted" ? acl.emails : [],
+      next_record_id: 1,
+      next_member_id: 2,
+      created_at: input.nowMs,
+      updated_at: input.nowMs,
+    };
+
     const members = this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("DELETE FROM balances");
       this.ctx.storage.sql.exec("DELETE FROM records");
       this.ctx.storage.sql.exec("DELETE FROM members");
-      this.ctx.storage.sql.exec("DELETE FROM acl_allowed_list");
-      this.ctx.storage.sql.exec("DELETE FROM project_meta");
-      this.ctx.storage.sql.exec(
-        `INSERT INTO project_meta
-          (id, public_id, name, owner_email, acl_type, next_record_id, next_member_id, created_at, updated_at)
-        VALUES (1, ?, ?, ?, ?, 1, 2, ?, ?)`,
-        parsedPublicId.data,
-        name,
-        parsedOwnerEmail,
-        acl.type,
-        input.nowMs,
-        input.nowMs,
-      );
-
-      if (acl.type === "restricted") {
-        for (const email of acl.emails) {
-          this.ctx.storage.sql.exec("INSERT INTO acl_allowed_list (email) VALUES (?)", email);
-        }
-      }
 
       this.insertMember({
         id: 1,
@@ -237,10 +217,11 @@ export class ProjectStore extends DurableObject<Env> {
         linkedEmail: parsedOwnerEmail,
         nowMs: input.nowMs,
       });
-      this.ctx.storage.kv.put(INITIALIZED_KEY, true);
       return this.getMembersForResponse({ includeLinkedEmails: true });
     });
 
+    this.saveProjectMetadata(metadata);
+    this.ctx.storage.kv.put(INITIALIZED_KEY, true);
     this.initialized = true;
     this.queueProjectSummarySync();
     return {
@@ -351,7 +332,7 @@ export class ProjectStore extends DurableObject<Env> {
       return { ok: false, error: "money_limit_exceeded" };
     }
 
-    const id = metadata.meta.next_record_id;
+    const id = this.getNextRecordId(metadata.meta);
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec(
         `INSERT INTO records
@@ -367,11 +348,11 @@ export class ProjectStore extends DurableObject<Env> {
       );
 
       this.applyBalanceDelta(resolvedDelta.delta);
-      this.ctx.storage.sql.exec(
-        "UPDATE project_meta SET next_record_id = ?, updated_at = ? WHERE id = 1",
-        id + 1,
-        input.nowMs,
-      );
+    });
+    this.saveProjectMetadata({
+      ...metadata.meta,
+      next_record_id: id + 1,
+      updated_at: input.nowMs,
     });
 
     this.queueProjectSummarySync();
@@ -379,12 +360,12 @@ export class ProjectStore extends DurableObject<Env> {
   }
 
   // Return the biggest `limit` ids smaller than offset
-  async getRecords(input: {
+  getRecords(input: {
     publicId?: string;
     callerEmail?: string | null;
     limit: number;
     offset: number;
-  }): Promise<
+  }):
     | {
         ok: true;
         name: string;
@@ -395,13 +376,12 @@ export class ProjectStore extends DurableObject<Env> {
         balance: Record<string, number>;
         updatedAt: number;
       }
-    | { ok: false; error: "uninitialized" | "forbidden" }
-  > {
+    | { ok: false; error: "uninitialized" | "forbidden" } {
     const metadata = this.getProjectMetadata(input.callerEmail);
     if (!metadata.ok) {
       return metadata;
     }
-    this.persistPublicIdIfMissing(metadata.meta, input.publicId);
+    const meta = this.persistPublicIdIfMissing(metadata.meta, input.publicId);
 
     const limit = input.limit;
     const offset = Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, Math.floor(input.offset)));
@@ -427,13 +407,13 @@ export class ProjectStore extends DurableObject<Env> {
 
     return {
       ok: true,
-      name: metadata.meta.name,
-      owner: metadata.meta.owner_email,
-      acl: this.getAcl(metadata.meta),
+      name: meta.name,
+      owner: meta.owner_email,
+      acl: this.getAcl(meta),
       members: this.getMembersForResponse({ includeLinkedEmails: metadata.email !== null }),
       records,
       balance,
-      updatedAt: metadata.meta.updated_at,
+      updatedAt: meta.updated_at,
     };
   }
 
@@ -445,7 +425,7 @@ export class ProjectStore extends DurableObject<Env> {
     if (!metadata.ok) {
       return metadata;
     }
-    this.persistPublicIdIfMissing(metadata.meta, input.publicId);
+    const meta = this.persistPublicIdIfMissing(metadata.meta, input.publicId);
     if (!metadata.email) {
       return { ok: false, error: "forbidden" };
     }
@@ -468,13 +448,13 @@ export class ProjectStore extends DurableObject<Env> {
       ok: true,
       project: {
         id: input.publicId,
-        name: metadata.meta.name,
-        owner: metadata.meta.owner_email,
+        name: meta.name,
+        owner: meta.owner_email,
         member: requesterMember
           ? memberForResponse(requesterMember, { includeLinkedEmails: true })
           : null,
         balance,
-        updatedAt: metadata.meta.updated_at,
+        updatedAt: meta.updated_at,
       },
     };
   }
@@ -499,11 +479,11 @@ export class ProjectStore extends DurableObject<Env> {
       return { ok: false, error: "project_limit_exceeded" };
     }
 
-    this.ctx.storage.sql.exec(
-      "UPDATE project_meta SET name = ?, updated_at = ? WHERE id = 1",
+    this.saveProjectMetadata({
+      ...ownerAccess.meta,
       name,
-      input.nowMs,
-    );
+      updated_at: input.nowMs,
+    });
     this.queueProjectSummarySync();
     return { ok: true, name };
   }
@@ -804,14 +784,19 @@ export class ProjectStore extends DurableObject<Env> {
     }
     const emails = ProjectEmailsUtils.uniqueSorted(input.emails);
 
-    if (!policy.allowsAclEmailCount(this.countAclEmailsAfterAppend(emails))) {
+    if (!policy.allowsAclEmailCount(this.countAclEmailsAfterAppend(ownerAccess.meta, emails))) {
       return { ok: false, error: "acl_limit_exceeded" };
     }
 
-    for (const email of emails) {
-      this.ctx.storage.sql.exec("INSERT OR IGNORE INTO acl_allowed_list (email) VALUES (?)", email);
-    }
-    this.touchProject();
+    this.saveProjectMetadata({
+      ...ownerAccess.meta,
+      acl_allowed_list: ProjectEmailsUtils.uniqueSorted([
+        ...ownerAccess.meta.acl_allowed_list,
+        ...emails,
+      ]),
+      updated_at: Date.now(),
+    });
+    this.queueProjectSummarySync();
     return { ok: true };
   }
 
@@ -829,10 +814,15 @@ export class ProjectStore extends DurableObject<Env> {
     }
     const emails = ProjectEmailsUtils.uniqueSorted(input.emails);
 
-    for (const email of emails) {
-      this.ctx.storage.sql.exec("DELETE FROM acl_allowed_list WHERE email = ?", email);
-    }
-    this.touchProject();
+    const removedEmails = new Set(emails);
+    this.saveProjectMetadata({
+      ...ownerAccess.meta,
+      acl_allowed_list: ownerAccess.meta.acl_allowed_list.filter(
+        (email) => !removedEmails.has(email),
+      ),
+      updated_at: Date.now(),
+    });
+    this.queueProjectSummarySync();
     return { ok: true };
   }
 
@@ -849,11 +839,11 @@ export class ProjectStore extends DurableObject<Env> {
       return { ok: false, error: "invalid_input" };
     }
 
-    this.ctx.storage.sql.exec(
-      "UPDATE project_meta SET acl_type = ?, updated_at = ? WHERE id = 1",
-      input.type,
-      Date.now(),
-    );
+    this.saveProjectMetadata({
+      ...ownerAccess.meta,
+      acl_type: input.type,
+      updated_at: Date.now(),
+    });
     this.queueProjectSummarySync();
     return { ok: true };
   }
@@ -881,15 +871,16 @@ export class ProjectStore extends DurableObject<Env> {
       this.initialized = false;
       return { ok: false, error: "uninitialized" };
     }
+    let nextMeta = meta;
     if (input.publicId) {
       const parsed = ProjectId.safeParse(input.publicId);
       if (!parsed.success) {
         return { ok: false, error: "invalid_input" };
       }
-      this.persistPublicIdIfMissing(meta, parsed.data);
+      nextMeta = this.persistPublicIdIfMissing(nextMeta, parsed.data);
     }
 
-    const summary = this.buildProjectSummarySync(Date.now());
+    const summary = this.buildProjectSummarySync(nextMeta, Date.now());
     if (!summary) {
       return { ok: false, error: "missing_public_id" };
     }
@@ -902,6 +893,110 @@ export class ProjectStore extends DurableObject<Env> {
       return synced;
     }
     return { ok: true };
+  }
+
+  // TODO: remove this after backfill 20260615-project-store-metadata-touch is fully done.
+  async ensureMetadataBackfilled(input: {
+    publicId: string;
+  }): Promise<{ ok: true } | { ok: false; error: "uninitialized" | "invalid_input" }> {
+    const parsed = ProjectId.safeParse(input.publicId);
+    if (!parsed.success) {
+      return { ok: false, error: "invalid_input" };
+    }
+    if (!this.initialized) {
+      return { ok: false, error: "uninitialized" };
+    }
+
+    await this.runProjectMetadataBackfill();
+    const meta = this.getMeta();
+    if (!meta) {
+      this.initialized = false;
+      return { ok: false, error: "uninitialized" };
+    }
+    this.persistPublicIdIfMissing(meta, parsed.data);
+    return { ok: true };
+  }
+
+  // TODO: remove this after backfill 20260615-project-metadata-kv is fully done.
+  private async runProjectMetadataBackfill(): Promise<void> {
+    await backfill(this.ctx, PROJECT_METADATA_BACKFILL_NAME, async () => {
+      const stored = this.readProjectMetadata();
+      if (stored) {
+        this.projectMetadata = stored;
+        return null;
+      }
+
+      const legacy = this.getLegacyProjectMetadata();
+      if (legacy) {
+        this.saveProjectMetadata(legacy);
+        return null;
+      }
+
+      if (this.projectMetadata) {
+        this.saveProjectMetadata(this.projectMetadata);
+      }
+      return null;
+    });
+  }
+
+  private readProjectMetadata(): ProjectMetadata | null {
+    const raw = this.ctx.storage.kv.get<string>(PROJECT_METADATA_KEY);
+    if (typeof raw !== "string") {
+      return null;
+    }
+
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+
+    const parsed = ProjectMetadata.safeParse(decoded);
+    return parsed.success ? parsed.data : null;
+  }
+
+  private saveProjectMetadata(metadata: ProjectMetadata): ProjectMetadata {
+    const parsed = ProjectMetadata.safeParse(metadata);
+    if (!parsed.success) {
+      throw new Error("invalid project metadata");
+    }
+
+    this.ctx.storage.kv.put(PROJECT_METADATA_KEY, JSON.stringify(parsed.data));
+    this.projectMetadata = parsed.data;
+    return parsed.data;
+  }
+
+  private getLegacyProjectMetadata(): ProjectMetadata | null {
+    const row =
+      this.ctx.storage.sql
+        .exec<LegacyProjectMetaRow>(
+          `SELECT public_id, name, owner_email, acl_type, next_record_id, next_member_id, created_at, updated_at
+           FROM project_meta
+           WHERE id = 1`,
+        )
+        .toArray()[0] ?? null;
+    if (!row) {
+      return null;
+    }
+
+    const aclAllowedList = this.ctx.storage.sql
+      .exec<AclAllowedListRow>("SELECT email FROM acl_allowed_list ORDER BY email")
+      .toArray()
+      .map((allowed) => allowed.email);
+
+    const parsed = ProjectMetadata.safeParse({
+      public_id: row.public_id,
+      name: row.name,
+      owner_email: row.owner_email,
+      acl_type: row.acl_type,
+      acl_allowed_list: aclAllowedList,
+      next_record_id: Math.max(row.next_record_id, this.getMaxRecordId() + 1),
+      next_member_id: Math.max(row.next_member_id, this.getMaxMemberId() + 1),
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    });
+    return parsed.success ? parsed.data : null;
   }
 
   private async loadOwnerLimitsPolicy(): Promise<LimitsPolicy> {
@@ -948,7 +1043,7 @@ export class ProjectStore extends DurableObject<Env> {
   private getProjectMetadata(
     callerEmail: string | null | undefined,
   ):
-    | { ok: true; email: string | null; isOwner: boolean; meta: ProjectMetaRow }
+    | { ok: true; email: string | null; isOwner: boolean; meta: ProjectMetadata }
     | { ok: false; error: "uninitialized" | "forbidden" } {
     if (!this.initialized) {
       return { ok: false, error: "uninitialized" };
@@ -971,7 +1066,7 @@ export class ProjectStore extends DurableObject<Env> {
   private getOwnerAccess(
     callerEmail: string,
   ):
-    | { ok: true; email: string; meta: ProjectMetaRow }
+    | { ok: true; email: string; meta: ProjectMetadata }
     | { ok: false; error: "uninitialized" | "forbidden" } {
     if (!this.initialized) {
       return { ok: false, error: "uninitialized" };
@@ -990,29 +1085,19 @@ export class ProjectStore extends DurableObject<Env> {
     return { ok: true, email, meta };
   }
 
-  private getMeta(): ProjectMetaRow | null {
-    return (
-      this.ctx.storage.sql
-        .exec<ProjectMetaRow>(
-          "SELECT public_id, name, owner_email, acl_type, next_record_id, next_member_id, updated_at FROM project_meta WHERE id = 1",
-        )
-        .toArray()[0] ?? null
-    );
+  private getMeta(): ProjectMetadata | null {
+    return this.projectMetadata;
   }
 
-  private getAcl(meta: ProjectMetaRow): ProjectAcl {
+  private getAcl(meta: ProjectMetadata): ProjectAcl {
     if (meta.acl_type === "public") {
       return { type: "public" };
     }
 
-    const emails = this.ctx.storage.sql
-      .exec<AclAllowedListRow>("SELECT email FROM acl_allowed_list ORDER BY email")
-      .toArray()
-      .map((row) => row.email);
-    return { type: "restricted", emails };
+    return { type: "restricted", emails: meta.acl_allowed_list };
   }
 
-  private isAuthorized(email: string | null, isOwner: boolean, meta: ProjectMetaRow): boolean {
+  private isAuthorized(email: string | null, isOwner: boolean, meta: ProjectMetadata): boolean {
     if (meta.acl_type === "public" || isOwner) {
       return true;
     }
@@ -1020,10 +1105,7 @@ export class ProjectStore extends DurableObject<Env> {
       return false;
     }
 
-    const allowedEmail = this.ctx.storage.sql
-      .exec<AclAllowedListRow>("SELECT email FROM acl_allowed_list WHERE email = ?", email)
-      .toArray()[0];
-    return allowedEmail !== undefined;
+    return meta.acl_allowed_list.includes(email);
   }
 
   private getMember(memberId: number): MemberRow | null {
@@ -1116,20 +1198,49 @@ export class ProjectStore extends DurableObject<Env> {
   }
 
   private countRecords(): number {
-    return Math.max(0, (this.getMeta()?.next_record_id ?? 1) - 1);
+    return (
+      this.ctx.storage.sql
+        .exec<
+          { count: number } & Record<string, SqlStorageValue>
+        >("SELECT COUNT(*) AS count FROM records")
+        .toArray()[0]?.count ?? 0
+    );
   }
 
-  private countAclEmailsAfterAppend(emails: string[]): number {
-    const allEmails = new Set(
-      this.ctx.storage.sql
-        .exec<AclAllowedListRow>("SELECT email FROM acl_allowed_list")
-        .toArray()
-        .map((row) => row.email),
-    );
+  private countAclEmailsAfterAppend(meta: ProjectMetadata, emails: string[]): number {
+    const allEmails = new Set(meta.acl_allowed_list);
     for (const email of emails) {
       allEmails.add(email);
     }
     return allEmails.size;
+  }
+
+  private getNextRecordId(meta: ProjectMetadata): number {
+    return Math.max(meta.next_record_id, this.getMaxRecordId() + 1);
+  }
+
+  private getNextMemberId(meta: ProjectMetadata): number {
+    return Math.max(meta.next_member_id, this.getMaxMemberId() + 1);
+  }
+
+  private getMaxRecordId(): number {
+    return (
+      this.ctx.storage.sql
+        .exec<
+          { max_id: number | null } & Record<string, SqlStorageValue>
+        >("SELECT MAX(id) AS max_id FROM records")
+        .toArray()[0]?.max_id ?? 0
+    );
+  }
+
+  private getMaxMemberId(): number {
+    return (
+      this.ctx.storage.sql
+        .exec<
+          { max_id: number | null } & Record<string, SqlStorageValue>
+        >("SELECT MAX(id) AS max_id FROM members")
+        .toArray()[0]?.max_id ?? 0
+    );
   }
 
   private createNextMember(input: {
@@ -1137,26 +1248,27 @@ export class ProjectStore extends DurableObject<Env> {
     linkedEmail: string | null;
     nowMs: number;
   }): MemberRow | null {
-    return this.ctx.storage.transactionSync(() => {
-      const meta = this.getMeta();
-      if (!meta) {
-        return null;
-      }
+    const meta = this.getMeta();
+    if (!meta) {
+      return null;
+    }
 
-      const id = meta.next_member_id;
+    const id = this.getNextMemberId(meta);
+    const member = this.ctx.storage.transactionSync(() => {
       this.insertMember({
         id,
         name: input.name,
         linkedEmail: input.linkedEmail,
         nowMs: input.nowMs,
       });
-      this.ctx.storage.sql.exec(
-        "UPDATE project_meta SET next_member_id = ?, updated_at = ? WHERE id = 1",
-        id + 1,
-        input.nowMs,
-      );
       return this.getMember(id) as MemberRow;
     });
+    this.saveProjectMetadata({
+      ...meta,
+      next_member_id: id + 1,
+      updated_at: input.nowMs,
+    });
+    return member;
   }
 
   private insertMember(input: {
@@ -1211,23 +1323,18 @@ export class ProjectStore extends DurableObject<Env> {
     return true;
   }
 
-  /**
-   * Update `updated_at` for project metadata.
-   */
-  private touchProject(): void {
-    this.ctx.storage.sql.exec("UPDATE project_meta SET updated_at = ? WHERE id = 1", Date.now());
-    this.queueProjectSummarySync();
-  }
-
-  private persistPublicIdIfMissing(meta: ProjectMetaRow, publicId: string | undefined): void {
+  private persistPublicIdIfMissing(
+    meta: ProjectMetadata,
+    publicId: string | undefined,
+  ): ProjectMetadata {
     if (meta.public_id || !publicId) {
-      return;
+      return meta;
     }
     const parsed = ProjectId.safeParse(publicId);
     if (!parsed.success) {
-      return;
+      return meta;
     }
-    this.ctx.storage.sql.exec("UPDATE project_meta SET public_id = ? WHERE id = 1", parsed.data);
+    return this.saveProjectMetadata({ ...meta, public_id: parsed.data });
   }
 
   private queueProjectSummarySync(): void {
@@ -1244,9 +1351,11 @@ export class ProjectStore extends DurableObject<Env> {
     await this.ctx.storage.setAlarm(Date.now() + PROJECT_SUMMARY_SYNC_DELAY_MS);
   }
 
-  private buildProjectSummarySync(lastSyncAt: number): ProjectSummarySyncInput | null {
-    const meta = this.getMeta();
-    if (!meta?.public_id) {
+  private buildProjectSummarySync(
+    meta: ProjectMetadata,
+    lastSyncAt: number,
+  ): ProjectSummarySyncInput | null {
+    if (!meta.public_id) {
       return null;
     }
 

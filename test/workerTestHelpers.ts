@@ -17,7 +17,7 @@ export const AUTH_SECRET = "test-auth-secret-at-least-32-bytes";
 export const LOGIN_EMAIL_FROM = "login@example.com";
 export const REGISTRY_LIST_CACHE_NAME = "seisan-registry";
 export const REGISTRY_LIST_CACHE_HOST = "cache.seisan.waga.me";
-const PROJECT_SUMMARY_BACKFILL_NAME = "20260607-project-summary";
+const PROJECT_STORE_METADATA_TOUCH_BACKFILL_NAME = "20260615-project-store-metadata-touch";
 
 export interface TestEnv {
   env: Env;
@@ -190,7 +190,7 @@ export async function createProject(
   expect(response.status).toBe(201);
   const body = (await response.json()) as ProjectResponse;
   await waitForProjectCache(testEnv, body.id);
-  await markProjectSummaryBackfillDone(testEnv);
+  await markProjectStoreMetadataTouchBackfillDone(testEnv);
   return body;
 }
 
@@ -288,7 +288,7 @@ export async function listProjectsFromRegistry(
   testEnv: Env,
   email: string,
 ): Promise<ProjectSummaryResponse["projects"]> {
-  await markProjectSummaryBackfillDone(testEnv);
+  await markProjectStoreMetadataTouchBackfillDone(testEnv);
   const listed = await testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME).listProjects({
     callerEmail: email,
   });
@@ -298,11 +298,11 @@ export async function listProjectsFromRegistry(
   return listed.projects;
 }
 
-async function markProjectSummaryBackfillDone(testEnv: Env): Promise<void> {
+async function markProjectStoreMetadataTouchBackfillDone(testEnv: Env): Promise<void> {
   await runInDurableObject(
     testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
     async (_instance, state) => {
-      await state.storage.put("dbBackfillState", PROJECT_SUMMARY_BACKFILL_NAME);
+      await state.storage.put("dbBackfillState", PROJECT_STORE_METADATA_TOUCH_BACKFILL_NAME);
     },
   );
 }

@@ -203,29 +203,42 @@ describe("registry routes", () => {
     );
   });
 
-  // TODO: remove this after backfill 20260607-project-summary is fully done.
-  it("backfills missing registry summaries before listing caller projects", async () => {
+  // TODO: remove this after backfill 20260615-project-store-metadata-touch is fully done.
+  it("touches registered project stores to backfill project metadata before listing", async () => {
     const { env: testEnv } = makeEnv();
-    const owner = `registry-backfill-${crypto.randomUUID()}@example.com`;
+    const owner = `registry-metadata-backfill-${crypto.randomUUID()}@example.com`;
     const project = await createProject(testEnv, {
       owner,
-      name: "Backfilled Summary",
+      name: "Registry Metadata Backfill",
       ownerMemberName: "Alice",
     });
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
     await (await caches.open(REGISTRY_LIST_CACHE_NAME)).delete(registryListCacheRequest(owner));
+    const projectStore = await getProjectStoreStub(testEnv, project.id);
 
+    await runInDurableObject(projectStore, async (instance, state) => {
+      state.storage.sql.exec(
+        `INSERT OR REPLACE INTO project_meta
+          (id, public_id, name, owner_email, acl_type, next_record_id, next_member_id, created_at, updated_at)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        project.id,
+        "Registry Metadata Backfill",
+        owner,
+        "public",
+        1,
+        2,
+        Date.now(),
+        Date.now(),
+      );
+      state.storage.sql.exec("DELETE FROM acl_allowed_list");
+      await state.storage.delete("projectMetadata");
+      await state.storage.delete("dbBackfillState");
+      (instance as unknown as { projectMetadata: unknown }).projectMetadata = null;
+    });
     await runInDurableObject(
       testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
       async (_instance, state) => {
         await state.storage.delete("dbBackfillState");
-        state.storage.sql.exec("DELETE FROM project_summaries WHERE project_id = ?", project.id);
-        const count =
-          state.storage.sql
-            .exec<
-              { count: number } & Record<string, SqlStorageValue>
-            >("SELECT COUNT(*) AS count FROM project_summaries WHERE project_id = ?", project.id)
-            .toArray()[0]?.count ?? 0;
-        expect(count).toBe(0);
       },
     );
 
@@ -237,7 +250,7 @@ describe("registry routes", () => {
     expect(((await response.json()) as ProjectSummaryResponse).projects).toContainEqual(
       expect.objectContaining({
         id: project.id,
-        name: "Backfilled Summary",
+        name: "Registry Metadata Backfill",
         balance: 0,
         member: expect.objectContaining({ id: 1, name: "Alice" }),
         lastSyncAt: expect.any(Number),
@@ -247,15 +260,26 @@ describe("registry routes", () => {
     await runInDurableObject(
       testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
       async (_instance, state) => {
-        const count =
-          state.storage.sql
-            .exec<
-              { count: number } & Record<string, SqlStorageValue>
-            >("SELECT COUNT(*) AS count FROM project_summaries WHERE project_id = ?", project.id)
-            .toArray()[0]?.count ?? 0;
-        expect(count).toBe(1);
+        await expect(state.storage.get<string>("dbBackfillState")).resolves.toBe(
+          "20260615-project-store-metadata-touch",
+        );
       },
     );
+    await runInDurableObject(projectStore, async (_instance, state) => {
+      await expect(state.storage.get<string>("dbBackfillState")).resolves.toBe(
+        "20260615-project-metadata-kv",
+      );
+      const raw = await state.storage.get<string>("projectMetadata");
+      expect(JSON.parse(raw ?? "")).toMatchObject({
+        public_id: project.id,
+        name: "Registry Metadata Backfill",
+        owner_email: owner,
+      });
+    });
+    await expect(getProject(testEnv, project.id, owner)).resolves.toMatchObject({
+      id: project.id,
+      name: "Registry Metadata Backfill",
+    });
   });
 
   it("batches project summary updates behind a single durable object alarm", async () => {
