@@ -170,7 +170,13 @@ When asked to resolve a red-team issue:
 3. Implement the narrowest fix that resolves that issue without broad unrelated refactors.
 4. Add or update focused tests proving the issue is fixed or no longer valid.
 5. Run the narrowest relevant verification commands.
-6. Move the report from `red-team/active/` to `red-team/resolved/` with the script:
+6. If the resolution is `Fixed`, run a live local replay before moving the report:
+   - Use the same state and server lifecycle as the scan agent: record baseline facts, back up `.wrangler/state`, ensure a clean `.wrangler/state`, start `pnpm run dev`, wait for `/api/ping`, stop the exact dev-server session, and restore the user's original state before finishing.
+   - Recreate the report's `## Reproduce Steps` against `http://localhost:5173` or `http://127.0.0.1:5173` using the clean local state. Seed accounts, projects, admin limits, or other prerequisites through the API as needed.
+   - Verify that the abusive path no longer works. Prefer the same request sequence that previously demonstrated the issue, and capture the new statuses/responses in the resolved report's `## Resolution` section.
+   - If the original reproduction cannot be replayed exactly, document the gap and run the closest live API proof plus focused tests. Do not mark `Fixed` if there is no live evidence that the reported path is blocked.
+   - For `Risk Accepted` or `Not Valid`, do not run the fixed live replay unless it is needed to prove the classification.
+7. Move the report from `red-team/active/` to `red-team/resolved/` with the script:
 
    ```bash
    uv run --script .agents/skills/seisan-security-analysis/scripts/red_team_reports.py resolve RT-1 \
@@ -178,14 +184,14 @@ When asked to resolve a red-team issue:
      --details "Describe how the issue was resolved and verified."
    ```
 
-7. Rename the resolved file as:
+8. Rename the resolved file as:
 
    `red-team/resolved/<id>-<severity-slug>-<title-slug>-<YYYYMMDD-HHMMSS>.md`
 
    The script handles the move, rename, `Resolution:` field, `## Resolution` section, and metadata update.
 
-8. Edit the resolved markdown manually if the generated resolution details need polish.
-9. Run `validate`.
+9. Edit the resolved markdown manually if the generated resolution details need polish.
+10. Run `validate`.
 
 Resolved report format:
 
