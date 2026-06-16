@@ -406,6 +406,39 @@ describe("auth worker", () => {
     );
   });
 
+  it("rejects forged origins before verifying login codes", async () => {
+    const email = uniqueEmail();
+    const { env: testEnv, sentEmails } = makeEnv();
+
+    const attemptResponse = await dispatch(
+      "/login/attempt",
+      testEnv,
+      jsonPost(loginAttemptBody(email)),
+    );
+    const attemptId = await readLoginAttemptId(attemptResponse);
+    const code = /\b(\d{6})\b/u.exec(sentEmails[0].text ?? "")?.[1];
+    expect(code).toBeDefined();
+
+    const forgedOrigin = await dispatch(
+      "/login/verify",
+      testEnv,
+      jsonPost(loginVerifyBody(email, code ?? "", attemptId), {
+        Origin: "https://evil.example",
+      }),
+    );
+    expect(forgedOrigin.status).toBe(403);
+    expect(await forgedOrigin.json()).toEqual({ error: "forbidden" });
+    expect(forgedOrigin.headers.get("set-cookie")).toBeNull();
+
+    const retryWithoutOrigin = await dispatch(
+      "/login/verify",
+      testEnv,
+      jsonPost(loginVerifyBody(email, code ?? "", attemptId)),
+    );
+    expect(retryWithoutOrigin.status).toBe(200);
+    expect(retryWithoutOrigin.headers.get("set-cookie")).toContain(`${SESSION_COOKIE_NAME}=`);
+  });
+
   it("allows a configured fixed code for any local dev email only on localhost", async () => {
     const email = uniqueEmail();
     const { env: testEnv, sentEmails } = makeEnv();
@@ -521,5 +554,46 @@ describe("auth worker", () => {
     expect(response.headers.get("set-cookie")).toContain(`${SESSION_COOKIE_NAME}=`);
     expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
     expect(await testEnv.REVOKED_TOKENS.get(tokenHash)).toBe("");
+  });
+
+  it("rejects forged origins on logout without revoking the session", async () => {
+    const email = uniqueEmail();
+    const { env: testEnv } = makeEnv();
+    const token = await createVerifiedSession(testEnv, email);
+    const tokenHash = await sha256Hex(token);
+
+    const response = await dispatch("/logout", testEnv, {
+      method: "POST",
+      headers: {
+        Cookie: `${SESSION_COOKIE_NAME}=${token}`,
+        Origin: "https://evil.example",
+      },
+    });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "forbidden" });
+    expect(await testEnv.REVOKED_TOKENS.get(tokenHash)).toBeNull();
+
+    const whoami = await dispatch("/whoami", testEnv, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${token}` },
+    });
+    expect(whoami.status).toBe(200);
+    expect(await whoami.json()).toEqual({ email });
+  });
+
+  it("accepts same-origin logout requests", async () => {
+    const email = uniqueEmail();
+    const { env: testEnv } = makeEnv();
+    const token = await createVerifiedSession(testEnv, email);
+
+    const response = await dispatch("/logout", testEnv, {
+      method: "POST",
+      headers: {
+        Cookie: `${SESSION_COOKIE_NAME}=${token}`,
+        Origin: "https://seisan.test",
+      },
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
   });
 });

@@ -69,6 +69,24 @@ export function getRequiredIdentity(context: AppContext): Identity {
   return identity;
 }
 
+export const requireSameOriginWhenPresent: MiddlewareHandler<EnvWithIdentity> = async (
+  context,
+  next,
+) => {
+  const origin = context.req.header("Origin");
+  if (origin === undefined) {
+    // Allow non-browser requests
+    await next();
+    return;
+  }
+
+  if (!isCanonicalOrigin(origin) || origin !== new URL(context.req.url).origin) {
+    return ErrorResponse.forbidden();
+  }
+
+  await next();
+};
+
 export const optionalAuth: MiddlewareHandler<EnvWithIdentity> = async (context, next) => {
   context.set("identity", (await authenticate(context)) ?? undefined);
   await next();
@@ -83,3 +101,11 @@ export const requireAuth: MiddlewareHandler<EnvWithIdentity> = async (context, n
   context.set("identity", identity);
   await next();
 };
+
+function isCanonicalOrigin(origin: string): boolean {
+  try {
+    return new URL(origin).origin === origin;
+  } catch {
+    return false;
+  }
+}

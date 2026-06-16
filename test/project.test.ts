@@ -140,6 +140,68 @@ describe("project routes", () => {
     expect(response.status).toBe(404);
   });
 
+  it("validates project creation Origin only when the header is present", async () => {
+    const { env: testEnv } = makeEnv();
+    const projectCreateBody = (name: string) => ({
+      name,
+      acl: { type: "public" as const },
+    });
+
+    const forgedOrigin = await dispatch(
+      "/project",
+      testEnv,
+      jsonBody("PUT", projectCreateBody("Forged Origin"), {
+        ...(await authHeaders(`forged-origin-${crypto.randomUUID()}@example.com`)),
+        Origin: "https://evil.example",
+      }),
+    );
+    expect(forgedOrigin.status).toBe(403);
+    expect(await forgedOrigin.json()).toEqual({ error: "forbidden" });
+
+    const missingOrigin = await dispatch(
+      "/project",
+      testEnv,
+      jsonBody(
+        "PUT",
+        projectCreateBody("Missing Origin"),
+        await authHeaders(`missing-origin-${crypto.randomUUID()}@example.com`),
+      ),
+    );
+    expect(missingOrigin.status).toBe(201);
+
+    const sameOrigin = await dispatch(
+      "/project",
+      testEnv,
+      jsonBody("PUT", projectCreateBody("Same Origin"), {
+        ...(await authHeaders(`same-origin-${crypto.randomUUID()}@example.com`)),
+        Origin: "https://seisan.test",
+      }),
+    );
+    expect(sameOrigin.status).toBe(201);
+
+    const textPlainJson = await dispatch("/project", testEnv, {
+      method: "PUT",
+      headers: {
+        ...(await authHeaders(`text-plain-${crypto.randomUUID()}@example.com`)),
+        "Content-Type": "text/plain",
+      },
+      body: JSON.stringify(projectCreateBody("Text Plain JSON")),
+    });
+    expect(textPlainJson.status).toBe(201);
+
+    const forgedTextPlainJson = await dispatch("/project", testEnv, {
+      method: "PUT",
+      headers: {
+        ...(await authHeaders(`forged-text-plain-${crypto.randomUUID()}@example.com`)),
+        "Content-Type": "text/plain",
+        Origin: "https://evil.waga.me",
+      },
+      body: JSON.stringify(projectCreateBody("Forged Text Plain JSON")),
+    });
+    expect(forgedTextPlainJson.status).toBe(403);
+    expect(await forgedTextPlainJson.json()).toEqual({ error: "forbidden" });
+  });
+
   it("enforces a per-user project cap before creating another project store", async () => {
     const { env: testEnv } = makeEnv();
     const owner = `cap-${crypto.randomUUID()}@example.com`;

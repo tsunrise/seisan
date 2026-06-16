@@ -9,6 +9,7 @@ import {
   getSessionToken,
   parseJson,
   requireAuth,
+  requireSameOriginWhenPresent,
 } from "../auth";
 import { LOGIN_CODE_TTL_MS, SESSION_COOKIE_NAME, SESSION_TTL_SECONDS } from "../constants";
 import {
@@ -98,7 +99,7 @@ loginApp.post("/login/attempt", async (context) => {
   return context.json({ ok: true, id: attempt.id }, 202);
 });
 
-loginApp.post("/login/verify", async (context) => {
+loginApp.post("/login/verify", requireSameOriginWhenPresent, async (context) => {
   const parsed = await parseJson(context, LoginVerify);
   if (!parsed.ok) {
     return ErrorResponse.invalidRequest();
@@ -129,7 +130,7 @@ loginApp.post("/login/verify", async (context) => {
   return context.json({ ok: true });
 });
 
-loginApp.post("/logout", async (context) => {
+loginApp.post("/logout", requireSameOriginWhenPresent, async (context) => {
   const token = getSessionToken(context);
   if (token) {
     const payload = await verifySessionToken(token, context.env.AUTH_SECRET, {

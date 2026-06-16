@@ -8,6 +8,7 @@ import {
   optionalAuth,
   parseJson,
   requireAuth,
+  requireSameOriginWhenPresent,
 } from "../auth";
 import type { ProjectStore } from "../do/ProjectStore";
 import { normalizeEmail, normalizedEmailSchema } from "../email";
@@ -163,8 +164,7 @@ const ProjectCreate = z.object({
   ownerMemberName: MemberName.optional(),
 });
 
-// Reminder: add an Origin/CSRF check before these cookie-authenticated mutation routes become browser-facing.
-projectApp.put("/project", requireAuth, async (context) => {
+projectApp.put("/project", requireSameOriginWhenPresent, requireAuth, async (context) => {
   const parsed = await parseJson(context, ProjectCreate);
   if (!parsed.ok) {
     return ErrorResponse.invalidRequest();
@@ -280,7 +280,7 @@ const ProjectRename = z.object({
   name: ProjectName,
 });
 
-projectApp.patch("/project/:id", requireAuth, async (context) => {
+projectApp.patch("/project/:id", requireSameOriginWhenPresent, requireAuth, async (context) => {
   if (!isValidProjectId(context.req.param("id"))) {
     return ErrorResponse.notFound();
   }
@@ -314,111 +314,131 @@ const ProjectAclEmails = z.object({
     .transform(ProjectEmailsUtils.uniqueSorted),
 });
 
-projectApp.post("/project/:id/acl/emails", requireAuth, async (context) => {
-  if (!isValidProjectId(context.req.param("id"))) {
-    return ErrorResponse.notFound();
-  }
+projectApp.post(
+  "/project/:id/acl/emails",
+  requireSameOriginWhenPresent,
+  requireAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
+    }
 
-  const projectLookup = await getProjectStore(context, context.req.param("id"));
-  if (!projectLookup) {
-    return ErrorResponse.notFound();
-  }
-  const parsed = await parseJson(context, ProjectAclEmails);
-  if (!parsed.ok) {
-    return ErrorResponse.invalidRequest();
-  }
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
+    const parsed = await parseJson(context, ProjectAclEmails);
+    if (!parsed.ok) {
+      return ErrorResponse.invalidRequest();
+    }
 
-  return mapAclAdminResult(
-    await projectLookup.store.appendEmailsToAcl({
-      callerEmail: getRequiredIdentity(context).email,
-      emails: parsed.data.emails,
-    }),
-  );
-});
+    return mapAclAdminResult(
+      await projectLookup.store.appendEmailsToAcl({
+        callerEmail: getRequiredIdentity(context).email,
+        emails: parsed.data.emails,
+      }),
+    );
+  },
+);
 
-projectApp.delete("/project/:id/acl/emails", requireAuth, async (context) => {
-  if (!isValidProjectId(context.req.param("id"))) {
-    return ErrorResponse.notFound();
-  }
+projectApp.delete(
+  "/project/:id/acl/emails",
+  requireSameOriginWhenPresent,
+  requireAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
+    }
 
-  const projectLookup = await getProjectStore(context, context.req.param("id"));
-  if (!projectLookup) {
-    return ErrorResponse.notFound();
-  }
-  const parsed = await parseJson(context, ProjectAclEmails);
-  if (!parsed.ok) {
-    return ErrorResponse.invalidRequest();
-  }
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
+    const parsed = await parseJson(context, ProjectAclEmails);
+    if (!parsed.ok) {
+      return ErrorResponse.invalidRequest();
+    }
 
-  return mapAclAdminResult(
-    await projectLookup.store.removeEmailsFromAcl({
-      callerEmail: getRequiredIdentity(context).email,
-      emails: parsed.data.emails,
-    }),
-  );
-});
+    return mapAclAdminResult(
+      await projectLookup.store.removeEmailsFromAcl({
+        callerEmail: getRequiredIdentity(context).email,
+        emails: parsed.data.emails,
+      }),
+    );
+  },
+);
 
 const ProjectAclTypeUpdate = z.object({
   type: z.enum(["public", "restricted"]),
 });
 
-projectApp.put("/project/:id/acl/type", requireAuth, async (context) => {
-  if (!isValidProjectId(context.req.param("id"))) {
-    return ErrorResponse.notFound();
-  }
+projectApp.put(
+  "/project/:id/acl/type",
+  requireSameOriginWhenPresent,
+  requireAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
+    }
 
-  const projectLookup = await getProjectStore(context, context.req.param("id"));
-  if (!projectLookup) {
-    return ErrorResponse.notFound();
-  }
-  const parsed = await parseJson(context, ProjectAclTypeUpdate);
-  if (!parsed.ok) {
-    return ErrorResponse.invalidRequest();
-  }
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
+    const parsed = await parseJson(context, ProjectAclTypeUpdate);
+    if (!parsed.ok) {
+      return ErrorResponse.invalidRequest();
+    }
 
-  return mapAclAdminResult(
-    await projectLookup.store.setAclType({
-      callerEmail: getRequiredIdentity(context).email,
-      type: parsed.data.type,
-    }),
-  );
-});
+    return mapAclAdminResult(
+      await projectLookup.store.setAclType({
+        callerEmail: getRequiredIdentity(context).email,
+        type: parsed.data.type,
+      }),
+    );
+  },
+);
 
 const ProjectMemberCreate = z.object({
   name: MemberName,
 });
 
-projectApp.post("/project/:id/members", requireAuth, async (context) => {
-  if (!isValidProjectId(context.req.param("id"))) {
-    return ErrorResponse.notFound();
-  }
+projectApp.post(
+  "/project/:id/members",
+  requireSameOriginWhenPresent,
+  requireAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
+    }
 
-  const projectLookup = await getProjectStore(context, context.req.param("id"));
-  if (!projectLookup) {
-    return ErrorResponse.notFound();
-  }
-  const parsed = await parseJson(context, ProjectMemberCreate);
-  if (!parsed.ok) {
-    return ErrorResponse.invalidRequest();
-  }
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
+    const parsed = await parseJson(context, ProjectMemberCreate);
+    if (!parsed.ok) {
+      return ErrorResponse.invalidRequest();
+    }
 
-  const result = await projectLookup.store.createMember({
-    callerEmail: getRequiredIdentity(context).email,
-    name: parsed.data.name,
-    nowMs: Date.now(),
-  });
-  if (!result.ok) {
-    return mapProjectStoreError(result.error);
-  }
-  return context.json({ member: result.member }, 201);
-});
+    const result = await projectLookup.store.createMember({
+      callerEmail: getRequiredIdentity(context).email,
+      name: parsed.data.name,
+      nowMs: Date.now(),
+    });
+    if (!result.ok) {
+      return mapProjectStoreError(result.error);
+    }
+    return context.json({ member: result.member }, 201);
+  },
+);
 
 const ProjectJoin = z.union([
   z.object({ memberId: MemberId }).strict().describe("claim unlinked member"),
   z.object({ name: MemberName }).strict().describe("create a new member"),
 ]);
 
-projectApp.post("/project/:id/join", requireAuth, async (context) => {
+projectApp.post("/project/:id/join", requireSameOriginWhenPresent, requireAuth, async (context) => {
   if (!isValidProjectId(context.req.param("id"))) {
     return ErrorResponse.notFound();
   }
@@ -465,168 +485,188 @@ projectApp.post("/project/:id/join", requireAuth, async (context) => {
   return context.json({ member: result.member }, 201);
 });
 
-projectApp.post("/project/:id/leave", requireAuth, async (context) => {
-  if (!isValidProjectId(context.req.param("id"))) {
-    return ErrorResponse.notFound();
-  }
+projectApp.post(
+  "/project/:id/leave",
+  requireSameOriginWhenPresent,
+  requireAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
+    }
 
-  const projectLookup = await getProjectStore(context, context.req.param("id"));
-  if (!projectLookup) {
-    return ErrorResponse.notFound();
-  }
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
 
-  const result = await projectLookup.store.leaveProject({
-    callerEmail: getRequiredIdentity(context).email,
-    nowMs: Date.now(),
-  });
-  if (!result.ok) {
-    return mapProjectStoreError(result.error);
-  }
+    const result = await projectLookup.store.leaveProject({
+      callerEmail: getRequiredIdentity(context).email,
+      nowMs: Date.now(),
+    });
+    if (!result.ok) {
+      return mapProjectStoreError(result.error);
+    }
 
-  const removed = await context.env.PROJECTS_REGISTRY.getByName(
-    PROJECTS_REGISTRY_NAME,
-  ).removeProjectMember({
-    id: projectLookup.projectId,
-    email: result.removedLinkedEmail,
-  });
-  if (!removed.ok) {
-    return ErrorResponse.internalServerError();
-  }
+    const removed = await context.env.PROJECTS_REGISTRY.getByName(
+      PROJECTS_REGISTRY_NAME,
+    ).removeProjectMember({
+      id: projectLookup.projectId,
+      email: result.removedLinkedEmail,
+    });
+    if (!removed.ok) {
+      return ErrorResponse.internalServerError();
+    }
 
-  return context.body(null, 204);
-});
+    return context.body(null, 204);
+  },
+);
 
 const ProjectMemberEmailUnlink = z.object({
   email: normalizedEmailSchema,
 });
 
-projectApp.delete("/project/:id/member-links", requireAuth, async (context) => {
-  if (!isValidProjectId(context.req.param("id"))) {
-    return ErrorResponse.notFound();
-  }
+projectApp.delete(
+  "/project/:id/member-links",
+  requireSameOriginWhenPresent,
+  requireAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
+    }
 
-  const parsed = await parseJson(context, ProjectMemberEmailUnlink);
-  if (!parsed.ok) {
-    return ErrorResponse.invalidRequest();
-  }
+    const parsed = await parseJson(context, ProjectMemberEmailUnlink);
+    if (!parsed.ok) {
+      return ErrorResponse.invalidRequest();
+    }
 
-  const projectLookup = await getProjectStore(context, context.req.param("id"));
-  if (!projectLookup) {
-    return ErrorResponse.notFound();
-  }
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
 
-  const result = await projectLookup.store.unlinkMemberEmail({
-    callerEmail: getRequiredIdentity(context).email,
-    email: parsed.data.email,
-    nowMs: Date.now(),
-  });
-  if (!result.ok) {
-    return mapProjectStoreError(result.error);
-  }
+    const result = await projectLookup.store.unlinkMemberEmail({
+      callerEmail: getRequiredIdentity(context).email,
+      email: parsed.data.email,
+      nowMs: Date.now(),
+    });
+    if (!result.ok) {
+      return mapProjectStoreError(result.error);
+    }
 
-  const removed = await context.env.PROJECTS_REGISTRY.getByName(
-    PROJECTS_REGISTRY_NAME,
-  ).removeProjectMember({
-    id: projectLookup.projectId,
-    email: result.removedLinkedEmail,
-  });
-  if (!removed.ok) {
-    return ErrorResponse.internalServerError();
-  }
+    const removed = await context.env.PROJECTS_REGISTRY.getByName(
+      PROJECTS_REGISTRY_NAME,
+    ).removeProjectMember({
+      id: projectLookup.projectId,
+      email: result.removedLinkedEmail,
+    });
+    if (!removed.ok) {
+      return ErrorResponse.internalServerError();
+    }
 
-  return context.body(null, 204);
-});
+    return context.body(null, 204);
+  },
+);
 
 const ProjectMemberPatch = z.union([
   z.object({ name: MemberName }).strict(),
   z.object({ email: z.literal("") }).strict(),
 ]);
 
-projectApp.patch("/project/:id/members/:memberId", requireAuth, async (context) => {
-  if (!isValidProjectId(context.req.param("id"))) {
-    return ErrorResponse.notFound();
-  }
-
-  const memberId = ProjectRouteParams.parseMemberId(context.req.param("memberId"));
-  if (memberId === null) {
-    return ErrorResponse.notFound();
-  }
-
-  const parsed = await parseJson(context, ProjectMemberPatch);
-  if (!parsed.ok) {
-    return ErrorResponse.invalidRequest();
-  }
-
-  const projectLookup = await getProjectStore(context, context.req.param("id"));
-  if (!projectLookup) {
-    return ErrorResponse.notFound();
-  }
-
-  const result = await projectLookup.store.patchMember({
-    callerEmail: getRequiredIdentity(context).email,
-    memberId,
-    patch: parsed.data,
-    nowMs: Date.now(),
-  });
-  if (!result.ok) {
-    return mapProjectStoreError(result.error);
-  }
-  if (result.removedLinkedEmail) {
-    const removed = await context.env.PROJECTS_REGISTRY.getByName(
-      PROJECTS_REGISTRY_NAME,
-    ).removeProjectMember({
-      id: projectLookup.projectId,
-      email: result.removedLinkedEmail,
-    });
-    if (!removed.ok) {
-      return ErrorResponse.internalServerError();
+projectApp.patch(
+  "/project/:id/members/:memberId",
+  requireSameOriginWhenPresent,
+  requireAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
     }
-  }
-  return context.json({ member: result.member });
-});
 
-projectApp.delete("/project/:id/members/:memberId", requireAuth, async (context) => {
-  if (!isValidProjectId(context.req.param("id"))) {
-    return ErrorResponse.notFound();
-  }
-
-  const memberId = ProjectRouteParams.parseMemberId(context.req.param("memberId"));
-  if (memberId === null) {
-    return ErrorResponse.notFound();
-  }
-
-  const projectLookup = await getProjectStore(context, context.req.param("id"));
-  if (!projectLookup) {
-    return ErrorResponse.notFound();
-  }
-  const result = await projectLookup.store.deleteMember({
-    callerEmail: getRequiredIdentity(context).email,
-    memberId,
-    nowMs: Date.now(),
-  });
-  if (!result.ok) {
-    return mapProjectStoreError(result.error);
-  }
-  if (result.removedLinkedEmail) {
-    const removed = await context.env.PROJECTS_REGISTRY.getByName(
-      PROJECTS_REGISTRY_NAME,
-    ).removeProjectMember({
-      id: projectLookup.projectId,
-      email: result.removedLinkedEmail,
-    });
-    if (!removed.ok) {
-      return ErrorResponse.internalServerError();
+    const memberId = ProjectRouteParams.parseMemberId(context.req.param("memberId"));
+    if (memberId === null) {
+      return ErrorResponse.notFound();
     }
-  }
-  return context.body(null, 204);
-});
+
+    const parsed = await parseJson(context, ProjectMemberPatch);
+    if (!parsed.ok) {
+      return ErrorResponse.invalidRequest();
+    }
+
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
+
+    const result = await projectLookup.store.patchMember({
+      callerEmail: getRequiredIdentity(context).email,
+      memberId,
+      patch: parsed.data,
+      nowMs: Date.now(),
+    });
+    if (!result.ok) {
+      return mapProjectStoreError(result.error);
+    }
+    if (result.removedLinkedEmail) {
+      const removed = await context.env.PROJECTS_REGISTRY.getByName(
+        PROJECTS_REGISTRY_NAME,
+      ).removeProjectMember({
+        id: projectLookup.projectId,
+        email: result.removedLinkedEmail,
+      });
+      if (!removed.ok) {
+        return ErrorResponse.internalServerError();
+      }
+    }
+    return context.json({ member: result.member });
+  },
+);
+
+projectApp.delete(
+  "/project/:id/members/:memberId",
+  requireSameOriginWhenPresent,
+  requireAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
+    }
+
+    const memberId = ProjectRouteParams.parseMemberId(context.req.param("memberId"));
+    if (memberId === null) {
+      return ErrorResponse.notFound();
+    }
+
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
+    const result = await projectLookup.store.deleteMember({
+      callerEmail: getRequiredIdentity(context).email,
+      memberId,
+      nowMs: Date.now(),
+    });
+    if (!result.ok) {
+      return mapProjectStoreError(result.error);
+    }
+    if (result.removedLinkedEmail) {
+      const removed = await context.env.PROJECTS_REGISTRY.getByName(
+        PROJECTS_REGISTRY_NAME,
+      ).removeProjectMember({
+        id: projectLookup.projectId,
+        email: result.removedLinkedEmail,
+      });
+      if (!removed.ok) {
+        return ErrorResponse.internalServerError();
+      }
+    }
+    return context.body(null, 204);
+  },
+);
 
 const ProjectAppendRecord = z.object({
   delta: MoneyMap,
   description: RecordDescription,
 });
 
-projectApp.post("/project/:id", requireAuth, async (context) => {
+projectApp.post("/project/:id", requireSameOriginWhenPresent, requireAuth, async (context) => {
   if (!isValidProjectId(context.req.param("id"))) {
     return ErrorResponse.notFound();
   }
