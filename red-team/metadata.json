@@ -66,12 +66,13 @@
     },
     {
       "id": "RT-7",
-      "status": "active",
+      "status": "resolved",
       "severity": "Low/Medium",
       "title": "Random UUID Lookup Spray Has No Negative Cache",
-      "file": "active/rt-7-random-uuid-lookup-spray-has-no-negative-cache-20260614-141328.md",
+      "file": "resolved/rt-7-low-medium-random-uuid-lookup-spray-has-no-negative-cache-20260615-224627.md",
       "date": "2026-06-14 14:13:28 PDT",
-      "commit": "25f932606bd064aa29331732e190ef814c8889e6"
+      "commit": "25f932606bd064aa29331732e190ef814c8889e6",
+      "resolution": "Fixed"
     },
     {
       "id": "RT-8",

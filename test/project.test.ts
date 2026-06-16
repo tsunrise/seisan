@@ -14,13 +14,11 @@ import {
   limitsDocument,
   listProjectsFromRegistry,
   makeEnv,
-  parseProjectRefCacheValue,
   projectRefCacheKey,
   putDefaultLimits,
   putUserLimits,
   runProjectSummaryAlarm,
   serializeProjectRefCacheValue,
-  waitForProjectCacheMissRepair,
   type ProjectResponse,
   type ProjectSummaryResponse,
 } from "./workerTestHelpers";
@@ -60,19 +58,28 @@ describe("project routes", () => {
     expect(cacheGet).not.toHaveBeenCalled();
   });
 
-  it("uses the registry on cache miss and does not hit ProjectStore for unknown UUIDs", async () => {
+  it("treats project-ref KV misses as terminal negative cache entries", async () => {
+    const projectId = crypto.randomUUID();
+    const cacheGet = vi.fn(() => Promise.resolve(null));
+    const registryGetByName = vi.fn(() => {
+      throw new Error("PROJECTS_REGISTRY should not be touched");
+    });
     const projectStoreGet = vi.fn(() => {
       throw new Error("PROJECT_STORE should not be touched");
     });
     const { env: testEnv } = makeEnv({
+      PROJECT_REGISTRY_CACHE: { get: cacheGet } as unknown as KVNamespace,
+      PROJECTS_REGISTRY: { getByName: registryGetByName } as unknown as Env["PROJECTS_REGISTRY"],
       PROJECT_STORE: { get: projectStoreGet } as unknown as Env["PROJECT_STORE"],
     });
 
-    const response = await dispatch(`/project/${crypto.randomUUID()}`, testEnv, {
+    const response = await dispatch(`/project/${projectId}`, testEnv, {
       headers: await authHeaders(),
     });
 
     expect(response.status).toBe(404);
+    expect(cacheGet).toHaveBeenCalledWith(projectRefCacheKey(projectId), { cacheTtl: 60 });
+    expect(registryGetByName).not.toHaveBeenCalled();
     expect(projectStoreGet).not.toHaveBeenCalled();
   });
 
@@ -98,30 +105,33 @@ describe("project routes", () => {
     expect(registryGetByName).not.toHaveBeenCalled();
   });
 
-  it("repairs missing cache for older registry rows after lookup", async () => {
+  it("does not fall back to the registry when existing projects are missing from KV", async () => {
     const { env: testEnv } = makeEnv();
     const project = await createProject(testEnv);
     const cacheKey = projectRefCacheKey(project.id);
     await testEnv.PROJECT_REGISTRY_CACHE.delete(cacheKey);
-    await runInDurableObject(
-      testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
-      async (_instance, state) => {
-        state.storage.sql.exec(
-          "UPDATE projects SET created_at = ? WHERE id = ?",
-          Date.now() - 11 * 60 * 1000,
-          project.id,
-        );
+    const registryGetByName = vi.fn(() => {
+      throw new Error("PROJECTS_REGISTRY should not be touched");
+    });
+    const projectStoreGet = vi.fn(() => {
+      throw new Error("PROJECT_STORE should not be touched");
+    });
+
+    const response = await dispatch(
+      `/project/${project.id}`,
+      {
+        ...testEnv,
+        PROJECTS_REGISTRY: { getByName: registryGetByName } as unknown as Env["PROJECTS_REGISTRY"],
+        PROJECT_STORE: { get: projectStoreGet } as unknown as Env["PROJECT_STORE"],
+      } as Env,
+      {
+        headers: await authHeaders(),
       },
     );
 
-    const response = await dispatch(`/project/${project.id}`, testEnv, {
-      headers: await authHeaders(),
-    });
-
-    expect(response.status).toBe(200);
-    await waitForProjectCacheMissRepair(testEnv, project.id);
-    const cacheValue = await testEnv.PROJECT_REGISTRY_CACHE.get(cacheKey);
-    expect(parseProjectRefCacheValue(cacheValue ?? "")?.doId).toMatch(/^[0-9a-f]{64}$/u);
+    expect(response.status).toBe(404);
+    expect(registryGetByName).not.toHaveBeenCalled();
+    expect(projectStoreGet).not.toHaveBeenCalled();
   });
 
   it("maps stale cache entries pointing to uninitialized project DOs to 404", async () => {

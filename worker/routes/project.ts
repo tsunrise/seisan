@@ -156,6 +156,11 @@ interface ProjectRef {
   doId: string;
 }
 
+type ProjectRefCacheRead =
+  | { status: "hit"; projectReference: ProjectRef }
+  | { status: "miss" }
+  | { status: "unavailable" };
+
 export const projectApp = new Hono<EnvWithIdentity>();
 
 const ProjectCreate = z.object({
@@ -751,8 +756,11 @@ class ProjectRefFetcher {
 
   async fetch(projectId: string): Promise<ProjectRef | null> {
     const cached = await this.readCache(projectId);
-    if (cached) {
-      return cached;
+    if (cached.status === "hit") {
+      return cached.projectReference;
+    }
+    if (cached.status === "miss") {
+      return null;
     }
 
     const registry = this.env.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME);
@@ -760,7 +768,7 @@ class ProjectRefFetcher {
     return lookup.ok ? { doId: lookup.doId } : null;
   }
 
-  private async readCache(projectId: string): Promise<ProjectRef | null> {
+  private async readCache(projectId: string): Promise<ProjectRefCacheRead> {
     try {
       const cached = await this.env.PROJECT_REGISTRY_CACHE.get(
         ProjectRefFetcher.cacheKey(projectId),
@@ -768,10 +776,15 @@ class ProjectRefFetcher {
           cacheTtl: PROJECT_REGISTRY_CACHE_TTL_SECONDS,
         },
       );
-      return cached === null ? null : ProjectRefFetcher.parseCacheValue(cached);
+      if (cached === null) {
+        return { status: "miss" };
+      }
+
+      const projectReference = ProjectRefFetcher.parseCacheValue(cached);
+      return projectReference ? { status: "hit", projectReference } : { status: "unavailable" };
     } catch (error) {
       console.error("failed to read project registry cache", { projectId, error });
-      return null;
+      return { status: "unavailable" };
     }
   }
 
