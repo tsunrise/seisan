@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "activeDir": "active",
   "resolvedDir": "resolved",
-  "nextId": 9,
+  "nextId": 11,
   "issues": [
     {
       "id": "RT-1",
@@ -83,6 +83,24 @@
       "date": "2026-06-14 14:13:28 PDT",
       "commit": "25f932606bd064aa29331732e190ef814c8889e6",
       "resolution": "Risk Accepted"
+    },
+    {
+      "id": "RT-9",
+      "status": "active",
+      "severity": "Medium",
+      "title": "Revoked Restricted Members Remain In Registry Listings",
+      "file": "active/rt-9-revoked-restricted-members-remain-in-registry-listings-20260615-225502.md",
+      "date": "2026-06-15 22:55:02 PDT",
+      "commit": "6f739cb9224893a68e05dedef76aa1d361ff5b08"
+    },
+    {
+      "id": "RT-10",
+      "status": "active",
+      "severity": "Medium",
+      "title": "Revoked Sessions Can Survive KV Negative Cache Windows",
+      "file": "active/rt-10-revoked-sessions-can-survive-kv-negative-cache-windows-20260615-225507.md",
+      "date": "2026-06-15 22:55:07 PDT",
+      "commit": "6f739cb9224893a68e05dedef76aa1d361ff5b08"
     }
   ]
 }
