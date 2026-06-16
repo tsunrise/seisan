@@ -2,6 +2,7 @@
 
 Date: 2026-06-14 14:13:28 PDT
 Commit: 25f932606bd064aa29331732e190ef814c8889e6
+Resolution: Risk Accepted
 
 Admin limit changes do not reliably take effect immediately for active Durable Objects. This weakens the limits API as an emergency abuse throttle.
 
@@ -20,3 +21,7 @@ Observed results:
 `ProjectStore` loads owner limits through a `LazyRefresh` with a 10-second TTL. The underlying `LimitsKvStore` reads KV with `cacheTtl: 300`, so even after the DO refreshes, it can still read stale KV data.
 
 This is especially surprising because the admin endpoint returns `204` after writing limits, implying the new policy is active.
+
+## Resolution
+
+Not planned: this is an accepted tradeoff between performance and immediate policy enforcement. The small delay before lowered limits are observed by active Durable Objects is an accepted risk.

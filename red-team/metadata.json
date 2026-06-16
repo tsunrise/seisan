@@ -25,39 +25,43 @@
     },
     {
       "id": "RT-3",
-      "status": "active",
+      "status": "resolved",
       "severity": "High",
       "title": "Linked Emails Leak to Authenticated Non-Members",
-      "file": "active/rt-3-linked-emails-leak-to-authenticated-non-members-20260614-141328.md",
+      "file": "resolved/rt-3-high-linked-emails-leak-to-authenticated-non-members-20260615-203937.md",
       "date": "2026-06-14 14:13:28 PDT",
-      "commit": "25f932606bd064aa29331732e190ef814c8889e6"
+      "commit": "25f932606bd064aa29331732e190ef814c8889e6",
+      "resolution": "Risk Accepted"
     },
     {
       "id": "RT-4",
-      "status": "active",
+      "status": "resolved",
       "severity": "Medium",
       "title": "Lowered Limits Can Stay Stale",
-      "file": "active/rt-4-lowered-limits-can-stay-stale-20260614-141328.md",
+      "file": "resolved/rt-4-medium-lowered-limits-can-stay-stale-20260615-203941.md",
       "date": "2026-06-14 14:13:28 PDT",
-      "commit": "25f932606bd064aa29331732e190ef814c8889e6"
+      "commit": "25f932606bd064aa29331732e190ef814c8889e6",
+      "resolution": "Risk Accepted"
     },
     {
       "id": "RT-5",
-      "status": "active",
+      "status": "resolved",
       "severity": "Medium",
       "title": "Per-Email Quotas Are Alias-Friendly",
-      "file": "active/rt-5-per-email-quotas-are-alias-friendly-20260614-141328.md",
+      "file": "resolved/rt-5-medium-per-email-quotas-are-alias-friendly-20260615-203946.md",
       "date": "2026-06-14 14:13:28 PDT",
-      "commit": "25f932606bd064aa29331732e190ef814c8889e6"
+      "commit": "25f932606bd064aa29331732e190ef814c8889e6",
+      "resolution": "Risk Accepted"
     },
     {
       "id": "RT-6",
-      "status": "active",
+      "status": "resolved",
       "severity": "Medium",
       "title": "Login Email Billing Fan-Out",
-      "file": "active/rt-6-login-email-billing-fan-out-20260614-141328.md",
+      "file": "resolved/rt-6-medium-login-email-billing-fan-out-20260615-203950.md",
       "date": "2026-06-14 14:13:28 PDT",
-      "commit": "25f932606bd064aa29331732e190ef814c8889e6"
+      "commit": "25f932606bd064aa29331732e190ef814c8889e6",
+      "resolution": "Risk Accepted"
     },
     {
       "id": "RT-7",
@@ -70,12 +74,13 @@
     },
     {
       "id": "RT-8",
-      "status": "active",
+      "status": "resolved",
       "severity": "Product Risk",
       "title": "Public Projects Let Attackers Claim Unlinked Members",
-      "file": "active/rt-8-public-projects-let-attackers-claim-unlinked-members-20260614-141328.md",
+      "file": "resolved/rt-8-product-risk-public-projects-let-attackers-claim-unlinked-members-20260615-203957.md",
       "date": "2026-06-14 14:13:28 PDT",
-      "commit": "25f932606bd064aa29331732e190ef814c8889e6"
+      "commit": "25f932606bd064aa29331732e190ef814c8889e6",
+      "resolution": "Risk Accepted"
     }
   ]
 }

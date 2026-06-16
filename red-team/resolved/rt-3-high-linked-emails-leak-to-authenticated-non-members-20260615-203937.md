@@ -2,6 +2,7 @@
 
 Date: 2026-06-14 14:13:28 PDT
 Commit: 25f932606bd064aa29331732e190ef814c8889e6
+Resolution: Risk Accepted
 
 Any authenticated user who can read a project can see linked member emails for all members, even if they are not an owner or linked member of that project.
 
@@ -20,3 +21,7 @@ Observed results:
 `ProjectStore.getRecords()` returns `members` through `getMembersForResponse({ includeLinkedEmails: metadata.email !== null })`. That means any authenticated authorized reader gets all linked member emails.
 
 For public projects, every authenticated user is an authorized reader. For restricted projects, every ACL-listed user is an authorized reader, even before they join.
+
+## Resolution
+
+Not planned: this is by design. Linked emails are displayed to authenticated authorized readers so users can verify member identity. Login already requires Turnstile in deployed environments, which is accepted as sufficient protection against massive email scraping.

@@ -2,6 +2,7 @@
 
 Date: 2026-06-14 14:13:28 PDT
 Commit: 25f932606bd064aa29331732e190ef814c8889e6
+Resolution: Risk Accepted
 
 Project and linked-project quotas are enforced against normalized email strings, not against a canonical human/account identity. Users can often bypass quota intent with email aliases.
 
@@ -18,3 +19,7 @@ Observed results:
 ## Root Cause Analysis
 
 Emails are normalized with trim/lowercase only. Limits are loaded from keys like `limits:user:<email>`, and registry counts are keyed by exact email. There is no provider-aware canonicalization, domain policy, or account-level identity beyond the email string.
+
+## Resolution
+
+Not planned: this is accepted behavior. Seisan treats different normalized email addresses as different accounts, so provider-specific alias canonicalization is intentionally not applied.

@@ -2,6 +2,7 @@
 
 Date: 2026-06-14 14:13:28 PDT
 Commit: 25f932606bd064aa29331732e190ef814c8889e6
+Resolution: Risk Accepted
 
 In a public project, any authenticated user can join by claiming an unlinked member ID. This may be intended for frictionless group expense sharing, but it is a surprising capability if public project IDs are shared or discoverable.
 
@@ -16,3 +17,7 @@ Observed result:
 ## Root Cause Analysis
 
 For public projects, `getProjectMetadata()` authorizes any caller. `joinProject()` permits an authorized caller to claim any active unlinked member by ID.
+
+## Resolution
+
+Not planned: this public-project member-claim behavior is by design for now. The risk that authenticated users can claim unlinked members in public projects is accepted.

@@ -2,6 +2,7 @@
 
 Date: 2026-06-14 14:13:28 PDT
 Commit: 25f932606bd064aa29331732e190ef814c8889e6
+Resolution: Risk Accepted
 
 The login flow can be used to trigger Turnstile verification and Send Email work across many unique email addresses. The existing cooldown protects only repeated sends to the same normalized email.
 
@@ -22,3 +23,7 @@ Relevant observed/source-backed behavior:
 `LoginAttemptStore.createAttempt()` enforces cooldown only for an existing row for the same email hash. Attackers with many target emails, disposable emails, or aliases can produce many distinct rows and therefore many Turnstile verifications and email sends.
 
 This is partly product policy: login registration is intentionally not allowlisted.
+
+## Resolution
+
+Not planned: this is accepted behavior. Turnstile is the intended control for preventing large-scale automated login email sends, and its capacity and cost profile are accepted for this risk.
