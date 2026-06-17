@@ -1,6 +1,6 @@
 import AddIcon from "@mui/icons-material/Add";
 import { Box, Button, CircularProgress, useMediaQuery, useTheme } from "@mui/material";
-import { useReducer } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 
 import { useCurrentUser } from "../hooks/useCurrentUser";
@@ -30,10 +30,60 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
   const recordId = params.recordId ? Number(params.recordId) : null;
   const user = useCurrentUser({ required: false });
   const [reloadKey, reload] = useReducer((value: number) => value + 1, 0);
+  const [missingRecordId, setMissingRecordId] = useState<number | null>(null);
+  const loadingDetailRecordIdRef = useRef<number | null>(null);
   const project = useProject(projectId, reloadKey);
   const currentEmail = user.status === "ready" ? (user.data?.email ?? null) : null;
   const timelineIsVisibleOnDesktop = useMediaQuery(theme.breakpoints.up("md"));
   useDocumentTitle(project.status === "ready" ? `${project.data.name} - Seisan` : "Seisan");
+  const projectData = project.status === "ready" ? project.data : null;
+  const recordIdIsValid = recordId === null || (Number.isSafeInteger(recordId) && recordId >= 1);
+  const selectedRecord =
+    projectData && recordId !== null
+      ? (projectData.records.find((record) => record.id === recordId) ?? null)
+      : null;
+
+  useEffect(() => {
+    if (
+      panel !== "recordDetail" ||
+      recordId === null ||
+      !recordIdIsValid ||
+      !projectData ||
+      selectedRecord
+    ) {
+      return;
+    }
+
+    if (loadingDetailRecordIdRef.current === recordId) {
+      return;
+    }
+
+    let active = true;
+    loadingDetailRecordIdRef.current = recordId;
+    setMissingRecordId(null);
+
+    void projectData
+      .loadRecord(recordId)
+      .then((record) => {
+        if (active && !record) {
+          setMissingRecordId(recordId);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setMissingRecordId(recordId);
+        }
+      })
+      .finally(() => {
+        if (loadingDetailRecordIdRef.current === recordId) {
+          loadingDetailRecordIdRef.current = null;
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [panel, projectData, recordId, recordIdIsValid, selectedRecord]);
 
   if (project.status === "loading") {
     return (
@@ -45,14 +95,18 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
   if (project.status === "error") {
     return <NotFoundPage />;
   }
+  if (panel === "recordDetail" && recordId !== null && !recordIdIsValid) {
+    return <NotFoundPage />;
+  }
+  if (panel === "recordDetail" && recordId !== null && missingRecordId === recordId) {
+    return <NotFoundPage />;
+  }
 
   const currentMember = findLinkedMember(project.data.members, currentEmail);
-  const selectedRecord =
-    recordId === null
-      ? null
-      : (project.data.records.find((record) => record.id === recordId) ?? null);
   const showPanel = panel !== "timeline";
   const timelineIsVisible = panel === "timeline" || timelineIsVisibleOnDesktop;
+  const recordDetailIsLoading =
+    panel === "recordDetail" && recordId !== null && selectedRecord === null;
 
   return (
     <Box
@@ -174,6 +228,11 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
             canPost={Boolean(currentMember)}
             onPosted={reload}
           />
+        ) : null}
+        {recordDetailIsLoading ? (
+          <Box sx={{ display: "grid", minHeight: 240, placeItems: "center" }}>
+            <CircularProgress />
+          </Box>
         ) : null}
         {panel === "settings" ? (
           <ProjectSettings

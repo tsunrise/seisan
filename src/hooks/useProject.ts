@@ -9,6 +9,7 @@ export type PaginatedProject = api.Project & {
   hasMoreRecords: boolean;
   loadingOlderRecords: boolean;
   loadOlderRecords: () => Promise<void>;
+  loadRecord: (recordId: number) => Promise<api.ProjectRecord | null>;
 };
 
 type ProjectPagination = {
@@ -22,6 +23,12 @@ type CachedProjectPage = {
 };
 
 const projectPageCache = new Map<string, CachedProjectPage>();
+
+function mergeProjectRecord(project: api.Project, record: api.ProjectRecord): api.Project {
+  const recordsById = new Map(project.records.map((item) => [item.id, item]));
+  recordsById.set(record.id, record);
+  return { ...project, records: [...recordsById.values()] };
+}
 
 export function useProject(projectId: string, reloadKey: number): Loadable<PaginatedProject> {
   const initialCachedPage = reloadKey === 0 ? projectPageCache.get(projectId) : undefined;
@@ -168,6 +175,36 @@ export function useProject(projectId: string, reloadKey: number): Loadable<Pagin
     }
   }, [projectId]);
 
+  const loadRecord = useCallback(
+    async (recordId: number): Promise<api.ProjectRecord | null> => {
+      if (!Number.isSafeInteger(recordId) || recordId < 1) {
+        return null;
+      }
+
+      const currentProject = projectRef.current;
+      const existingRecord = currentProject?.records.find((record) => record.id === recordId);
+      if (existingRecord) {
+        return existingRecord;
+      }
+
+      const recordPage = await api.getProject(projectId, { limit: 1, offset: recordId + 1 });
+      const record = recordPage.records[0];
+      if (!record || record.id !== recordId) {
+        return null;
+      }
+
+      const nextProject = mergeProjectRecord(projectRef.current ?? recordPage, record);
+      projectRef.current = nextProject;
+      projectPageCache.set(projectId, {
+        project: nextProject,
+        hasMoreRecords: hasMoreRecordsRef.current,
+      });
+      setState({ status: "ready", data: nextProject, error: null });
+      return record;
+    },
+    [projectId],
+  );
+
   if (state.status !== "ready") {
     return state;
   }
@@ -179,6 +216,7 @@ export function useProject(projectId: string, reloadKey: number): Loadable<Pagin
       hasMoreRecords: pagination.hasMoreRecords,
       loadingOlderRecords: pagination.loadingOlderRecords,
       loadOlderRecords,
+      loadRecord,
     },
     error: null,
   };

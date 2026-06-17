@@ -8,10 +8,12 @@ export function MoneyTable({
   title,
   project,
   map,
+  muted = false,
 }: {
   title: string;
   project: api.Project;
   map: api.MoneyByMemberId;
+  muted?: boolean;
 }) {
   const entries = Object.entries(map);
   if (entries.length === 0) {
@@ -28,7 +30,7 @@ export function MoneyTable({
           sx={{ alignItems: "center", justifyContent: "space-between" }}
         >
           <Typography>{memberName(project.members, Number(memberId))}</Typography>
-          <Amount amount={amount} />
+          <Amount amount={amount} muted={muted} />
         </Stack>
       ))}
     </Stack>
