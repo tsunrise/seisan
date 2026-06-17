@@ -9,6 +9,7 @@ import {
   IconButton,
   Paper,
   Stack,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { Link, Navigate, useLocation, useNavigate } from "react-router";
@@ -65,12 +66,18 @@ export function ProjectsPage() {
           }}
         >
           {user.status === "ready" && user.data ? (
-            <Chip
-              label={user.data.email}
-              sx={{
-                maxWidth: { xs: "calc(100% - 58px)", sm: 220 },
-              }}
-            />
+            <Tooltip title={user.data.email}>
+              <Box
+                component="span"
+                sx={{
+                  display: "inline-flex",
+                  maxWidth: { xs: "calc(100% - 58px)", sm: "clamp(260px, 38vw, 440px)" },
+                  minWidth: 0,
+                }}
+              >
+                <Chip label={user.data.email} sx={{ maxWidth: "100%" }} />
+              </Box>
+            </Tooltip>
           ) : null}
           <IconButton
             aria-label="Log out"
