@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import type * as api from "../api";
 import { panelFrameSx } from "../components/styles";
-import { RecordCard } from "./RecordCard";
+import { RecordCard, RevertRecordMessage } from "./RecordCard";
 import {
   clearTimelineScroll,
   keepElementAboveMobileAction,
@@ -274,12 +274,16 @@ export function RecordTimeline({
           ref={index === records.length - 1 ? lastRecordRef : undefined}
           sx={{ scrollMarginBottom: { xs: MOBILE_BOTTOM_SCROLL_SPACE, md: 28 } }}
         >
-          <RecordCard
-            project={project}
-            record={record}
-            currentMember={currentMember}
-            onOpen={saveCurrentScroll}
-          />
+          {record.description.type === "revert" ? (
+            <RevertRecordMessage project={project} record={record} onOpen={saveCurrentScroll} />
+          ) : (
+            <RecordCard
+              project={project}
+              record={record}
+              currentMember={currentMember}
+              onOpen={saveCurrentScroll}
+            />
+          )}
         </Box>
       ))}
     </Box>

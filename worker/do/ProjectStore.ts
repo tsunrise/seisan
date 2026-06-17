@@ -81,6 +81,12 @@ interface RecordRow extends Record<string, SqlStorageValue> {
   created_at: number;
 }
 
+interface RecordResponseRow extends RecordRow {
+  reverted_record_id: number | null;
+  reverted_author_member_id: number | null;
+  reverted_created_at: number | null;
+}
+
 interface BalanceRow extends Record<string, SqlStorageValue> {
   member_id: number;
   amount_cents: number;
@@ -386,17 +392,28 @@ export class ProjectStore extends DurableObject<Env> {
     const limit = input.limit;
     const offset = Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, Math.floor(input.offset)));
     const records = this.ctx.storage.sql
-      .exec<RecordRow>(
-        `SELECT id, author_member_id, description_type, description_json, delta_json, reverts_record_id, created_at
-         FROM records
-         WHERE id < ?
-         ORDER BY id DESC
+      .exec<RecordResponseRow>(
+        `SELECT
+            record.id,
+            record.author_member_id,
+            record.description_type,
+            record.description_json,
+            record.delta_json,
+            record.reverts_record_id,
+            record.created_at,
+            reverter.id AS reverted_record_id,
+            reverter.author_member_id AS reverted_author_member_id,
+            reverter.created_at AS reverted_created_at
+         FROM records AS record
+         LEFT JOIN records AS reverter ON reverter.reverts_record_id = record.id
+         WHERE record.id < ?
+         ORDER BY record.id DESC
          LIMIT ?`,
         offset,
         limit,
       )
       .toArray()
-      .map(recordFromRow);
+      .map(recordFromResponseRow);
 
     const balance = Object.fromEntries(
       this.ctx.storage.sql
@@ -1524,5 +1541,26 @@ function recordFromRow(row: RecordRow): ProjectRecord {
     delta: JSON.parse(row.delta_json) as MoneyByMemberId,
     description: JSON.parse(row.description_json) as RecordDescription,
     createdAt: row.created_at,
+  };
+}
+
+function recordFromResponseRow(row: RecordResponseRow): ProjectRecord {
+  const record = recordFromRow(row);
+  if (
+    record.description.type === "revert" ||
+    row.reverted_record_id === null ||
+    row.reverted_author_member_id === null ||
+    row.reverted_created_at === null
+  ) {
+    return record;
+  }
+
+  return {
+    ...record,
+    reverted: {
+      recordId: row.reverted_record_id,
+      authorMemberId: row.reverted_author_member_id,
+      createdAt: row.reverted_created_at,
+    },
   };
 }

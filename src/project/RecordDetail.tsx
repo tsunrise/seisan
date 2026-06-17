@@ -41,6 +41,8 @@ export function RecordDetail({
   const [error, setError] = useState<string | null>(null);
   const [confirmingRevert, setConfirmingRevert] = useState(false);
   const [reverting, setReverting] = useState(false);
+  const canRevert =
+    canPost && record.description.type !== "revert" && record.reverted === undefined;
 
   async function revert() {
     if (reverting) {
@@ -97,7 +99,7 @@ export function RecordDetail({
             <Typography>Reverts #{record.description.id}.</Typography>
           ) : null}
           {error ? <InlineAlert>{error}</InlineAlert> : null}
-          {canPost && record.description.type !== "revert" ? (
+          {canRevert ? (
             <Button
               variant="outlined"
               startIcon={<UndoIcon />}

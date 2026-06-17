@@ -3,7 +3,7 @@ import { Link } from "react-router";
 
 import type * as api from "../api";
 import { Amount } from "../components/Amount";
-import { formatRecordTimestamp, recordTitle } from "../domain";
+import { formatRecordTimestamp, memberName, recordTitle } from "../domain";
 import { ledgerColors } from "../theme";
 import { initials } from "../utils";
 import { recordActorMemberId } from "./recordActor";
@@ -24,6 +24,14 @@ export function RecordCard({
   const showPostedBy = actor !== undefined && actor.id !== record.authorMemberId;
   const subjectIsCurrentMember = actor?.id === currentMember?.id;
   const viewerDelta = currentMember ? (record.delta[String(currentMember.id)] ?? 0) : null;
+  const isReverted = record.reverted !== undefined;
+  const revertedTextSx = isReverted
+    ? {
+        color: ledgerColors.muted,
+        textDecoration: "line-through",
+        textDecorationThickness: "1.5px",
+      }
+    : {};
   const metadataText = showPostedBy
     ? `${formatRecordTimestamp(record.createdAt)}, posted by ${author?.name ?? "Unknown member"}`
     : formatRecordTimestamp(record.createdAt);
@@ -38,6 +46,7 @@ export function RecordCard({
         width: { xs: 44, md: 48 },
         height: { xs: 44, md: 48 },
         alignSelf: "end",
+        justifySelf: subjectIsCurrentMember ? { xs: "start", sm: "end", md: "start" } : "start",
         mb: 2.5,
         color: ledgerColors.ink,
         bgcolor: subjectIsCurrentMember ? "rgba(207, 232, 247, 0.8)" : "rgba(34, 33, 31, 0.08)",
@@ -74,18 +83,18 @@ export function RecordCard({
           content: '""',
           position: "absolute",
           bottom: 36,
-          width: 14,
-          height: 14,
+          width: { xs: 10, sm: 14 },
+          height: { xs: 10, sm: 14 },
           bgcolor: bubbleBg,
           ...(subjectIsCurrentMember
             ? {
-                right: -8,
+                right: { xs: -5, sm: -8 },
                 borderRight: tailBorder,
                 borderBottom: tailBorder,
                 transform: "rotate(-45deg)",
               }
             : {
-                left: -8,
+                left: { xs: -5, sm: -8 },
                 borderLeft: tailBorder,
                 borderBottom: tailBorder,
                 transform: "rotate(45deg)",
@@ -145,6 +154,7 @@ export function RecordCard({
           lineHeight: 1.25,
           overflowWrap: "anywhere",
           wordBreak: "break-word",
+          ...revertedTextSx,
         }}
       >
         {recordTitle(record, project.members)}
@@ -167,12 +177,29 @@ export function RecordCard({
             fontWeight: 650,
             overflowWrap: "anywhere",
             wordBreak: "break-word",
+            ...revertedTextSx,
           }}
         >
           {metadataText}
         </Typography>
-        {viewerDelta !== null && viewerDelta !== 0 ? <Amount amount={viewerDelta} /> : null}
+        {viewerDelta !== null && viewerDelta !== 0 ? (
+          <Amount amount={viewerDelta} muted={isReverted} />
+        ) : null}
       </Stack>
+      {record.reverted ? (
+        <Typography
+          sx={{
+            color: "text.secondary",
+            fontSize: 12,
+            fontWeight: 650,
+            mt: 0.25,
+            overflowWrap: "anywhere",
+          }}
+        >
+          Reverted by {memberName(project.members, record.reverted.authorMemberId)} at{" "}
+          {formatRecordTimestamp(record.reverted.createdAt)}
+        </Typography>
+      ) : null}
     </Paper>
   );
 
@@ -200,6 +227,58 @@ export function RecordCard({
           {bubble}
         </>
       )}
+    </Box>
+  );
+}
+
+export function RevertRecordMessage({
+  project,
+  record,
+  onOpen,
+}: {
+  project: api.Project;
+  record: api.ProjectRecord;
+  onOpen?: (recordId: number) => void;
+}) {
+  if (record.description.type !== "revert") {
+    return null;
+  }
+
+  return (
+    <Box
+      component={Link}
+      to={`/project/${project.id}/records/${record.id}`}
+      onClick={() => onOpen?.(record.id)}
+      aria-label={`Open record #${record.id}`}
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: "fit-content",
+        maxWidth: "min(100%, 420px)",
+        mx: "auto",
+        px: 1.25,
+        py: 0.375,
+        border: `1px solid rgba(34, 33, 31, 0.08)`,
+        borderRadius: 999,
+        bgcolor: "rgba(34, 33, 31, 0.1)",
+        color: "text.secondary",
+        textAlign: "center",
+        textDecoration: "none",
+        boxShadow: `0 2px 8px ${ledgerColors.shadowInk}`,
+        "&:hover": {
+          bgcolor: "rgba(34, 33, 31, 0.14)",
+          color: ledgerColors.ink,
+        },
+        "&:focus-visible": {
+          outline: `2px solid ${ledgerColors.blue}`,
+          outlineOffset: 3,
+        },
+      }}
+    >
+      <Typography component="span" sx={{ fontSize: 12, fontWeight: 700, lineHeight: 1.2 }}>
+        {memberName(project.members, record.authorMemberId)} reverted #{record.description.id}
+      </Typography>
     </Box>
   );
 }

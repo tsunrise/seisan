@@ -141,6 +141,11 @@ export interface ProjectRecord {
   delta: MoneyByMemberId;
   description: RecordDescription;
   createdAt: number;
+  reverted?: {
+    recordId: number;
+    authorMemberId: number;
+    createdAt: number;
+  };
 }
 
 export interface ProjectSummary {

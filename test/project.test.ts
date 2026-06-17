@@ -1438,6 +1438,98 @@ describe("project routes", () => {
     expect(revertRevert.status).toBe(400);
 
     const response = await getProject(testEnv, project.id);
+    const records = response.records as Array<{
+      id: number;
+      createdAt: number;
+      reverted?: { recordId: number; authorMemberId: number; createdAt: number };
+    }>;
+    const revertRecord = records.find((record) => record.id === 2);
+    const originalRecord = records.find((record) => record.id === 1);
     expect(response).toMatchObject({ balance: {}, records: [{ id: 2 }, { id: 1 }] });
+    expect(revertRecord).not.toHaveProperty("reverted");
+    expect(originalRecord).toMatchObject({
+      reverted: {
+        recordId: 2,
+        authorMemberId: 1,
+        createdAt: revertRecord?.createdAt,
+      },
+    });
+  });
+
+  it("annotates reverted records when the reversal is outside the current page", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv);
+    await createMember(testEnv, project.id, "Bob");
+
+    await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          delta: { "1": -2000, "2": 2000 },
+          description: {
+            type: "expense",
+            name: "Tickets",
+            paid: { "1": 2000 },
+            liability: { "2": 2000 },
+          },
+        },
+        await authHeaders(),
+      ),
+    );
+
+    await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          delta: { "1": -1000, "2": 1000 },
+          description: {
+            type: "expense",
+            name: "Snacks",
+            paid: { "1": 1000 },
+            liability: { "2": 1000 },
+          },
+        },
+        await authHeaders(),
+      ),
+    );
+
+    const revert = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          delta: { "1": 2000, "2": -2000 },
+          description: { type: "revert", id: 1 },
+        },
+        await authHeaders(),
+      ),
+    );
+    expect(revert.status).toBe(201);
+
+    const page = await dispatch(`/project/${project.id}?limit=1&offset=2`, testEnv, {
+      headers: await authHeaders(),
+    });
+    expect(page.status).toBe(200);
+    const body = (await page.json()) as ProjectResponse;
+    const records = body.records as Array<{
+      id: number;
+      reverted?: { recordId: number; authorMemberId: number; createdAt: number };
+    }>;
+
+    expect(records).toMatchObject([
+      {
+        id: 1,
+        reverted: {
+          recordId: 3,
+          authorMemberId: 1,
+          createdAt: expect.any(Number) as number,
+        },
+      },
+    ]);
   });
 });
