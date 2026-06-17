@@ -127,8 +127,18 @@ export function RecordDetail({
           {record.description.type === "expense" ? (
             <>
               <Divider />
-              <MoneyTable title="Paid" project={project} map={record.description.paid} />
-              <MoneyTable title="Liability" project={project} map={record.description.liability} />
+              <MoneyTable
+                title="Paid"
+                project={project}
+                map={record.description.paid}
+                amountColorMode="plain"
+              />
+              <MoneyTable
+                title="Liability"
+                project={project}
+                map={record.description.liability}
+                amountColorMode="plain"
+              />
             </>
           ) : null}
           {error ? <InlineAlert>{error}</InlineAlert> : null}
