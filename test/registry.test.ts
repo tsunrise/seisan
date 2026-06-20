@@ -309,4 +309,42 @@ describe("registry routes", () => {
       expect.arrayContaining([expect.objectContaining({ id: project.id })]),
     );
   });
+
+  it("keeps linked restricted members in registry listings after ACL removal", async () => {
+    const { env: testEnv } = makeEnv();
+    const memberEmail = `registry-linked-${crypto.randomUUID()}@example.com`;
+    const project = await createProject(testEnv, {
+      acl: { type: "restricted", emails: [memberEmail] },
+      ownerMemberName: "Alice",
+    });
+    const bob = await createMember(testEnv, project.id, "Bob");
+
+    const bobJoin = await dispatch(
+      `/project/${project.id}/join`,
+      testEnv,
+      jsonBody("POST", { memberId: bob.id }, await authHeaders(memberEmail)),
+    );
+    expect(bobJoin.status).toBe(201);
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
+
+    const ownerRemove = await dispatch(
+      `/project/${project.id}/acl/emails`,
+      testEnv,
+      jsonBody("DELETE", { emails: [memberEmail] }, await authHeaders("owner@example.com")),
+    );
+    expect(ownerRemove.status).toBe(204);
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
+
+    const memberView = await getProject(testEnv, project.id, memberEmail);
+    expect(memberView.acl).toEqual({ type: "restricted", emails: [] });
+    await expect(listProjectsFromRegistry(testEnv, memberEmail)).resolves.toContainEqual(
+      expect.objectContaining({
+        id: project.id,
+        member: expect.objectContaining({ id: bob.id, name: "Bob", linkedEmail: memberEmail }),
+      }),
+    );
+    await expect(listProjectsFromRegistry(testEnv, "outsider@example.com")).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: project.id })]),
+    );
+  });
 });

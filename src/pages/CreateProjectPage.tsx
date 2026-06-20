@@ -90,6 +90,7 @@ export function CreateProjectPage() {
             {visibility === "restricted" ? (
               <AllowedEmailList
                 emails={allowedEmails}
+                description="Joined members always have access."
                 emptyMessage="No extra emails will be allowed yet."
                 onListChange={setAllowedEmails}
               />

@@ -26,7 +26,7 @@ import {
   LimitsPolicy,
 } from "../limits";
 import { LazyRefresh } from "../utils/auto_update";
-import { backfill, runSqlMigrations } from "./migrations";
+import { runSqlMigrations } from "./migrations";
 import type { ProjectSummarySyncInput } from "./ProjectsRegistry";
 import { projectStoreMigrations } from "./migrations/ProjectStore.migration";
 
@@ -45,21 +45,6 @@ const ProjectMetadata = z.object({
   updated_at: z.number().int().nonnegative(),
 });
 type ProjectMetadata = z.infer<typeof ProjectMetadata>;
-
-interface LegacyProjectMetaRow extends Record<string, SqlStorageValue> {
-  public_id: string | null;
-  name: string;
-  owner_email: string;
-  acl_type: "public" | "restricted";
-  next_record_id: number;
-  next_member_id: number;
-  created_at: number;
-  updated_at: number;
-}
-
-interface AclAllowedListRow extends Record<string, SqlStorageValue> {
-  email: string;
-}
 
 interface MemberRow extends Record<string, SqlStorageValue> {
   id: number;
@@ -96,9 +81,12 @@ interface ActiveMemberIdRow extends Record<string, SqlStorageValue> {
   id: number;
 }
 
+interface ActiveLinkedMemberRow extends Record<string, SqlStorageValue> {
+  id: number;
+}
+
 const INITIALIZED_KEY = "initialized";
 const PROJECT_METADATA_KEY = "projectMetadata";
-const PROJECT_METADATA_BACKFILL_NAME = "20260615-project-metadata-kv";
 const OWNER_LIMITS_POLICY_TTL_SECONDS = 10;
 
 type ProjectStoreError =
@@ -133,7 +121,6 @@ export class ProjectStore extends DurableObject<Env> {
       await runSqlMigrations(state, ProjectStore.migrations);
       this.initialized = (await state.storage.get<boolean>(INITIALIZED_KEY)) === true;
       if (this.initialized) {
-        await this.runProjectMetadataBackfill();
         this.projectMetadata = this.readProjectMetadata();
         if (!this.projectMetadata) {
           this.initialized = false;
@@ -909,50 +896,6 @@ export class ProjectStore extends DurableObject<Env> {
     return { ok: true };
   }
 
-  // TODO: remove this after backfill 20260615-project-metadata-kv is fully done.
-  async ensureMetadataBackfilled(input: {
-    publicId: string;
-  }): Promise<{ ok: true } | { ok: false; error: "uninitialized" | "invalid_input" }> {
-    const parsed = ProjectId.safeParse(input.publicId);
-    if (!parsed.success) {
-      return { ok: false, error: "invalid_input" };
-    }
-    if (!this.initialized) {
-      return { ok: false, error: "uninitialized" };
-    }
-
-    await this.runProjectMetadataBackfill();
-    const meta = this.getMeta();
-    if (!meta) {
-      this.initialized = false;
-      return { ok: false, error: "uninitialized" };
-    }
-    this.persistPublicIdIfMissing(meta, parsed.data);
-    return { ok: true };
-  }
-
-  // TODO: remove this after backfill 20260615-project-metadata-kv is fully done.
-  private async runProjectMetadataBackfill(): Promise<void> {
-    await backfill(this.ctx, PROJECT_METADATA_BACKFILL_NAME, async () => {
-      const stored = this.readProjectMetadata();
-      if (stored) {
-        this.projectMetadata = stored;
-        return null;
-      }
-
-      const legacy = this.getLegacyProjectMetadata();
-      if (legacy) {
-        this.saveProjectMetadata(legacy);
-        return null;
-      }
-
-      if (this.projectMetadata) {
-        this.saveProjectMetadata(this.projectMetadata);
-      }
-      return null;
-    });
-  }
-
   private readProjectMetadata(): ProjectMetadata | null {
     const raw = this.ctx.storage.kv.get<string>(PROJECT_METADATA_KEY);
     if (typeof raw !== "string") {
@@ -979,38 +922,6 @@ export class ProjectStore extends DurableObject<Env> {
     this.ctx.storage.kv.put(PROJECT_METADATA_KEY, JSON.stringify(parsed.data));
     this.projectMetadata = parsed.data;
     return parsed.data;
-  }
-
-  private getLegacyProjectMetadata(): ProjectMetadata | null {
-    const row =
-      this.ctx.storage.sql
-        .exec<LegacyProjectMetaRow>(
-          `SELECT public_id, name, owner_email, acl_type, next_record_id, next_member_id, created_at, updated_at
-           FROM project_meta
-           WHERE id = 1`,
-        )
-        .toArray()[0] ?? null;
-    if (!row) {
-      return null;
-    }
-
-    const aclAllowedList = this.ctx.storage.sql
-      .exec<AclAllowedListRow>("SELECT email FROM acl_allowed_list ORDER BY email")
-      .toArray()
-      .map((allowed) => allowed.email);
-
-    const parsed = ProjectMetadata.safeParse({
-      public_id: row.public_id,
-      name: row.name,
-      owner_email: row.owner_email,
-      acl_type: row.acl_type,
-      acl_allowed_list: aclAllowedList,
-      next_record_id: Math.max(row.next_record_id, this.getMaxRecordId() + 1),
-      next_member_id: Math.max(row.next_member_id, this.getMaxMemberId() + 1),
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    });
-    return parsed.success ? parsed.data : null;
   }
 
   private async loadOwnerLimitsPolicy(): Promise<LimitsPolicy> {
@@ -1118,6 +1029,9 @@ export class ProjectStore extends DurableObject<Env> {
     if (!email) {
       return false;
     }
+    if (this.hasActiveLinkedMember(email)) {
+      return true;
+    }
 
     return meta.acl_allowed_list.includes(email);
   }
@@ -1158,6 +1072,20 @@ export class ProjectStore extends DurableObject<Env> {
           email,
         )
         .toArray()[0] ?? null
+    );
+  }
+
+  private hasActiveLinkedMember(email: string): boolean {
+    return (
+      this.ctx.storage.sql
+        .exec<ActiveLinkedMemberRow>(
+          `SELECT id
+           FROM members
+           WHERE linked_email = ? AND deleted_at IS NULL
+           LIMIT 1`,
+          email,
+        )
+        .toArray()[0] !== undefined
     );
   }
 

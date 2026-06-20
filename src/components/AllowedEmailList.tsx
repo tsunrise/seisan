@@ -7,12 +7,14 @@ import { parseEmailList } from "../utils";
 
 export function AllowedEmailList({
   emails,
+  description,
   disabled = false,
   editable = true,
   emptyMessage = "No extra emails are allowed yet.",
   onListChange,
 }: {
   emails: string[];
+  description?: string;
   disabled?: boolean;
   editable?: boolean;
   emptyMessage?: string;
@@ -55,7 +57,14 @@ export function AllowedEmailList({
 
   return (
     <Stack spacing={1.5}>
-      <Typography variant="h2">Allowed emails</Typography>
+      <Stack spacing={0.5}>
+        <Typography variant="h2">Additional allowed emails</Typography>
+        {description ? (
+          <Typography variant="body2" color="text.secondary">
+            {description}
+          </Typography>
+        ) : null}
+      </Stack>
       <Stack spacing={1}>
         {emails.length === 0 ? (
           <Typography color="text.secondary">{emptyMessage}</Typography>

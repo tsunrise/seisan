@@ -204,6 +204,7 @@ export function ProjectSettings({
           <Paper component="section" square sx={panelFrameSx}>
             <AllowedEmailList
               emails={allowedEmails}
+              description="Joined members always have access."
               disabled={!canEditAllowedEmails}
               editable={isOwner}
               emptyMessage={savingVisibility ? "Updating visibility..." : undefined}

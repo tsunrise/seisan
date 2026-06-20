@@ -706,6 +706,44 @@ describe("project routes", () => {
     });
   });
 
+  it("lets linked members read restricted projects after ACL removal", async () => {
+    const { env: testEnv } = makeEnv();
+    const memberEmail = `linked-access-${crypto.randomUUID()}@example.com`;
+    const project = await createProject(testEnv, {
+      acl: { type: "restricted", emails: [memberEmail] },
+      ownerMemberName: "Alice",
+    });
+    const bob = await createMember(testEnv, project.id, "Bob");
+
+    const join = await dispatch(
+      `/project/${project.id}/join`,
+      testEnv,
+      jsonBody("POST", { memberId: bob.id }, await authHeaders(memberEmail)),
+    );
+    expect(join.status).toBe(201);
+
+    const ownerRemove = await dispatch(
+      `/project/${project.id}/acl/emails`,
+      testEnv,
+      jsonBody("DELETE", { emails: [memberEmail] }, await authHeaders("owner@example.com")),
+    );
+    expect(ownerRemove.status).toBe(204);
+
+    const linkedMemberView = await getProject(testEnv, project.id, memberEmail);
+    expect(linkedMemberView.acl).toEqual({ type: "restricted", emails: [] });
+    expect(linkedMemberView.members).toContainEqual({
+      id: bob.id,
+      name: "Bob",
+      deleted: false,
+      linkedEmail: memberEmail,
+    });
+
+    const outsider = await dispatch(`/project/${project.id}`, testEnv, {
+      headers: await authHeaders("outsider@example.com"),
+    });
+    expect(outsider.status).toBe(403);
+  });
+
   it("redacts linked emails for public guests but shows them to authenticated viewers", async () => {
     const { env: testEnv } = makeEnv();
     const project = await createProject(testEnv, { ownerMemberName: "Alice" });
