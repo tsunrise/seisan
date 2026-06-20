@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "activeDir": "active",
   "resolvedDir": "resolved",
-  "nextId": 11,
+  "nextId": 12,
   "issues": [
     {
       "id": "RT-1",
@@ -103,6 +103,15 @@
       "date": "2026-06-15 22:55:07 PDT",
       "commit": "6f739cb9224893a68e05dedef76aa1d361ff5b08",
       "resolution": "Risk Accepted"
+    },
+    {
+      "id": "RT-11",
+      "status": "active",
+      "severity": "Low/Medium",
+      "title": "Owner Member Self-Removal Bypasses Owner Guards",
+      "file": "active/rt-11-owner-member-self-removal-bypasses-owner-guards-20260620-161617.md",
+      "date": "2026-06-20 16:16:17 PDT",
+      "commit": "49ee5357b21f93a6369b3997bf90974ccefa9487"
     }
   ]
 }
