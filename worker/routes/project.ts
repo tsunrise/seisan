@@ -868,7 +868,7 @@ class ProjectRouteParams {
     policy: LimitsPolicy,
   ): number | "exceeded" | null {
     if (rawLimit === undefined || rawLimit === "") {
-      return policy.records.defaultPageSize;
+      return policy.defaultRecordPageSize();
     }
     if (!/^\d+$/u.test(rawLimit)) {
       return null;

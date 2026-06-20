@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 
 import { type ProjectMember, type ProjectSummary, type WithSyncTime, ProjectId } from "../project";
-import { LimitsPolicy, type ProductLimits } from "../limits";
+import { LimitsPolicy, type Limits } from "../limits";
 import { backfill, runSqlMigrations, type SqlMigration } from "./migrations";
 
 interface ProjectRow extends Record<string, SqlStorageValue> {
@@ -31,8 +31,30 @@ interface ProjectSummaryRow extends Record<string, SqlStorageValue> {
   owner_email: string;
   member_json: string;
   balance_cents: number | null;
+  record_count: number;
   project_updated_at: number;
   summary_synced_at: number;
+}
+
+interface AdminProjectRow extends Record<string, SqlStorageValue> {
+  id: string;
+  name: string;
+  owner_email: string;
+  record_count: number;
+  member_count: number;
+  project_updated_at: number;
+  summary_synced_at: number;
+}
+
+interface AdminOwnerRow extends Record<string, SqlStorageValue> {
+  owner_email: string;
+  project_count: number;
+  record_count: number;
+  updated_at: number;
+}
+
+interface CountRow extends Record<string, SqlStorageValue> {
+  count: number;
 }
 
 export interface ProjectSummarySyncMember {
@@ -47,8 +69,35 @@ export interface ProjectSummarySyncInput {
   owner: string;
   updatedAt: number;
   lastSyncAt: number;
+  recordCount: number;
   members: ProjectSummarySyncMember[];
 }
+
+export interface AdminPage {
+  limit: number;
+  offset: number;
+  total: number;
+  hasMore: boolean;
+}
+
+export interface AdminProject {
+  id: string;
+  name: string;
+  owner: string;
+  recordCount: number;
+  memberCount: number;
+  updatedAt: number;
+  lastSyncAt: number;
+}
+
+export interface AdminOwnerSummary {
+  owner: string;
+  projectCount: number;
+  recordCount: number;
+  updatedAt: number;
+}
+
+export type AdminProjectSort = "records_desc" | "updated_desc" | "updated_asc";
 
 const durableObjectIdRegex = /^[0-9a-f]{64}$/u;
 const PROJECT_CACHE_REPAIR_AFTER_MS = 10 * 60 * 1000;
@@ -98,10 +147,23 @@ export class ProjectsRegistry extends DurableObject<Env> {
        WHERE owner_email IS NULL`,
       `CREATE INDEX IF NOT EXISTS projects_owner_email_idx ON projects(owner_email)`,
     ],
+    [
+      `ALTER TABLE project_summaries ADD COLUMN record_count INTEGER NOT NULL DEFAULT 0`,
+      `CREATE INDEX IF NOT EXISTS project_summaries_record_count_idx
+        ON project_summaries(record_count DESC, updated_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS project_summaries_owner_record_count_idx
+        ON project_summaries(owner_email, record_count DESC, updated_at DESC)`,
+    ],
+    [
+      `CREATE INDEX IF NOT EXISTS project_summaries_updated_record_count_idx
+        ON project_summaries(updated_at DESC, record_count DESC)`,
+      `CREATE INDEX IF NOT EXISTS project_summaries_owner_updated_idx
+        ON project_summaries(owner_email, updated_at DESC, record_count DESC)`,
+    ],
   ];
 
   private readonly bindings: Env;
-  private projectStoreMetadataTouchBackfill: Promise<void> | null = null;
+  private projectSummaryRecordCountBackfill: Promise<void> | null = null;
 
   constructor(state: DurableObjectState, env: Env) {
     super(state, env);
@@ -113,7 +175,7 @@ export class ProjectsRegistry extends DurableObject<Env> {
     id: string;
     doId: string;
     ownerEmail: string;
-    limits: ProductLimits;
+    limits: Limits;
     nowMs: number;
   }):
     | { ok: true }
@@ -163,7 +225,7 @@ export class ProjectsRegistry extends DurableObject<Env> {
   addProjectMember(input: {
     id: string;
     email: string;
-    limits: ProductLimits;
+    limits: Limits;
     nowMs: number;
   }):
     | { ok: true; alreadyMember: boolean }
@@ -206,6 +268,9 @@ export class ProjectsRegistry extends DurableObject<Env> {
     if (!this.hasProject(input.id)) {
       return { ok: false, error: "not_found" };
     }
+    if (!Number.isSafeInteger(input.recordCount) || input.recordCount < 0) {
+      return { ok: false, error: "invalid_input" };
+    }
 
     const members = new Map<string, ProjectSummarySyncMember>();
     for (const member of input.members) {
@@ -222,18 +287,20 @@ export class ProjectsRegistry extends DurableObject<Env> {
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec(
         `INSERT INTO project_summaries
-          (project_id, name, owner_email, updated_at, summary_synced_at)
-         VALUES (?, ?, ?, ?, ?)
+          (project_id, name, owner_email, updated_at, summary_synced_at, record_count)
+         VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(project_id) DO UPDATE SET
           name = excluded.name,
           owner_email = excluded.owner_email,
           updated_at = excluded.updated_at,
-          summary_synced_at = excluded.summary_synced_at`,
+          summary_synced_at = excluded.summary_synced_at,
+          record_count = excluded.record_count`,
         input.id,
         input.name,
         input.owner,
         input.updatedAt,
         input.lastSyncAt,
+        input.recordCount,
       );
       this.ctx.storage.sql.exec(
         "UPDATE projects SET owner_email = ? WHERE id = ?",
@@ -305,8 +372,6 @@ export class ProjectsRegistry extends DurableObject<Env> {
     | { ok: true; projects: Array<WithSyncTime<ProjectSummary>> }
     | { ok: false; error: "invalid_input" }
   > {
-    await this.runProjectStoreMetadataTouchBackfill();
-
     const projects = this.ctx.storage.sql
       .exec<ProjectSummaryRow>(
         `SELECT
@@ -315,6 +380,7 @@ export class ProjectsRegistry extends DurableObject<Env> {
           project_summaries.owner_email,
           project_members.member_json,
           project_members.balance_cents,
+          project_summaries.record_count,
           project_summaries.updated_at AS project_updated_at,
           project_summaries.summary_synced_at
          FROM project_members
@@ -338,25 +404,161 @@ export class ProjectsRegistry extends DurableObject<Env> {
     return { ok: true, projects };
   }
 
-  private async runProjectStoreMetadataTouchBackfill(): Promise<void> {
-    if (!this.projectStoreMetadataTouchBackfill) {
-      // TODO: remove this after backfill 20260615-project-store-metadata-touch is fully done.
-      this.projectStoreMetadataTouchBackfill = backfill(
+  async adminListProjects(input: {
+    limit: number;
+    offset: number;
+    ownerEmail?: string;
+    sort: AdminProjectSort;
+  }): Promise<
+    { ok: true; projects: AdminProject[]; page: AdminPage } | { ok: false; error: "invalid_input" }
+  > {
+    if (!isValidPageInput(input.limit, input.offset)) {
+      return { ok: false, error: "invalid_input" };
+    }
+    const orderClause = adminProjectOrderClause(input.sort);
+    if (!orderClause) {
+      return { ok: false, error: "invalid_input" };
+    }
+
+    await this.runProjectSummaryRecordCountBackfill();
+
+    const total = this.countProjects(input.ownerEmail);
+    const projects = (
+      input.ownerEmail
+        ? this.ctx.storage.sql.exec<AdminProjectRow>(
+            `SELECT
+              projects.id,
+              project_summaries.name,
+              project_summaries.owner_email,
+              project_summaries.record_count,
+              (
+                SELECT COUNT(*)
+                FROM project_members
+                WHERE project_members.project_id = projects.id
+              ) AS member_count,
+              project_summaries.updated_at AS project_updated_at,
+              project_summaries.summary_synced_at
+             FROM projects
+             JOIN project_summaries ON project_summaries.project_id = projects.id
+             WHERE project_summaries.owner_email = ?
+             ORDER BY ${orderClause}
+             LIMIT ? OFFSET ?`,
+            input.ownerEmail,
+            input.limit,
+            input.offset,
+          )
+        : this.ctx.storage.sql.exec<AdminProjectRow>(
+            `SELECT
+              projects.id,
+              project_summaries.name,
+              project_summaries.owner_email,
+              project_summaries.record_count,
+              (
+                SELECT COUNT(*)
+                FROM project_members
+                WHERE project_members.project_id = projects.id
+              ) AS member_count,
+              project_summaries.updated_at AS project_updated_at,
+              project_summaries.summary_synced_at
+             FROM projects
+             JOIN project_summaries ON project_summaries.project_id = projects.id
+             ORDER BY ${orderClause}
+             LIMIT ? OFFSET ?`,
+            input.limit,
+            input.offset,
+          )
+    ).toArray();
+
+    return {
+      ok: true,
+      projects: projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        owner: project.owner_email,
+        recordCount: project.record_count,
+        memberCount: project.member_count,
+        updatedAt: project.project_updated_at,
+        lastSyncAt: project.summary_synced_at,
+      })),
+      page: {
+        limit: input.limit,
+        offset: input.offset,
+        total,
+        hasMore: input.offset + projects.length < total,
+      },
+    };
+  }
+
+  async adminListOwners(input: {
+    limit: number;
+    offset: number;
+  }): Promise<
+    | { ok: true; users: AdminOwnerSummary[]; page: AdminPage }
+    | { ok: false; error: "invalid_input" }
+  > {
+    if (!isValidPageInput(input.limit, input.offset)) {
+      return { ok: false, error: "invalid_input" };
+    }
+
+    await this.runProjectSummaryRecordCountBackfill();
+
+    const total =
+      this.ctx.storage.sql
+        .exec<CountRow>("SELECT COUNT(DISTINCT owner_email) AS count FROM project_summaries")
+        .toArray()[0]?.count ?? 0;
+    const users = this.ctx.storage.sql
+      .exec<AdminOwnerRow>(
+        `SELECT
+          owner_email,
+          COUNT(*) AS project_count,
+          COALESCE(SUM(record_count), 0) AS record_count,
+          MAX(updated_at) AS updated_at
+         FROM project_summaries
+         GROUP BY owner_email
+         ORDER BY project_count DESC, record_count DESC, owner_email ASC
+         LIMIT ? OFFSET ?`,
+        input.limit,
+        input.offset,
+      )
+      .toArray()
+      .map((user) => ({
+        owner: user.owner_email,
+        projectCount: user.project_count,
+        recordCount: user.record_count,
+        updatedAt: user.updated_at,
+      }));
+
+    return {
+      ok: true,
+      users,
+      page: {
+        limit: input.limit,
+        offset: input.offset,
+        total,
+        hasMore: input.offset + users.length < total,
+      },
+    };
+  }
+
+  private async runProjectSummaryRecordCountBackfill(): Promise<void> {
+    if (!this.projectSummaryRecordCountBackfill) {
+      // TODO: remove this after backfill 20260620-project-summary-record-count is fully done.
+      this.projectSummaryRecordCountBackfill = backfill(
         this.ctx,
-        "20260615-project-store-metadata-touch",
+        "20260620-project-summary-record-count",
         async () => {
-          await this.touchProjectStoresForMetadataBackfill();
+          await this.touchProjectStoresForSummaryBackfill();
           return null;
         },
       ).finally(() => {
-        this.projectStoreMetadataTouchBackfill = null;
+        this.projectSummaryRecordCountBackfill = null;
       });
     }
 
-    await this.projectStoreMetadataTouchBackfill;
+    await this.projectSummaryRecordCountBackfill;
   }
 
-  private async touchProjectStoresForMetadataBackfill(): Promise<void> {
+  private async touchProjectStoresForSummaryBackfill(): Promise<void> {
     const projects = this.ctx.storage.sql
       .exec<ProjectRow>(
         `SELECT id, do_id, created_at, updated_at
@@ -370,20 +572,32 @@ export class ProjectsRegistry extends DurableObject<Env> {
         this.bindings.PROJECT_STORE.idFromString(project.do_id),
       );
       try {
-        const backfilled = await projectStore.ensureMetadataBackfilled({ publicId: project.id });
-        if (!backfilled.ok) {
-          console.error("failed to backfill project metadata", {
+        const synced = await projectStore.sendSummaryToRegistry({ publicId: project.id });
+        if (!synced.ok) {
+          console.error("failed to backfill project summary record count", {
             projectId: project.id,
-            error: backfilled.error,
+            error: synced.error,
           });
         }
       } catch (error) {
-        console.error("failed to backfill project metadata", {
+        console.error("failed to backfill project summary record count", {
           projectId: project.id,
           error,
         });
       }
     }
+  }
+
+  private countProjects(ownerEmail: string | undefined): number {
+    return (
+      (ownerEmail
+        ? this.ctx.storage.sql.exec<CountRow>(
+            "SELECT COUNT(*) AS count FROM project_summaries WHERE owner_email = ?",
+            ownerEmail,
+          )
+        : this.ctx.storage.sql.exec<CountRow>("SELECT COUNT(*) AS count FROM project_summaries")
+      ).toArray()[0]?.count ?? 0
+    );
   }
 
   private hasProject(projectId: string): boolean {
@@ -477,6 +691,29 @@ export class ProjectsRegistry extends DurableObject<Env> {
 
   private static serializeProjectRef(project: { doId: string }): string {
     return JSON.stringify({ doId: project.doId });
+  }
+}
+
+function isValidPageInput(limit: number, offset: number): boolean {
+  return (
+    Number.isSafeInteger(limit) &&
+    limit >= 1 &&
+    limit <= 100 &&
+    Number.isSafeInteger(offset) &&
+    offset >= 0
+  );
+}
+
+function adminProjectOrderClause(sort: AdminProjectSort): string | null {
+  switch (sort) {
+    case "records_desc":
+      return "project_summaries.record_count DESC, project_summaries.updated_at DESC, projects.id ASC";
+    case "updated_desc":
+      return "project_summaries.updated_at DESC, project_summaries.record_count DESC, projects.id ASC";
+    case "updated_asc":
+      return "project_summaries.updated_at ASC, project_summaries.record_count DESC, projects.id ASC";
+    default:
+      return null;
   }
 }
 

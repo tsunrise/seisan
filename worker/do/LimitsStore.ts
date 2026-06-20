@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 
 import { normalizeEmail } from "../email";
-import { LimitsKvStore, LimitsDocument, type LimitsTarget } from "../limits";
+import { LimitsKvStore, LimitsDocument, resolveLimits, type LimitsTarget } from "../limits";
 import { runSqlMigrations, type SqlMigration } from "./migrations";
 
 interface LimitsRow extends Record<string, SqlStorageValue> {
@@ -47,12 +47,11 @@ export class LimitsStore extends DurableObject<Env> {
       return { ok: true, limits: null, updatedAt: null };
     }
 
-    const limits = LimitsStore.parseStoredLimits(row.limit_json);
-    if (!limits) {
-      return { ok: false, error: "invalid_input" };
-    }
-
-    return { ok: true, limits, updatedAt: row.updated_at };
+    return {
+      ok: true,
+      limits: LimitsStore.parseStoredLimits(row.limit_json) ?? {},
+      updatedAt: row.updated_at,
+    };
   }
 
   async putLimits(input: {
@@ -64,6 +63,9 @@ export class LimitsStore extends DurableObject<Env> {
   > {
     const parsedLimits = LimitsDocument.safeParse(input.limits);
     if (!parsedLimits.success || !Number.isSafeInteger(input.nowMs)) {
+      return { ok: false, error: "invalid_input" };
+    }
+    if (!this.canStoreLimits(input.target, parsedLimits.data)) {
       return { ok: false, error: "invalid_input" };
     }
 
@@ -94,6 +96,31 @@ export class LimitsStore extends DurableObject<Env> {
 
   private static storageKeyForTarget(target: LimitsTarget): string {
     return target.type === "default" ? "default" : `user:${normalizeEmail(target.email)}`;
+  }
+
+  private canStoreLimits(target: LimitsTarget, document: LimitsDocument): boolean {
+    if (target.type === "default") {
+      return resolveLimits(document).ok;
+    }
+
+    const defaultDocument = this.readStoredLimits({ type: "default" });
+    return resolveLimits(defaultDocument ?? {}, document).ok;
+  }
+
+  private readStoredLimits(target: LimitsTarget): LimitsDocument | null {
+    const row =
+      this.ctx.storage.sql
+        .exec<LimitsRow>(
+          `SELECT limit_key, limit_json, updated_at
+           FROM limits
+           WHERE limit_key = ?`,
+          LimitsStore.storageKeyForTarget(target),
+        )
+        .toArray()[0] ?? null;
+    if (!row) {
+      return null;
+    }
+    return LimitsStore.parseStoredLimits(row.limit_json) ?? {};
   }
 
   private static serializeDocument(document: LimitsDocument): string {

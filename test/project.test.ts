@@ -235,10 +235,7 @@ describe("project routes", () => {
     const owner = `cap-${crypto.randomUUID()}@example.com`;
     const linkedProjectCapLimits = {
       ...BUILTIN_DEFAULT_LIMITS,
-      projects: {
-        ...BUILTIN_DEFAULT_LIMITS.projects,
-        maxOwnedProjects: Number.MAX_SAFE_INTEGER,
-      },
+      "projects.maxOwnedProjects": Number.MAX_SAFE_INTEGER,
     };
     await runInDurableObject(
       testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
@@ -252,7 +249,11 @@ describe("project routes", () => {
             nowMs: number;
           }): { ok: boolean };
         };
-        for (let index = 0; index < BUILTIN_DEFAULT_LIMITS.projects.maxLinkedProjects; index += 1) {
+        for (
+          let index = 0;
+          index < BUILTIN_DEFAULT_LIMITS["projects.maxLinkedProjects"];
+          index += 1
+        ) {
           const registered = registry.registerProject({
             id: crypto.randomUUID(),
             doId: testEnv.PROJECT_STORE.newUniqueId().toString(),
@@ -289,7 +290,8 @@ describe("project routes", () => {
       testEnv,
       owner,
       limitsDocument({
-        projects: { maxOwnedProjects: 1, maxLinkedProjects: 5 },
+        "projects.maxOwnedProjects": 1,
+        "projects.maxLinkedProjects": 5,
       }),
     );
 
@@ -319,7 +321,7 @@ describe("project routes", () => {
       testEnv,
       projectNameOwner,
       limitsDocument({
-        projects: { maxProjectNameLength: 3 },
+        "projects.maxProjectNameLength": 3,
       }),
     );
     const projectNameResponse = await dispatch(
@@ -342,7 +344,7 @@ describe("project routes", () => {
       testEnv,
       memberNameOwner,
       limitsDocument({
-        projects: { maxMemberNameLength: 3 },
+        "projects.maxMemberNameLength": 3,
       }),
     );
     const memberNameResponse = await dispatch(
@@ -366,7 +368,7 @@ describe("project routes", () => {
       testEnv,
       aclOwner,
       limitsDocument({
-        projects: { maxAclEmails: 1 },
+        "projects.maxAclEmails": 1,
       }),
     );
     const aclResponse = await dispatch(
@@ -392,7 +394,8 @@ describe("project routes", () => {
       testEnv,
       memberEmail,
       limitsDocument({
-        projects: { maxLinkedProjects: 1, maxOwnedProjects: 5 },
+        "projects.maxLinkedProjects": 1,
+        "projects.maxOwnedProjects": 5,
       }),
     );
     const firstProject = await createProject(testEnv, {
@@ -425,7 +428,7 @@ describe("project routes", () => {
       testEnv,
       owner,
       limitsDocument({
-        records: { maxRecordsPerOwnedProject: 1 },
+        "records.maxRecordsPerOwnedProject": 1,
       }),
     );
     const project = await createProject(testEnv, { owner });
@@ -462,7 +465,7 @@ describe("project routes", () => {
       testEnv,
       owner,
       limitsDocument({
-        projects: { maxMembersPerProject: 5 },
+        "projects.maxMembersPerProject": 5,
       }),
     );
     const project = await createProject(testEnv, { owner });
@@ -498,7 +501,7 @@ describe("project routes", () => {
       testEnv,
       owner,
       limitsDocument({
-        records: { maxRecordsPerOwnedProject: 5 },
+        "records.maxRecordsPerOwnedProject": 5,
       }),
     );
     const project = await createProject(testEnv, { owner });
@@ -546,14 +549,16 @@ describe("project routes", () => {
     await putDefaultLimits(
       testEnv,
       limitsDocument({
-        records: { defaultPageSize: 1, maxPageSize: 1 },
+        "records.defaultPageSize": 1,
+        "records.maxPageSize": 1,
       }),
     );
     await putUserLimits(
       testEnv,
       owner,
       limitsDocument({
-        records: { defaultPageSize: 3, maxPageSize: 3 },
+        "records.defaultPageSize": 3,
+        "records.maxPageSize": 3,
       }),
     );
     const project = await createProject(testEnv, { owner });
@@ -594,12 +599,12 @@ describe("project routes", () => {
     const owner = `invalid-limit-${crypto.randomUUID()}@example.com`;
     await testEnv.CONFIGS.put(
       LimitsKvStore.userKey(owner),
-      JSON.stringify({ records: { defaultPageSize: 1 } }),
+      JSON.stringify({ "records.maxPageSize": 0 }),
     );
     const project = await createProject(testEnv, { owner });
 
     const response = await dispatch(
-      `/project/${project.id}?limit=${BUILTIN_DEFAULT_LIMITS.records.maxPageSize}`,
+      `/project/${project.id}?limit=${BUILTIN_DEFAULT_LIMITS["records.maxPageSize"]}`,
       testEnv,
       {
         headers: await authHeaders(owner),
@@ -616,7 +621,8 @@ describe("project routes", () => {
       testEnv,
       owner,
       limitsDocument({
-        money: { maxAmountCents: 100, maxBalanceCents: 100 },
+        "money.maxAmountCents": 100,
+        "money.maxBalanceCents": 100,
       }),
     );
     const project = await createProject(testEnv, { owner, ownerMemberName: "Alice" });
@@ -943,14 +949,14 @@ describe("project routes", () => {
         "POST",
         {
           delta: {
-            "1": -BUILTIN_DEFAULT_LIMITS.money.maxAmountCents - 1,
-            "2": BUILTIN_DEFAULT_LIMITS.money.maxAmountCents + 1,
+            "1": -BUILTIN_DEFAULT_LIMITS["money.maxAmountCents"] - 1,
+            "2": BUILTIN_DEFAULT_LIMITS["money.maxAmountCents"] + 1,
           },
           description: {
             type: "transfer",
             from: 1,
             to: 2,
-            amount: BUILTIN_DEFAULT_LIMITS.money.maxAmountCents + 1,
+            amount: BUILTIN_DEFAULT_LIMITS["money.maxAmountCents"] + 1,
           },
         },
         await authHeaders(),
@@ -966,14 +972,14 @@ describe("project routes", () => {
         "POST",
         {
           delta: {
-            "1": -BUILTIN_DEFAULT_LIMITS.money.maxAmountCents,
-            "2": BUILTIN_DEFAULT_LIMITS.money.maxAmountCents,
+            "1": -BUILTIN_DEFAULT_LIMITS["money.maxAmountCents"],
+            "2": BUILTIN_DEFAULT_LIMITS["money.maxAmountCents"],
           },
           description: {
             type: "transfer",
             from: 1,
             to: 2,
-            amount: BUILTIN_DEFAULT_LIMITS.money.maxAmountCents,
+            amount: BUILTIN_DEFAULT_LIMITS["money.maxAmountCents"],
           },
         },
         await authHeaders(),
@@ -1003,8 +1009,8 @@ describe("project routes", () => {
 
     const view = await getProject(testEnv, project.id);
     expect(view.balance).toEqual({
-      "1": -BUILTIN_DEFAULT_LIMITS.money.maxAmountCents,
-      "2": BUILTIN_DEFAULT_LIMITS.money.maxAmountCents,
+      "1": -BUILTIN_DEFAULT_LIMITS["money.maxAmountCents"],
+      "2": BUILTIN_DEFAULT_LIMITS["money.maxAmountCents"],
     });
     expect(view.records).toMatchObject([{ id: 1 }]);
   });

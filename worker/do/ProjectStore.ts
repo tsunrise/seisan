@@ -185,10 +185,7 @@ export class ProjectStore extends DurableObject<Env> {
     const name = ProjectNameUtils.normalizeProject(input.name);
     const ownerMemberName = ProjectNameUtils.normalizeMember(
       input.ownerMemberName ??
-        ProjectStore.defaultMemberNameForEmail(
-          input.ownerEmail,
-          policy.projects.maxMemberNameLength,
-        ),
+        ProjectStore.defaultMemberNameForEmail(input.ownerEmail, policy.maxMemberNameLength()),
     );
     if (!policy.allowsProjectName(name)) {
       return { ok: false, error: "project_limit_exceeded" };
@@ -912,7 +909,7 @@ export class ProjectStore extends DurableObject<Env> {
     return { ok: true };
   }
 
-  // TODO: remove this after backfill 20260615-project-store-metadata-touch is fully done.
+  // TODO: remove this after backfill 20260615-project-metadata-kv is fully done.
   async ensureMetadataBackfilled(input: {
     publicId: string;
   }): Promise<{ ok: true } | { ok: false; error: "uninitialized" | "invalid_input" }> {
@@ -1399,6 +1396,7 @@ export class ProjectStore extends DurableObject<Env> {
       owner: meta.owner_email,
       updatedAt: meta.updated_at,
       lastSyncAt,
+      recordCount: Math.max(meta.next_record_id - 1, 0),
       members,
     };
   }

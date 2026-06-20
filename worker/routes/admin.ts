@@ -4,16 +4,76 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 import { type AppContext, type EnvWithIdentity, parseJson } from "../auth";
 import { normalizedEmailSchema } from "../email";
 import { ErrorResponse } from "../error";
-import { BUILTIN_DEFAULT_LIMITS, LIMITS_STORE_NAME, LimitsDocument, type LimitsTarget } from "../limits";
+import {
+  BUILTIN_DEFAULT_LIMITS,
+  LIMITS_STORE_NAME,
+  LIMIT_DEFINITIONS,
+  LimitsDocument,
+  type LimitsTarget,
+} from "../limits";
+import { PROJECTS_REGISTRY_NAME } from "../project";
+import type { AdminProjectSort } from "../do/ProjectsRegistry";
 
 type AdminAccessEnv = Env & {
   ADMIN_ACCESS_AUD?: string;
   ADMIN_ACCESS_TEAM_DOMAIN?: string;
 };
 
+const DEFAULT_ADMIN_PAGE_LIMIT = 25;
+const MAX_ADMIN_PAGE_LIMIT = 100;
+
 export const adminApp = new Hono<EnvWithIdentity>();
 
 adminApp.use("*", requireAdminAccess);
+
+adminApp.get("/whoami", (context) => {
+  return context.json({
+    ok: true,
+    email: context.get("identity")?.email ?? null,
+    local: isLocalhostRequest(context),
+  });
+});
+
+adminApp.get("/projects", async (context) => {
+  const page = parsePageQuery(context);
+  const ownerEmail = parseOwnerEmailQuery(context.req.query("ownerEmail"));
+  const sort = parseProjectSortQuery(context.req.query("sort"), context.req.query("recordOrder"));
+  if (!page || ownerEmail === "invalid" || !sort) {
+    return ErrorResponse.invalidRequest();
+  }
+
+  const result = await context.env.PROJECTS_REGISTRY.getByName(
+    PROJECTS_REGISTRY_NAME,
+  ).adminListProjects({
+    ...page,
+    ...(ownerEmail ? { ownerEmail } : {}),
+    sort,
+  });
+  if (!result.ok) {
+    return ErrorResponse.invalidRequest();
+  }
+  return context.json({ projects: result.projects, page: result.page });
+});
+
+adminApp.get("/users", async (context) => {
+  const page = parsePageQuery(context);
+  if (!page) {
+    return ErrorResponse.invalidRequest();
+  }
+
+  const result =
+    await context.env.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME).adminListOwners(page);
+  if (!result.ok) {
+    return ErrorResponse.invalidRequest();
+  }
+  return context.json({ users: result.users, page: result.page });
+});
+
+adminApp.get("/limits/built-in", (context) => {
+  return context.json(BUILTIN_DEFAULT_LIMITS);
+});
+
+adminApp.get("/limits-schema", getLimitsSchema);
 
 adminApp.get("/limits/default", async (context) => {
   return getLimits(context, { type: "default" });
@@ -44,7 +104,11 @@ async function getLimits(context: AppContext, target: LimitsTarget): Promise<Res
   if (!result.ok) {
     return ErrorResponse.invalidRequest();
   }
-  return context.json(result.limits ?? BUILTIN_DEFAULT_LIMITS);
+  return context.json(result.limits ?? {});
+}
+
+function getLimitsSchema(context: AppContext): Response {
+  return context.json(LIMIT_DEFINITIONS);
 }
 
 async function putLimits(context: AppContext, target: LimitsTarget): Promise<Response> {
@@ -89,16 +153,77 @@ async function requireAdminAccess(
 
   try {
     const jwks = createRemoteJWKSet(new URL(`${teamDomain}/cdn-cgi/access/certs`));
-    await jwtVerify(token, jwks, {
+    const verified = await jwtVerify(token, jwks, {
       audience,
       issuer: teamDomain,
     });
+    const email = parseAccessEmail(verified.payload.email);
+    if (email) {
+      context.set("identity", { email });
+    }
   } catch (error) {
     console.error("invalid Cloudflare Access JWT", { error });
     return ErrorResponse.forbidden();
   }
 
   await next();
+}
+
+function parsePageQuery(context: AppContext): { limit: number; offset: number } | null {
+  const limit = parseBoundedInteger(
+    context.req.query("limit"),
+    DEFAULT_ADMIN_PAGE_LIMIT,
+    1,
+    MAX_ADMIN_PAGE_LIMIT,
+  );
+  const offset = parseBoundedInteger(context.req.query("offset"), 0, 0, Number.MAX_SAFE_INTEGER);
+  return limit === null || offset === null ? null : { limit, offset };
+}
+
+function parseBoundedInteger(
+  value: string | undefined,
+  defaultValue: number,
+  min: number,
+  max: number,
+): number | null {
+  if (value === undefined || value === "") {
+    return defaultValue;
+  }
+  if (!/^\d+$/u.test(value)) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= min && parsed <= max ? parsed : null;
+}
+
+function parseOwnerEmailQuery(rawEmail: string | undefined): string | "invalid" | null {
+  if (rawEmail === undefined || rawEmail === "") {
+    return null;
+  }
+  const parsed = normalizedEmailSchema.safeParse(rawEmail);
+  return parsed.success ? parsed.data : "invalid";
+}
+
+function parseProjectSortQuery(
+  rawSort: string | undefined,
+  legacyRecordOrder: string | undefined,
+): AdminProjectSort | null {
+  if (rawSort !== undefined && rawSort !== "") {
+    return isAdminProjectSort(rawSort) ? rawSort : null;
+  }
+  if (legacyRecordOrder === undefined || legacyRecordOrder === "") {
+    return "records_desc";
+  }
+  return legacyRecordOrder === "desc" ? "records_desc" : null;
+}
+
+function isAdminProjectSort(value: string): value is AdminProjectSort {
+  return value === "records_desc" || value === "updated_desc" || value === "updated_asc";
+}
+
+function parseAccessEmail(value: unknown): string | null {
+  const parsed = normalizedEmailSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 function parseUserTarget(rawEmail: string): LimitsTarget | null {

@@ -64,6 +64,56 @@ export interface ProjectSummary {
 
 export type WithSyncTime<T> = T & { lastSyncAt: number };
 
+export interface Limits {
+  "projects.maxLinkedProjects": number;
+  "projects.maxOwnedProjects": number;
+  "projects.maxMembersPerProject": number;
+  "projects.maxProjectNameLength": number;
+  "projects.maxMemberNameLength": number;
+  "projects.maxAclEmails": number;
+  "records.defaultPageSize": number;
+  "records.maxPageSize": number;
+  "records.maxRecordsPerOwnedProject": number;
+  "records.maxExpenseNameLength": number;
+  "money.maxAmountCents": number;
+  "money.maxBalanceCents": number;
+}
+
+export type LimitName = keyof Limits;
+export type LimitValue = number | boolean;
+export type LimitsDocument = Partial<Record<LimitName, LimitValue>>;
+
+export interface AdminLimitDefinition {
+  name: LimitName;
+  type: "integer" | "boolean";
+}
+
+export interface AdminPage {
+  limit: number;
+  offset: number;
+  total: number;
+  hasMore: boolean;
+}
+
+export interface AdminProject {
+  id: string;
+  name: string;
+  owner: string;
+  recordCount: number;
+  memberCount: number;
+  updatedAt: number;
+  lastSyncAt: number;
+}
+
+export type AdminProjectSort = "records_desc" | "updated_desc" | "updated_asc";
+
+export interface AdminOwnerSummary {
+  owner: string;
+  projectCount: number;
+  recordCount: number;
+  updatedAt: number;
+}
+
 export class ApiError extends Error {
   readonly status: number;
 
@@ -76,6 +126,75 @@ export class ApiError extends Error {
 
 export async function whoami(): Promise<{ email: string }> {
   return requestJson("/api/whoami");
+}
+
+export async function adminWhoami(): Promise<{
+  ok: true;
+  email: string | null;
+  local: boolean;
+}> {
+  return requestJson("/api/admin/whoami");
+}
+
+export async function getAdminDefaultLimits(): Promise<LimitsDocument> {
+  return requestJson("/api/admin/limits/default");
+}
+
+export async function getAdminBuiltInLimits(): Promise<Limits> {
+  return requestJson("/api/admin/limits/built-in");
+}
+
+export async function getAdminLimitSchema(): Promise<AdminLimitDefinition[]> {
+  return requestJson("/api/admin/limits-schema");
+}
+
+export async function putAdminDefaultLimits(limits: LimitsDocument): Promise<void> {
+  await requestEmpty("/api/admin/limits/default", {
+    method: "PUT",
+    body: limits,
+    expectedStatus: 204,
+  });
+}
+
+export async function getAdminUserLimits(email: string): Promise<LimitsDocument> {
+  return requestJson(`/api/admin/limits/user/${encodeURIComponent(email)}`);
+}
+
+export async function putAdminUserLimits(email: string, limits: LimitsDocument): Promise<void> {
+  await requestEmpty(`/api/admin/limits/user/${encodeURIComponent(email)}`, {
+    method: "PUT",
+    body: limits,
+    expectedStatus: 204,
+  });
+}
+
+export async function listAdminProjects(
+  input: {
+    limit?: number;
+    offset?: number;
+    ownerEmail?: string;
+    sort?: AdminProjectSort;
+  } = {},
+): Promise<{ projects: AdminProject[]; page: AdminPage }> {
+  const params = new URLSearchParams();
+  appendPageParams(params, input);
+  if (input.ownerEmail) {
+    params.set("ownerEmail", input.ownerEmail);
+  }
+  if (input.sort) {
+    params.set("sort", input.sort);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return requestJson(`/api/admin/projects${query}`);
+}
+
+export async function listAdminUsers(
+  input: { limit?: number; offset?: number } = {},
+): Promise<{ users: AdminOwnerSummary[]; page: AdminPage }> {
+  const params = new URLSearchParams();
+  appendPageParams(params, input);
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return requestJson(`/api/admin/users${query}`);
 }
 
 export async function requestLoginCode(
@@ -235,6 +354,18 @@ export async function removeAclEmails(projectId: string, emails: string[]): Prom
     body: { emails },
     expectedStatus: 204,
   });
+}
+
+function appendPageParams(
+  params: URLSearchParams,
+  input: { limit?: number; offset?: number },
+): void {
+  if (input.limit !== undefined) {
+    params.set("limit", String(input.limit));
+  }
+  if (input.offset !== undefined) {
+    params.set("offset", String(input.offset));
+  }
 }
 
 async function requestJson<T>(

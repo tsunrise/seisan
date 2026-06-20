@@ -129,6 +129,7 @@ pnpm run build
 
 - Use the shared `backfill()` helper only for temporary, one-time deployed-data repairs where missing the run does not make the Durable Object unusable. Backfills are lighter weight and less persistent than SQL migrations, and should be removed after confidence that deployed data has been repaired.
 - `backfill()` stores `dbBackfillState` in DO storage KV and only marks the backfill complete after the awaited repair function succeeds. Use a unique, date-stamped name such as `20260607-project-summary`.
+- Keep at most one active `backfill()` definition per Durable Object class. Before adding a new backfill for a DO class, remove any previous completed backfill for that same class, including its call path, tests, helpers, and TODOs. Backfills for different DO classes are independent.
 - Backfills are appropriate for derived or redundant data, cache-like summaries, optional repair jobs, or best-effort compatibility fills. They are not appropriate for required schema setup.
 - Put the `backfill()` call close to the code path that can safely repair the data, such as a registry/listing path or another DO method that has enough information to rebuild the missing state.
 - Always add a cleanup TODO comment on every backfill use and every backfill-specific test, using this exact format: `TODO: remove this after backfill <backfill_name> is fully done`.

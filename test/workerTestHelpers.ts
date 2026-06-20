@@ -9,7 +9,7 @@ import { expect, vi } from "vitest";
 
 import { SESSION_COOKIE_NAME } from "../worker/constants";
 import { signSessionToken } from "../worker/crypto";
-import { BUILTIN_DEFAULT_LIMITS, LimitsKvStore, type LimitsDocument } from "../worker/limits";
+import { LIMITS_STORE_NAME, LimitsKvStore, type LimitsDocument } from "../worker/limits";
 import worker, { type ProjectStore } from "../worker/index";
 import { PROJECTS_REGISTRY_NAME, type ProjectMember } from "../worker/project";
 
@@ -17,7 +17,6 @@ export const AUTH_SECRET = "test-auth-secret-at-least-32-bytes";
 export const LOGIN_EMAIL_FROM = "login@example.com";
 export const REGISTRY_LIST_CACHE_NAME = "seisan-registry";
 export const REGISTRY_LIST_CACHE_HOST = "cache.seisan.waga.me";
-const PROJECT_STORE_METADATA_TOUCH_BACKFILL_NAME = "20260615-project-store-metadata-touch";
 
 export interface TestEnv {
   env: Env;
@@ -92,6 +91,12 @@ function makeAllowingRateLimit(): RateLimit {
 export async function cleanupWorkerTestState(): Promise<void> {
   vi.restoreAllMocks();
   await env.CONFIGS.delete(LimitsKvStore.defaultKey());
+  await runInDurableObject(
+    env.LIMITS_STORE.getByName(LIMITS_STORE_NAME),
+    async (_instance, state) => {
+      state.storage.sql.exec("DELETE FROM limits");
+    },
+  );
 }
 
 export async function dispatch(
@@ -145,20 +150,8 @@ export function jsonBody(
   };
 }
 
-export function limitsDocument(overrides: {
-  projects?: Partial<typeof BUILTIN_DEFAULT_LIMITS.projects>;
-  records?: Partial<typeof BUILTIN_DEFAULT_LIMITS.records>;
-  money?: Partial<typeof BUILTIN_DEFAULT_LIMITS.money>;
-}): LimitsDocument {
-  return {
-    ...(overrides.projects
-      ? { projects: { ...BUILTIN_DEFAULT_LIMITS.projects, ...overrides.projects } }
-      : {}),
-    ...(overrides.records
-      ? { records: { ...BUILTIN_DEFAULT_LIMITS.records, ...overrides.records } }
-      : {}),
-    ...(overrides.money ? { money: { ...BUILTIN_DEFAULT_LIMITS.money, ...overrides.money } } : {}),
-  };
+export function limitsDocument(overrides: LimitsDocument): LimitsDocument {
+  return overrides;
 }
 
 export async function putDefaultLimits(testEnv: Env, limits: LimitsDocument): Promise<void> {
@@ -198,7 +191,6 @@ export async function createProject(
   expect(response.status).toBe(201);
   const body = (await response.json()) as ProjectResponse;
   await waitForProjectCache(testEnv, body.id);
-  await markProjectStoreMetadataTouchBackfillDone(testEnv);
   return body;
 }
 
@@ -296,7 +288,6 @@ export async function listProjectsFromRegistry(
   testEnv: Env,
   email: string,
 ): Promise<ProjectSummaryResponse["projects"]> {
-  await markProjectStoreMetadataTouchBackfillDone(testEnv);
   const listed = await testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME).listProjects({
     callerEmail: email,
   });
@@ -304,13 +295,4 @@ export async function listProjectsFromRegistry(
     throw new Error(`Registry list failed: ${listed.error}`);
   }
   return listed.projects;
-}
-
-async function markProjectStoreMetadataTouchBackfillDone(testEnv: Env): Promise<void> {
-  await runInDurableObject(
-    testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
-    async (_instance, state) => {
-      await state.storage.put("dbBackfillState", PROJECT_STORE_METADATA_TOUCH_BACKFILL_NAME);
-    },
-  );
 }

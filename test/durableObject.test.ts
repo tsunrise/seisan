@@ -19,7 +19,7 @@ const PROJECT_METADATA_BACKFILL_NAME = "20260615-project-metadata-kv";
 describe("durable objects", () => {
   afterEach(cleanupWorkerTestState);
 
-  it("runs durable object backfills only once per unique marker", async () => {
+  it("runs a durable object backfill only once for its marker", async () => {
     const { env: testEnv } = makeEnv();
     const stub = testEnv.PROJECT_STORE.getByName(`backfill-${crypto.randomUUID()}`);
 
@@ -35,13 +35,6 @@ describe("durable objects", () => {
       });
       expect(calls).toBe(1);
       await expect(state.storage.get<string>("dbBackfillState")).resolves.toBe("backfill-a");
-
-      await backfill(state, "backfill-b", async () => {
-        calls += 1;
-        return null;
-      });
-      expect(calls).toBe(2);
-      await expect(state.storage.get<string>("dbBackfillState")).resolves.toBe("backfill-b");
     });
   });
 
@@ -55,7 +48,7 @@ describe("durable objects", () => {
     await runInDurableObject(
       testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
       async (_instance, state) => {
-        await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(4);
+        await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(6);
       },
     );
     await runInDurableObject(testEnv.LIMITS_STORE.getByName("limits"), async (_instance, state) => {
