@@ -2,6 +2,7 @@
 
 Date: 2026-06-15 22:55:07 PDT
 Commit: 6f739cb9224893a68e05dedef76aa1d361ff5b08
+Resolution: Risk Accepted
 
 Session revocation is stored in KV, but authentication reads the revocation key with cacheTtl: 60. Cloudflare KV caches both existing values and negative lookups, so a token whose non-revoked state was read shortly before logout can remain accepted at an edge location until the cached negative lookup expires, despite the logout route writing a revocation marker.
 
@@ -35,3 +36,7 @@ Logout revocation is stored out-of-band in KV:
 The revocation lookup is a write-after-read-sensitive security decision, but it is performed with an edge cache TTL. Before logout, a normal authenticated request for the token reads a missing revocation key. Because Cloudflare KV caches negative lookups, a later logout write may not immediately affect `authenticate()` at the same cache location. During that stale negative-cache window, possession of the token can still authenticate even though logout has completed.
 
 The live local replay shows the intended behavior in Wrangler, but the deployed behavior depends on Cloudflare KV's documented edge caching model.
+
+## Resolution
+
+Not planned: the short stale-revocation window is accepted as a performance tradeoff. Revoked sessions may remain valid briefly when Cloudflare KV has cached a negative revocation lookup, and Seisan intentionally keeps the cached KV revocation read rather than adding a stronger immediate-consistency path.

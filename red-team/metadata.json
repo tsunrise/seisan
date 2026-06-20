@@ -96,12 +96,13 @@
     },
     {
       "id": "RT-10",
-      "status": "active",
+      "status": "resolved",
       "severity": "Medium",
       "title": "Revoked Sessions Can Survive KV Negative Cache Windows",
-      "file": "active/rt-10-revoked-sessions-can-survive-kv-negative-cache-windows-20260615-225507.md",
+      "file": "resolved/rt-10-medium-revoked-sessions-can-survive-kv-negative-cache-windows-20260620-160835.md",
       "date": "2026-06-15 22:55:07 PDT",
-      "commit": "6f739cb9224893a68e05dedef76aa1d361ff5b08"
+      "commit": "6f739cb9224893a68e05dedef76aa1d361ff5b08",
+      "resolution": "Risk Accepted"
     }
   ]
 }
