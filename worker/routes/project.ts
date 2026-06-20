@@ -10,6 +10,7 @@ import {
   requireAuth,
   requireSameOriginWhenPresent,
 } from "../auth";
+import { sha256Hex } from "../crypto";
 import type { ProjectStore } from "../do/ProjectStore";
 import { normalizeEmail, normalizedEmailSchema } from "../email";
 import { ErrorResponse } from "../error";
@@ -160,6 +161,12 @@ type ProjectRefCacheRead =
   | { status: "hit"; projectReference: ProjectRef }
   | { status: "miss" }
   | { status: "unavailable" };
+
+type AppendRecordRateLimitReason = "account" | "project";
+
+type AppendRecordRateLimitResult =
+  | { ok: true }
+  | { ok: false; reason: AppendRecordRateLimitReason };
 
 export const projectApp = new Hono<EnvWithIdentity>();
 
@@ -686,8 +693,17 @@ projectApp.post("/project/:id", requireSameOriginWhenPresent, requireAuth, async
     return ErrorResponse.notFound();
   }
 
+  const callerEmail = normalizeEmail(getRequiredIdentity(context).email);
+  const rateLimit = await new AppendRecordRateLimiter(context.env).limit({
+    accountEmail: callerEmail,
+    projectId: projectLookup.projectId,
+  });
+  if (!rateLimit.ok) {
+    return ErrorResponse.rateLimited(rateLimit.reason);
+  }
+
   const result = await projectLookup.store.postRecord({
-    callerEmail: getRequiredIdentity(context).email,
+    callerEmail,
     delta: parsed.data.delta,
     description: parsed.data.description,
     nowMs: Date.now(),
@@ -744,6 +760,46 @@ async function getProjectStore(
     };
   } catch {
     return null;
+  }
+}
+
+class AppendRecordRateLimiter {
+  private static readonly accountKeyPrefix = "append-record:account:";
+  private static readonly projectKeyPrefix = "append-record:project:";
+
+  private readonly env: Env;
+
+  constructor(env: Env) {
+    this.env = env;
+  }
+
+  async limit(input: {
+    accountEmail: string;
+    projectId: string;
+  }): Promise<AppendRecordRateLimitResult> {
+    const accountLimit = await this.env.APPEND_RECORD_ACCOUNT_RATE_LIMITER.limit({
+      key: await AppendRecordRateLimiter.accountKey(input.accountEmail),
+    });
+    if (!accountLimit.success) {
+      return { ok: false, reason: "account" };
+    }
+
+    const projectLimit = await this.env.APPEND_RECORD_PROJECT_RATE_LIMITER.limit({
+      key: AppendRecordRateLimiter.projectKey(input.projectId),
+    });
+    if (!projectLimit.success) {
+      return { ok: false, reason: "project" };
+    }
+
+    return { ok: true };
+  }
+
+  private static async accountKey(email: string): Promise<string> {
+    return `${AppendRecordRateLimiter.accountKeyPrefix}${await sha256Hex(normalizeEmail(email))}`;
+  }
+
+  private static projectKey(projectId: string): string {
+    return `${AppendRecordRateLimiter.projectKeyPrefix}${projectId}`;
   }
 }
 

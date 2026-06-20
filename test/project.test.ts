@@ -1,6 +1,7 @@
 import { runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { sha256Hex } from "../worker/crypto";
 import { ABSOLUTE_LIST_LIMIT, BUILTIN_DEFAULT_LIMITS, LimitsKvStore } from "../worker/limits";
 import { PROJECTS_REGISTRY_NAME } from "../worker/project";
 import {
@@ -29,6 +30,23 @@ function countResponseStatuses(responses: Response[]): Partial<Record<number, nu
     counts[response.status] = (counts[response.status] ?? 0) + 1;
   }
   return counts;
+}
+
+function appendRecordBody(name = "Lunch") {
+  return {
+    delta: {},
+    description: {
+      type: "expense" as const,
+      name,
+      paid: { "1": 100 },
+      liability: { "1": 100 },
+    },
+  };
+}
+
+function stubRateLimit(success: boolean): { binding: RateLimit; limit: ReturnType<typeof vi.fn> } {
+  const limit = vi.fn(async () => ({ success }));
+  return { binding: { limit } as RateLimit, limit };
 }
 
 describe("project routes", () => {
@@ -843,6 +861,74 @@ describe("project routes", () => {
     const ownerView = await getProject(testEnv, project.id);
     expect(ownerView.balance).toEqual({ "1": -1500, "2": 1500 });
     expect(ownerView.records).toMatchObject([{ id: 2, authorMemberId: 2 }, { id: 1 }]);
+  });
+
+  it("checks account and project rate limit keys before appending records", async () => {
+    const accountRateLimit = stubRateLimit(true);
+    const projectRateLimit = stubRateLimit(true);
+    const { env: testEnv } = makeEnv({
+      APPEND_RECORD_ACCOUNT_RATE_LIMITER: accountRateLimit.binding,
+      APPEND_RECORD_PROJECT_RATE_LIMITER: projectRateLimit.binding,
+    });
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+
+    const response = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody("POST", appendRecordBody(), await authHeaders("Owner@Example.COM")),
+    );
+
+    expect(response.status).toBe(201);
+    expect(accountRateLimit.limit).toHaveBeenCalledWith({
+      key: `append-record:account:${await sha256Hex("owner@example.com")}`,
+    });
+    expect(projectRateLimit.limit).toHaveBeenCalledWith({
+      key: `append-record:project:${project.id}`,
+    });
+  });
+
+  it("returns an account rate limit reason before appending a record", async () => {
+    const accountRateLimit = stubRateLimit(false);
+    const projectRateLimit = stubRateLimit(true);
+    const { env: testEnv } = makeEnv({
+      APPEND_RECORD_ACCOUNT_RATE_LIMITER: accountRateLimit.binding,
+      APPEND_RECORD_PROJECT_RATE_LIMITER: projectRateLimit.binding,
+    });
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+
+    const response = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody("POST", appendRecordBody(), await authHeaders()),
+    );
+
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ error: "rate_limited", reason: "account" });
+    expect(accountRateLimit.limit).toHaveBeenCalledTimes(1);
+    expect(projectRateLimit.limit).not.toHaveBeenCalled();
+    expect((await getProject(testEnv, project.id)).records).toHaveLength(0);
+  });
+
+  it("returns a project rate limit reason before appending a record", async () => {
+    const accountRateLimit = stubRateLimit(true);
+    const projectRateLimit = stubRateLimit(false);
+    const { env: testEnv } = makeEnv({
+      APPEND_RECORD_ACCOUNT_RATE_LIMITER: accountRateLimit.binding,
+      APPEND_RECORD_PROJECT_RATE_LIMITER: projectRateLimit.binding,
+    });
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+
+    const response = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody("POST", appendRecordBody(), await authHeaders()),
+    );
+
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ error: "rate_limited", reason: "project" });
+    expect(accountRateLimit.limit).toHaveBeenCalledTimes(1);
+    expect(projectRateLimit.limit).toHaveBeenCalledTimes(1);
+    expect((await getProject(testEnv, project.id)).records).toHaveLength(0);
   });
 
   it("rejects oversized money inputs and cumulative balance overflow", async () => {

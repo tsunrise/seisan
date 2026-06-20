@@ -79,6 +79,24 @@
       "name": "SEND_EMAIL",
     },
   ],
+  "ratelimits": [
+    {
+      "name": "APPEND_RECORD_ACCOUNT_RATE_LIMITER",
+      "namespace_id": "2026061801",
+      "simple": {
+        "limit": 60,
+        "period": 60,
+      },
+    },
+    {
+      "name": "APPEND_RECORD_PROJECT_RATE_LIMITER",
+      "namespace_id": "2026061802",
+      "simple": {
+        "limit": 60,
+        "period": 60,
+      },
+    },
+  ],
   "env": {
     "test": {
       "vars": {
@@ -138,6 +156,24 @@
       "send_email": [
         {
           "name": "SEND_EMAIL",
+        },
+      ],
+      "ratelimits": [
+        {
+          "name": "APPEND_RECORD_ACCOUNT_RATE_LIMITER",
+          "namespace_id": "2026061811",
+          "simple": {
+            "limit": 60,
+            "period": 60,
+          },
+        },
+        {
+          "name": "APPEND_RECORD_PROJECT_RATE_LIMITER",
+          "namespace_id": "2026061812",
+          "simple": {
+            "limit": 60,
+            "period": 60,
+          },
         },
       ],
     },
@@ -214,6 +250,24 @@
           "remote": true,
         },
       ],
+      "ratelimits": [
+        {
+          "name": "APPEND_RECORD_ACCOUNT_RATE_LIMITER",
+          "namespace_id": "2026061821",
+          "simple": {
+            "limit": 60,
+            "period": 60,
+          },
+        },
+        {
+          "name": "APPEND_RECORD_PROJECT_RATE_LIMITER",
+          "namespace_id": "2026061822",
+          "simple": {
+            "limit": 60,
+            "period": 60,
+          },
+        },
+      ],
     },
     "production": {
       "vars": {
@@ -284,6 +338,24 @@
         {
           "name": "SEND_EMAIL",
           "remote": true,
+        },
+      ],
+      "ratelimits": [
+        {
+          "name": "APPEND_RECORD_ACCOUNT_RATE_LIMITER",
+          "namespace_id": "2026061831",
+          "simple": {
+            "limit": 60,
+            "period": 60,
+          },
+        },
+        {
+          "name": "APPEND_RECORD_PROJECT_RATE_LIMITER",
+          "namespace_id": "2026061832",
+          "simple": {
+            "limit": 60,
+            "period": 60,
+          },
         },
       ],
     },
