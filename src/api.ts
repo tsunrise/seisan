@@ -133,7 +133,20 @@ export async function adminWhoami(): Promise<{
   email: string | null;
   local: boolean;
 }> {
-  return requestJson("/api/admin/whoami");
+  const response = await fetch("/api/admin/whoami", {
+    method: "GET",
+    headers: new Headers({ Accept: "application/json" }),
+    credentials: "same-origin",
+    redirect: "manual",
+  });
+  if (response.type === "opaqueredirect" || isRedirectResponse(response)) {
+    return redirectToAdminAccessLogin();
+  }
+
+  if (response.status !== 200) {
+    throw new ApiError(response.status, await response.text());
+  }
+  return (await response.json()) as { ok: true; email: string | null; local: boolean };
 }
 
 export async function getAdminDefaultLimits(): Promise<LimitsDocument> {
@@ -366,6 +379,21 @@ function appendPageParams(
   if (input.offset !== undefined) {
     params.set("offset", String(input.offset));
   }
+}
+
+function redirectToAdminAccessLogin(): Promise<never> {
+  const loginUrl = new URL("/api/admin/login", window.location.href);
+  loginUrl.searchParams.set("returnTo", currentBrowserPath());
+  window.location.assign(`${loginUrl.pathname}${loginUrl.search}`);
+  return new Promise<never>(() => {});
+}
+
+function currentBrowserPath(): string {
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+function isRedirectResponse(response: Response): boolean {
+  return response.status >= 300 && response.status < 400;
 }
 
 async function requestJson<T>(

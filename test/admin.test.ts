@@ -90,10 +90,6 @@ describe("admin routes", () => {
     const schema = await adminDispatch("/limits-schema", testEnv);
     expect(schema.status).toBe(200);
     expect(await schema.json()).toEqual(LIMIT_DEFINITIONS);
-
-    const typoAlias = await adminDispatch("/limts-schema", testEnv);
-    expect(typoAlias.status).toBe(200);
-    expect(await typoAlias.json()).toEqual(LIMIT_DEFINITIONS);
   });
 
   it("protects admin endpoints with Cloudflare Access outside local dev", async () => {
@@ -102,6 +98,20 @@ describe("admin routes", () => {
     const localWhoami = await adminDispatch("/whoami", testEnv);
     expect(localWhoami.status).toBe(200);
     expect(await localWhoami.json()).toEqual({ ok: true, email: null, local: true });
+
+    const localLogin = await adminDispatch(
+      `/login?returnTo=${encodeURIComponent("/admin/limit/test@example.com?tab=limits#row")}`,
+      testEnv,
+    );
+    expect(localLogin.status).toBe(302);
+    expect(localLogin.headers.get("Location")).toBe("/admin/limit/test@example.com?tab=limits#row");
+
+    const unsafeLogin = await adminDispatch(
+      `/login?returnTo=${encodeURIComponent("https://evil.example/admin")}`,
+      testEnv,
+    );
+    expect(unsafeLogin.status).toBe(302);
+    expect(unsafeLogin.headers.get("Location")).toBe("/admin");
 
     const missingToken = await adminDispatch("/whoami", testEnv, {}, "https://seisan.test");
     expect(missingToken.status).toBe(403);

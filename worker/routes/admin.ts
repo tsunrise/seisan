@@ -34,6 +34,16 @@ adminApp.get("/whoami", (context) => {
   });
 });
 
+adminApp.get("/login", (context) => {
+  return new Response(null, {
+    status: 302,
+    headers: {
+      "Cache-Control": "no-store",
+      Location: parseAdminLoginReturnTo(context.req.query("returnTo")),
+    },
+  });
+});
+
 adminApp.get("/projects", async (context) => {
   const page = parsePageQuery(context);
   const ownerEmail = parseOwnerEmailQuery(context.req.query("ownerEmail"));
@@ -141,7 +151,7 @@ async function requireAdminAccess(
 
   const env = context.env as AdminAccessEnv;
   const audience = env.ADMIN_ACCESS_AUD?.trim();
-  const teamDomain = normalizeTeamDomain(env.ADMIN_ACCESS_TEAM_DOMAIN);
+  const teamDomain = env.ADMIN_ACCESS_TEAM_DOMAIN;
   if (!audience || !teamDomain) {
     return ErrorResponse.forbidden();
   }
@@ -226,6 +236,22 @@ function parseAccessEmail(value: unknown): string | null {
   return parsed.success ? parsed.data : null;
 }
 
+function parseAdminLoginReturnTo(value: string | undefined): string {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return "/admin";
+  }
+
+  let returnTo: URL;
+  try {
+    returnTo = new URL(value, "https://seisan.local");
+  } catch {
+    return "/admin";
+  }
+  return returnTo.origin === "https://seisan.local"
+    ? returnTo.pathname + returnTo.search + returnTo.hash
+    : "/admin";
+}
+
 function parseUserTarget(rawEmail: string): LimitsTarget | null {
   let email: string;
   try {
@@ -236,18 +262,6 @@ function parseUserTarget(rawEmail: string): LimitsTarget | null {
 
   const parsed = normalizedEmailSchema.safeParse(email);
   return parsed.success ? { type: "user", email: parsed.data } : null;
-}
-
-function normalizeTeamDomain(value: string | undefined): string | null {
-  const trimmed = value?.trim().replace(/\/+$/u, "");
-  if (!trimmed) {
-    return null;
-  }
-  try {
-    return new URL(trimmed).origin;
-  } catch {
-    return null;
-  }
 }
 
 function isLocalhostRequest(context: AppContext): boolean {

@@ -69,7 +69,7 @@ type Loadable<T> =
   | { status: "ready"; data: T; error: null }
   | { status: "error"; data: null; error: string };
 
-type LimitSource = "Built In" | "Global" | "User";
+type LimitSource = "Built In" | "Default" | "User";
 type LimitDraftDocument = Partial<Record<api.LimitName, string>>;
 
 interface AdminLimitsData {
@@ -144,67 +144,78 @@ export default function AdminApp() {
           ) : null}
         </Stack>
 
+        {identity.status === "loading" ? <CircularProgress size={24} /> : null}
         {identity.status === "error" ? <InlineAlert>{identity.error}</InlineAlert> : null}
 
-        <FormControl sx={{ display: { xs: "block", md: "none" } }}>
-          <InputLabel id="admin-section-label">Section</InputLabel>
-          <Select
-            labelId="admin-section-label"
-            label="Section"
-            value={currentSection.path}
-            onChange={selectSection}
-            fullWidth
-          >
-            {sections.map((section) => (
-              <MenuItem key={section.path} value={section.path}>
-                {section.label}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", md: "220px minmax(0, 1fr)" },
-            gap: 2,
-          }}
-        >
-          <Paper
-            square
-            component="nav"
-            sx={{ ...paperFrameSx, display: { xs: "none", md: "block" }, alignSelf: "start", p: 1 }}
-          >
-            <Stack spacing={0.5}>
-              {sections.map((section) => {
-                const selected = currentSection.path === section.path;
-                return (
-                  <Button
-                    key={section.path}
-                    component={Link}
-                    to={section.path}
-                    startIcon={section.icon}
-                    variant={selected ? "contained" : "text"}
-                    sx={{ justifyContent: "flex-start" }}
-                  >
+        {identity.status === "ready" ? (
+          <>
+            <FormControl sx={{ display: { xs: "block", md: "none" } }}>
+              <InputLabel id="admin-section-label">Section</InputLabel>
+              <Select
+                labelId="admin-section-label"
+                label="Section"
+                value={currentSection.path}
+                onChange={selectSection}
+                fullWidth
+              >
+                {sections.map((section) => (
+                  <MenuItem key={section.path} value={section.path}>
                     {section.label}
-                  </Button>
-                );
-              })}
-            </Stack>
-          </Paper>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
-          <Routes>
-            <Route index element={<Navigate to="projects" replace />} />
-            <Route path="projects" element={<AdminProjectsPage />} />
-            <Route path="users" element={<AdminUsersPage />} />
-            <Route path="limit" element={<AdminLimitsPage target="default" />} />
-            <Route path="limit/:email" element={<AdminUserLimitsRoute />} />
-            <Route path="*" element={<Navigate to="/admin/projects" replace />} />
-          </Routes>
-        </Box>
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", md: "220px minmax(0, 1fr)" },
+                gap: 2,
+              }}
+            >
+              <AdminNav currentSection={currentSection} />
+
+              <Routes>
+                <Route index element={<Navigate to="projects" replace />} />
+                <Route path="projects" element={<AdminProjectsPage />} />
+                <Route path="users" element={<AdminUsersPage />} />
+                <Route path="limit" element={<AdminLimitsPage target="default" />} />
+                <Route path="limit/:email" element={<AdminUserLimitsRoute />} />
+                <Route path="*" element={<Navigate to="/admin/projects" replace />} />
+              </Routes>
+            </Box>
+          </>
+        ) : null}
       </Stack>
     </Box>
+  );
+}
+
+function AdminNav({ currentSection }: { currentSection: (typeof sections)[number] }) {
+  return (
+    <Paper
+      square
+      component="nav"
+      sx={{ ...paperFrameSx, display: { xs: "none", md: "block" }, alignSelf: "start", p: 1 }}
+    >
+      <Stack spacing={0.5}>
+        {sections.map((section) => {
+          const selected = currentSection.path === section.path;
+          return (
+            <Button
+              key={section.path}
+              component={Link}
+              to={section.path}
+              startIcon={section.icon}
+              variant={selected ? "contained" : "text"}
+              sx={{ justifyContent: "flex-start" }}
+            >
+              {section.label}
+            </Button>
+          );
+        })}
+      </Stack>
+    </Paper>
   );
 }
 
@@ -228,7 +239,7 @@ function AdminLimitsPage({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedOpen, setSavedOpen] = useState(false);
-  const title = target === "default" ? "Global limit" : email;
+  const title = target === "default" ? "Default limit" : email;
 
   useEffect(() => {
     let active = true;
@@ -450,10 +461,10 @@ function getLimitSource(
   data: AdminLimitsData,
 ): LimitSource {
   if (draft[name] !== undefined) {
-    return target === "default" ? "Global" : "User";
+    return target === "default" ? "Default" : "User";
   }
   if (target === "user" && data.global[name] !== undefined) {
-    return "Global";
+    return "Default";
   }
   return "Built In";
 }
@@ -483,7 +494,7 @@ function LimitSourceChip({ source }: { source: LimitSource }) {
     <Chip
       size="small"
       label={source}
-      color={source === "Global" ? "primary" : source === "User" ? "success" : "default"}
+      color={source === "Default" ? "primary" : source === "User" ? "success" : "default"}
     />
   );
 }
