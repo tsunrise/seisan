@@ -273,8 +273,8 @@
       "vars": {
         "LOGIN_EMAIL_FROM": "no-reply@seisan.waga.me",
         "LOCAL_DEV_LOGIN_CODE": "",
-        "ADMIN_ACCESS_AUD": "",
-        "ADMIN_ACCESS_TEAM_DOMAIN": "",
+        "ADMIN_ACCESS_AUD": "024f2ed7fe8a0a949140627e94bea545919c9ed4321c57f1d6a3195f7af3d31b",
+        "ADMIN_ACCESS_TEAM_DOMAIN": "https://tomshen.cloudflareaccess.com",
       },
       "routes": [
         {
