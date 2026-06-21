@@ -6,6 +6,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
+import { PrivacyPage } from "./pages/PrivacyPage";
 
 const AdminApp = lazy(() => import("./admin/AdminApp"));
 
@@ -14,6 +15,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Navigate to="/projects" replace />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
       <Route
         path="/admin/*"
         element={

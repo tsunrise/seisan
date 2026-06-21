@@ -4,3 +4,4 @@ dist-ssr
 .wrangler
 worker-configuration.d.ts
 package-lock.json
+public/privacy_policy.html

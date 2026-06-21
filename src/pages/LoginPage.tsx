@@ -1,7 +1,7 @@
 import { Box, Button, Paper, Stack, TextField, Typography } from "@mui/material";
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 
 import * as api from "../api";
 import { BrandLink } from "../components/BrandLink";
@@ -154,6 +154,36 @@ export function LoginPage() {
           </Typography>
         </Paper>
       </Stack>
+      <Typography
+        component="footer"
+        sx={{
+          position: "fixed",
+          right: 0,
+          bottom: { xs: 16, sm: 24 },
+          left: 0,
+          px: 3,
+          color: "text.secondary",
+          fontSize: 13,
+          fontWeight: 700,
+          textAlign: "center",
+        }}
+      >
+        © Conghao Shen |{" "}
+        <Box
+          component={Link}
+          to="/privacy"
+          sx={{
+            color: "inherit",
+            textDecoration: "none",
+            "&:hover": {
+              color: "text.primary",
+              textDecoration: "underline",
+            },
+          }}
+        >
+          Privacy Policy
+        </Box>
+      </Typography>
     </Box>
   );
 }
