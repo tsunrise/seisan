@@ -79,7 +79,7 @@ loginApp.post("/login/attempt", async (context) => {
     return context.json({ ok: true }, 202);
   }
 
-  const emailMessage = buildLoginEmail({ code });
+  const emailMessage = buildLoginEmail({ code, loginLocation: getLoginLocation(context) });
   context.executionCtx.waitUntil(
     context.env.SEND_EMAIL.send({
       from: context.env.LOGIN_EMAIL_FROM,
@@ -175,16 +175,69 @@ function isLocalDevLogin(context: AppContext, code?: string): boolean {
   return timingSafeEqual(code, config.code);
 }
 
-function buildLoginEmail(input: { code: string }): {
+function getLoginLocation(context: AppContext): string | null {
+  const cf = context.req.raw.cf;
+  const city = cleanLocationPart(cf?.city);
+  const country = cleanLocationPart(cf?.country);
+  const countryName = country ? formatCountry(country) : null;
+  const parts = [city, countryName].filter((part) => part !== null);
+
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
+function cleanLocationPart(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const cleaned = value.trim();
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+function formatCountry(countryCode: string): string {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" }).of(countryCode) ?? countryCode;
+  } catch {
+    return countryCode;
+  }
+}
+
+function buildLoginEmail(input: { code: string; loginLocation: string | null }): {
   subject: string;
   text: string;
   html: string;
 } {
+  const locationText = input.loginLocation
+    ? `\n\nThis sign-in request came from ${input.loginLocation}.`
+    : "";
+  const locationHtml = input.loginLocation
+    ? `<p>This sign-in request came from ${escapeHtml(input.loginLocation)}.</p>`
+    : "";
+
   return {
     subject: "Your Seisan login code",
-    text: `Your Seisan login code is ${input.code}. It expires in 10 minutes. If you did not request this, you can ignore this email.`,
-    html: `<p>Your Seisan login code is <strong>${input.code}</strong>.</p><p>It expires in 10 minutes. If you did not request this, you can ignore this email.</p>`,
+    text: `Your Seisan login code is:\n\n${input.code}${locationText}\n\nIt expires in 10 minutes. If you did not request this, you can ignore this email.`,
+    html: `<p>Your Seisan login code is:</p><p><strong style="display: inline-block; font-family: monospace; font-size: 32px; letter-spacing: 0.16em; line-height: 1.2;">${input.code}</strong></p>${locationHtml}<p>It expires in 10 minutes. If you did not request this, you can ignore this email.</p>`,
   };
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/gu, (character) => {
+    switch (character) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      case "'":
+        return "&#39;";
+      default:
+        return character;
+    }
+  });
 }
 
 function setSessionCookie(context: AppContext, token: string): void {

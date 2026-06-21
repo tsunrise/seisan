@@ -210,6 +210,75 @@ describe("auth worker", () => {
     expect(turnstileFetch).toHaveBeenCalledTimes(1);
   });
 
+  it("formats login emails with a prominent code and request location", async () => {
+    const email = uniqueEmail();
+    const { env: testEnv, sentEmails } = makeEnv();
+    const response = await dispatch("/login/attempt", testEnv, {
+      ...jsonPost(loginAttemptBody(email)),
+      cf: { city: "San Francisco", country: "US" },
+    });
+
+    expect(response.status).toBe(202);
+    await readLoginAttemptId(response);
+    expect(sentEmails).toHaveLength(1);
+    const code = /\b(\d{6})\b/u.exec(sentEmails[0].text ?? "")?.[1];
+    expect(code).toBeDefined();
+    expect(sentEmails[0].text).toContain(`Your Seisan login code is:\n\n${code}`);
+    expect(sentEmails[0].text).toContain(
+      "This sign-in request came from San Francisco, United States.",
+    );
+    expect(sentEmails[0].html).toContain(
+      `font-family: monospace; font-size: 32px; letter-spacing: 0.16em; line-height: 1.2;">${code}</strong>`,
+    );
+    expect(sentEmails[0].html).toContain(
+      "<p>This sign-in request came from San Francisco, United States.</p>",
+    );
+  });
+
+  it("omits login email location when request metadata is unavailable", async () => {
+    const missingCfEmail = uniqueEmail();
+    const missingCfEnv = makeEnv();
+    const missingCfResponse = await dispatch(
+      "/login/attempt",
+      missingCfEnv.env,
+      jsonPost(loginAttemptBody(missingCfEmail)),
+    );
+
+    expect(missingCfResponse.status).toBe(202);
+    await readLoginAttemptId(missingCfResponse);
+    expect(missingCfEnv.sentEmails).toHaveLength(1);
+    expect(missingCfEnv.sentEmails[0].text).not.toContain("This sign-in request came from");
+    expect(missingCfEnv.sentEmails[0].html).not.toContain("This sign-in request came from");
+
+    const invalidCfEmail = uniqueEmail();
+    const invalidCfEnv = makeEnv();
+    const invalidCfResponse = await dispatch("/login/attempt", invalidCfEnv.env, {
+      ...jsonPost(loginAttemptBody(invalidCfEmail)),
+      cf: { city: 123, country: "" },
+    });
+
+    expect(invalidCfResponse.status).toBe(202);
+    await readLoginAttemptId(invalidCfResponse);
+    expect(invalidCfEnv.sentEmails).toHaveLength(1);
+    expect(invalidCfEnv.sentEmails[0].text).not.toContain("This sign-in request came from");
+    expect(invalidCfEnv.sentEmails[0].html).not.toContain("This sign-in request came from");
+  });
+
+  it("falls back to the raw country code when formatting login email location", async () => {
+    const email = uniqueEmail();
+    const { env: testEnv, sentEmails } = makeEnv();
+    const response = await dispatch("/login/attempt", testEnv, {
+      ...jsonPost(loginAttemptBody(email)),
+      cf: { country: "ABC" },
+    });
+
+    expect(response.status).toBe(202);
+    await readLoginAttemptId(response);
+    expect(sentEmails).toHaveLength(1);
+    expect(sentEmails[0].text).toContain("This sign-in request came from ABC.");
+    expect(sentEmails[0].html).toContain("<p>This sign-in request came from ABC.</p>");
+  });
+
   it("stores hashed login codes and sends email for users", async () => {
     const email = uniqueEmail();
     const { env: testEnv, sentEmails } = makeEnv();
