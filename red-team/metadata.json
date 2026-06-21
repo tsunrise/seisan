@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "activeDir": "active",
   "resolvedDir": "resolved",
-  "nextId": 12,
+  "nextId": 13,
   "issues": [
     {
       "id": "RT-1",
@@ -113,6 +113,15 @@
       "date": "2026-06-20 16:16:17 PDT",
       "commit": "49ee5357b21f93a6369b3997bf90974ccefa9487",
       "resolution": "Fixed"
+    },
+    {
+      "id": "RT-12",
+      "status": "active",
+      "severity": "Medium",
+      "title": "Unauthorized Appends Exhaust Project Rate Limits",
+      "file": "active/rt-12-unauthorized-appends-exhaust-project-rate-limits-20260620-204128.md",
+      "date": "2026-06-20 20:41:28 PDT",
+      "commit": "422376e9c6daaf4573c1210a8c3bea497b70fbff"
     }
   ]
 }
