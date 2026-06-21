@@ -2,6 +2,7 @@
 
 Date: 2026-06-20 16:16:17 PDT
 Commit: 49ee5357b21f93a6369b3997bf90974ccefa9487
+Resolution: Fixed
 
 Project owners can remove their own linked owner member through the generic member patch/delete routes even though owner leave and explicit member-link removal paths forbid owner self-removal. The project remains owner-readable by ID, but the owner loses the registry listing and cannot post records until they manually rejoin; queued summary syncs fail because registry summaries require the owner email to appear among linked members.
 
@@ -65,3 +66,7 @@ The generic member management paths do not enforce the same invariant:
 After the owner member is unlinked or deleted, direct owner reads still work because project ownership is stored in project metadata, but owner mutations that need an active linked member fail. `ProjectStore.postRecord()` requires `getActiveLinkedMember(ownerEmail)` and returns `forbidden` when none exists.
 
 The registry summary path also depends on the owner being present in the linked-member export. `ProjectStore.buildProjectSummarySync()` exports only rows where `linked_email IS NOT NULL`. `ProjectsRegistry.syncProjectSummary()` rejects summaries where the owner email is absent from that member set. Once the owner member is unlinked or deleted, queued summary syncs fail with `invalid_input`, leaving registry summaries stale until the owner manually rejoins.
+
+## Resolution
+
+Fixed by rejecting ProjectStore.patchMember({ email: "" }) and ProjectStore.deleteMember() when the target member is linked to the project owner_email. Verified with pnpm test -- test/project.test.ts, pnpm run typecheck:worker, pnpm run typecheck:test, and a direct Prettier check for worker/do/ProjectStore.ts plus test/project.test.ts. A repository-wide pnpm run format:check still fails on the pre-existing red-team/resolved/rt-2-high-missing-origin-and-csrf-protection-on-cookie-mutations-20260615-210202.md formatting issue. Live localhost replay used clean Wrangler state and fixed local login code 123456; forged-origin login/project controls returned 403, owner generic PATCH /members/1 with { email: "" } returned 403, owner generic DELETE /members/1 returned 403, the owner member remained linked, owner record posting returned 201, and the owner registry listing still contained the project.

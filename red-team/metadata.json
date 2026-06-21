@@ -106,12 +106,13 @@
     },
     {
       "id": "RT-11",
-      "status": "active",
+      "status": "resolved",
       "severity": "Low/Medium",
       "title": "Owner Member Self-Removal Bypasses Owner Guards",
-      "file": "active/rt-11-owner-member-self-removal-bypasses-owner-guards-20260620-161617.md",
+      "file": "resolved/rt-11-low-medium-owner-member-self-removal-bypasses-owner-guards-20260620-201436.md",
       "date": "2026-06-20 16:16:17 PDT",
-      "commit": "49ee5357b21f93a6369b3997bf90974ccefa9487"
+      "commit": "49ee5357b21f93a6369b3997bf90974ccefa9487",
+      "resolution": "Fixed"
     }
   ]
 }

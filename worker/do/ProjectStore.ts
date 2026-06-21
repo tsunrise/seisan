@@ -679,6 +679,9 @@ export class ProjectStore extends DurableObject<Env> {
       if (input.patch.email !== "") {
         return { ok: false, error: "invalid_input" };
       }
+      if (member.linked_email === metadata.meta.owner_email) {
+        return { ok: false, error: "forbidden" };
+      }
       this.ctx.storage.sql.exec(
         "UPDATE members SET linked_email = NULL, updated_at = ? WHERE id = ?",
         input.nowMs,
@@ -715,6 +718,9 @@ export class ProjectStore extends DurableObject<Env> {
     }
     if (member.deleted_at !== null) {
       return { ok: false, error: "already_deleted" };
+    }
+    if (member.linked_email === metadata.meta.owner_email) {
+      return { ok: false, error: "forbidden" };
     }
 
     const balance = this.ctx.storage.sql

@@ -1261,6 +1261,60 @@ describe("project routes", () => {
     });
   });
 
+  it("forbids owner member self-removal through generic member routes", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv);
+
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
+    await expect(listProjectsFromRegistry(testEnv, "owner@example.com")).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: project.id })]),
+    );
+
+    const ownerSelfUnlink = await dispatch(
+      `/project/${project.id}/members/1`,
+      testEnv,
+      jsonBody("PATCH", { email: "" }, await authHeaders("owner@example.com")),
+    );
+    expect(ownerSelfUnlink.status).toBe(403);
+    expect(await ownerSelfUnlink.json()).toEqual({ error: "forbidden" });
+
+    const ownerSelfDelete = await dispatch(`/project/${project.id}/members/1`, testEnv, {
+      method: "DELETE",
+      headers: await authHeaders("owner@example.com"),
+    });
+    expect(ownerSelfDelete.status).toBe(403);
+    expect(await ownerSelfDelete.json()).toEqual({ error: "forbidden" });
+
+    const ownerView = await getProject(testEnv, project.id);
+    expect(ownerView.members).toEqual([
+      { id: 1, name: "owner", deleted: false, linkedEmail: "owner@example.com" },
+    ]);
+
+    const postAfterBlockedRemoval = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          delta: {},
+          description: {
+            type: "expense",
+            name: "Snack",
+            paid: { "1": 100 },
+            liability: { "1": 100 },
+          },
+        },
+        await authHeaders("owner@example.com"),
+      ),
+    );
+    expect(postAfterBlockedRemoval.status).toBe(201);
+
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
+    await expect(listProjectsFromRegistry(testEnv, "owner@example.com")).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: project.id })]),
+    );
+  });
+
   it("lets non-owner linked members leave without changing ACL", async () => {
     const { env: testEnv } = makeEnv();
     const memberEmail = `leave-${crypto.randomUUID()}@example.com`;
