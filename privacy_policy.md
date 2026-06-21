@@ -4,7 +4,7 @@
 
 **Last updated:** June 21, 2026
 
-Seisan is a service for managing shared expense projects. Seisan is operated by Tom Shen. This Privacy Policy explains what personal information Seisan collects, how it is used, how it may be disclosed, and how you can contact us about privacy requests.
+Seisan is a service for managing shared expense projects. Seisan is operated by Conghao Shen. This Privacy Policy explains what personal information Seisan collects, how it is used, how it may be disclosed, and how you can contact us about privacy requests.
 
 For privacy questions or requests, contact: [me@tomshen.io](mailto:me@tomshen.io).
 
