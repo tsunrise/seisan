@@ -2,6 +2,7 @@
 
 Date: 2026-06-20 20:41:28 PDT
 Commit: 422376e9c6daaf4573c1210a8c3bea497b70fbff
+Resolution: Fixed
 
 An authenticated non-member can consume a project's append-record rate-limit bucket by sending syntactically valid POST /api/project/:id requests that are later rejected as forbidden. Because the route spends the project rate-limit token before ProjectStore.postRecord() checks whether the caller is an active linked member, the attacker can temporarily block legitimate project members from posting records.
 
@@ -52,3 +53,7 @@ This is API/client feasible for any authenticated attacker who knows a project I
 The project-local permission check happens later inside `ProjectStore.postRecord()`. For public projects, `getProjectMetadata()` authorizes any authenticated caller because `isAuthorized()` returns true for public ACLs (`worker/do/ProjectStore.ts:989-994` and `worker/do/ProjectStore.ts:1031-1034`). Posting a record still requires the caller to be an active linked member; a non-member fails only after the route has already spent the project rate-limit token (`worker/do/ProjectStore.ts:244-254`).
 
 The result is an authorization/rate-limit ordering bug: unauthorized append attempts are correctly rejected as `403`, but they are counted against the shared project mutation bucket and can deny legitimate member writes until the limiter window resets.
+
+## Resolution
+
+Added automated user no-post limits with an option<timestamp> leaf at automated.block.projects.no_post. POST /api/project/:id now loads the caller limit and account limiter in parallel, rejects account/no-post failures before the project limiter, and extends the automated block by five minutes when the account limiter trips. Verified with focused tests and a clean local replay: 60 attacker non-member appends returned 403, the 61st returned 429 account and wrote automated.block.projects.no_post, the attacker still received 429 account after the native limiter window, and the owner could post successfully with 201.

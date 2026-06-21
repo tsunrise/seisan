@@ -116,12 +116,13 @@
     },
     {
       "id": "RT-12",
-      "status": "active",
+      "status": "resolved",
       "severity": "Medium",
       "title": "Unauthorized Appends Exhaust Project Rate Limits",
-      "file": "active/rt-12-unauthorized-appends-exhaust-project-rate-limits-20260620-204128.md",
+      "file": "resolved/rt-12-medium-unauthorized-appends-exhaust-project-rate-limits-20260620-212751.md",
       "date": "2026-06-20 20:41:28 PDT",
-      "commit": "422376e9c6daaf4573c1210a8c3bea497b70fbff"
+      "commit": "422376e9c6daaf4573c1210a8c3bea497b70fbff",
+      "resolution": "Fixed"
     }
   ]
 }

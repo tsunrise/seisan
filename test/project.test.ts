@@ -1,8 +1,15 @@
 import { runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { APPEND_RECORD_AUTOMATED_NO_POST_BLOCK_MS } from "../worker/constants";
 import { sha256Hex } from "../worker/crypto";
-import { ABSOLUTE_LIST_LIMIT, BUILTIN_DEFAULT_LIMITS, LimitsKvStore } from "../worker/limits";
+import {
+  ABSOLUTE_LIST_LIMIT,
+  AUTOMATED_BLOCK_PROJECTS_NO_POST,
+  BUILTIN_DEFAULT_LIMITS,
+  LIMITS_STORE_NAME,
+  LimitsKvStore,
+} from "../worker/limits";
 import { PROJECTS_REGISTRY_NAME } from "../worker/project";
 import {
   authHeaders,
@@ -939,6 +946,8 @@ describe("project routes", () => {
       APPEND_RECORD_PROJECT_RATE_LIMITER: projectRateLimit.binding,
     });
     const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+    const nowMs = 1_000_000;
+    vi.spyOn(Date, "now").mockReturnValue(nowMs);
 
     const response = await dispatch(
       `/project/${project.id}`,
@@ -950,7 +959,84 @@ describe("project routes", () => {
     expect(await response.json()).toEqual({ error: "rate_limited", reason: "account" });
     expect(accountRateLimit.limit).toHaveBeenCalledTimes(1);
     expect(projectRateLimit.limit).not.toHaveBeenCalled();
+    const expectedBlockUntil = nowMs + APPEND_RECORD_AUTOMATED_NO_POST_BLOCK_MS;
+    await expect(
+      testEnv.LIMITS_STORE.getByName(LIMITS_STORE_NAME).getLimits({
+        type: "user",
+        email: "owner@example.com",
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      limits: { [AUTOMATED_BLOCK_PROJECTS_NO_POST]: expectedBlockUntil },
+      updatedAt: nowMs,
+    });
+    await expect(
+      testEnv.CONFIGS.get(LimitsKvStore.userKey("owner@example.com"), "json"),
+    ).resolves.toEqual({
+      [AUTOMATED_BLOCK_PROJECTS_NO_POST]: expectedBlockUntil,
+    });
     expect((await getProject(testEnv, project.id)).records).toHaveLength(0);
+  });
+
+  it("returns an account rate limit reason for active automated no-post blocks before project rate limiting", async () => {
+    const accountRateLimit = stubRateLimit(true);
+    const projectRateLimit = stubRateLimit(true);
+    const { env: testEnv } = makeEnv({
+      APPEND_RECORD_ACCOUNT_RATE_LIMITER: accountRateLimit.binding,
+      APPEND_RECORD_PROJECT_RATE_LIMITER: projectRateLimit.binding,
+    });
+    const owner = `active-block-${crypto.randomUUID()}@example.com`;
+    const project = await createProject(testEnv, { owner, ownerMemberName: "Alice" });
+    await putUserLimits(
+      testEnv,
+      owner,
+      limitsDocument({
+        [AUTOMATED_BLOCK_PROJECTS_NO_POST]: 2_000_000,
+      }),
+    );
+    vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+
+    const response = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody("POST", appendRecordBody(), await authHeaders(owner)),
+    );
+
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ error: "rate_limited", reason: "account" });
+    expect(accountRateLimit.limit).toHaveBeenCalledTimes(1);
+    expect(projectRateLimit.limit).not.toHaveBeenCalled();
+    expect((await getProject(testEnv, project.id)).records).toHaveLength(0);
+  });
+
+  it("allows expired automated no-post blocks through normal append rate limiting", async () => {
+    const accountRateLimit = stubRateLimit(true);
+    const projectRateLimit = stubRateLimit(true);
+    const { env: testEnv } = makeEnv({
+      APPEND_RECORD_ACCOUNT_RATE_LIMITER: accountRateLimit.binding,
+      APPEND_RECORD_PROJECT_RATE_LIMITER: projectRateLimit.binding,
+    });
+    const owner = `expired-block-${crypto.randomUUID()}@example.com`;
+    const project = await createProject(testEnv, { owner, ownerMemberName: "Alice" });
+    await putUserLimits(
+      testEnv,
+      owner,
+      limitsDocument({
+        [AUTOMATED_BLOCK_PROJECTS_NO_POST]: 1_000_000,
+      }),
+    );
+    vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+
+    const response = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody("POST", appendRecordBody(), await authHeaders(owner)),
+    );
+
+    expect(response.status).toBe(201);
+    expect(accountRateLimit.limit).toHaveBeenCalledTimes(1);
+    expect(projectRateLimit.limit).toHaveBeenCalledTimes(1);
+    expect((await getProject(testEnv, project.id)).records).toHaveLength(1);
   });
 
   it("returns a project rate limit reason before appending a record", async () => {

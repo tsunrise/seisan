@@ -10,11 +10,19 @@ import {
   requireAuth,
   requireSameOriginWhenPresent,
 } from "../auth";
+import { APPEND_RECORD_AUTOMATED_NO_POST_BLOCK_MS } from "../constants";
 import { sha256Hex } from "../crypto";
 import type { ProjectStore } from "../do/ProjectStore";
 import { normalizeEmail, normalizedEmailSchema } from "../email";
 import { ErrorResponse } from "../error";
-import { ABSOLUTE_LIST_LIMIT, ABSOLUTE_TEXT_LIMIT, LimitsKvStore, LimitsPolicy } from "../limits";
+import {
+  ABSOLUTE_LIST_LIMIT,
+  ABSOLUTE_TEXT_LIMIT,
+  AUTOMATED_BLOCK_PROJECTS_NO_POST,
+  LIMITS_STORE_NAME,
+  LimitsKvStore,
+  LimitsPolicy,
+} from "../limits";
 import {
   PROJECTS_REGISTRY_NAME,
   MoneyByMemberIdUtils,
@@ -694,19 +702,30 @@ projectApp.post("/project/:id", requireSameOriginWhenPresent, requireAuth, async
   }
 
   const callerEmail = normalizeEmail(getRequiredIdentity(context).email);
-  const rateLimit = await new AppendRecordRateLimiter(context.env).limit({
-    accountEmail: callerEmail,
-    projectId: projectLookup.projectId,
-  });
-  if (!rateLimit.ok) {
-    return ErrorResponse.rateLimited(rateLimit.reason);
+  const nowMs = Date.now();
+  const rateLimiter = new AppendRecordRateLimiter(context.env);
+  const [productLimits, accountRateLimit] = await Promise.all([
+    new LimitsKvStore(context.env.CONFIGS).load(callerEmail),
+    rateLimiter.limitAccount(callerEmail),
+  ]);
+  if (!new LimitsPolicy(productLimits).allowsProjectRecordPost(nowMs)) {
+    return ErrorResponse.rateLimited("account");
+  }
+  if (!accountRateLimit.ok) {
+    queueAutomatedProjectNoPostBlock(context, callerEmail, nowMs);
+    return ErrorResponse.rateLimited("account");
+  }
+
+  const projectRateLimit = await rateLimiter.limitProject(projectLookup.projectId);
+  if (!projectRateLimit.ok) {
+    return ErrorResponse.rateLimited("project");
   }
 
   const result = await projectLookup.store.postRecord({
     callerEmail,
     delta: parsed.data.delta,
     description: parsed.data.description,
-    nowMs: Date.now(),
+    nowMs,
   });
   if (!result.ok) {
     return mapProjectStoreError(result.error);
@@ -773,19 +792,20 @@ class AppendRecordRateLimiter {
     this.env = env;
   }
 
-  async limit(input: {
-    accountEmail: string;
-    projectId: string;
-  }): Promise<AppendRecordRateLimitResult> {
+  async limitAccount(accountEmail: string): Promise<AppendRecordRateLimitResult> {
     const accountLimit = await this.env.APPEND_RECORD_ACCOUNT_RATE_LIMITER.limit({
-      key: await AppendRecordRateLimiter.accountKey(input.accountEmail),
+      key: await AppendRecordRateLimiter.accountKey(accountEmail),
     });
     if (!accountLimit.success) {
       return { ok: false, reason: "account" };
     }
 
+    return { ok: true };
+  }
+
+  async limitProject(projectId: string): Promise<AppendRecordRateLimitResult> {
     const projectLimit = await this.env.APPEND_RECORD_PROJECT_RATE_LIMITER.limit({
-      key: AppendRecordRateLimiter.projectKey(input.projectId),
+      key: AppendRecordRateLimiter.projectKey(projectId),
     });
     if (!projectLimit.success) {
       return { ok: false, reason: "project" };
@@ -801,6 +821,40 @@ class AppendRecordRateLimiter {
   private static projectKey(projectId: string): string {
     return `${AppendRecordRateLimiter.projectKeyPrefix}${projectId}`;
   }
+}
+
+async function setAutomatedProjectNoPostBlock(
+  context: AppContext,
+  callerEmail: string,
+  nowMs: number,
+): Promise<void> {
+  const result = await context.env.LIMITS_STORE.getByName(LIMITS_STORE_NAME).setAutomatedBlock({
+    target: { type: "user", email: callerEmail },
+    feature: AUTOMATED_BLOCK_PROJECTS_NO_POST,
+    timestamp: nowMs + APPEND_RECORD_AUTOMATED_NO_POST_BLOCK_MS,
+    nowMs,
+  });
+  if (!result.ok) {
+    console.error("failed to set automated project no-post block", {
+      email: callerEmail,
+      error: result.error,
+    });
+  }
+}
+
+function queueAutomatedProjectNoPostBlock(
+  context: AppContext,
+  callerEmail: string,
+  nowMs: number,
+): void {
+  context.executionCtx.waitUntil(
+    setAutomatedProjectNoPostBlock(context, callerEmail, nowMs).catch((error: unknown) => {
+      console.error("failed to set automated project no-post block", {
+        email: callerEmail,
+        error,
+      });
+    }),
+  );
 }
 
 class ProjectRefFetcher {

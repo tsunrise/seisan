@@ -8,9 +8,14 @@ export const ABSOLUTE_LIST_LIMIT = 10_000;
 
 const positiveSafeIntegerSchema = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const nonNegativeSafeIntegerSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+const optionalTimestampSchema = nonNegativeSafeIntegerSchema.nullable();
+
+export const AUTOMATED_BLOCK_PROJECTS_NO_POST = "automated.block.projects.no_post";
+export type AutomatedBlockFeature = typeof AUTOMATED_BLOCK_PROJECTS_NO_POST;
 
 export const Limits = z
   .object({
+    [AUTOMATED_BLOCK_PROJECTS_NO_POST]: optionalTimestampSchema,
     "projects.maxLinkedProjects": positiveSafeIntegerSchema,
     "projects.maxOwnedProjects": positiveSafeIntegerSchema,
     "projects.maxMembersPerProject": positiveSafeIntegerSchema,
@@ -41,13 +46,14 @@ export const LimitsDocument = z
   });
 export type LimitsDocument = Partial<Limits>;
 
-export type LimitValueType = "integer" | "boolean";
+export type LimitValueType = "integer" | "boolean" | "option<timestamp>";
 export interface LimitDefinition {
   name: keyof Limits;
   type: LimitValueType;
 }
 
 export const LIMIT_DEFINITIONS = [
+  { name: AUTOMATED_BLOCK_PROJECTS_NO_POST, type: "option<timestamp>" },
   { name: "projects.maxLinkedProjects", type: "integer" },
   { name: "projects.maxOwnedProjects", type: "integer" },
   { name: "projects.maxMembersPerProject", type: "integer" },
@@ -67,6 +73,7 @@ export type LimitsTarget = { type: "default" } | { type: "user"; email: string }
 type MoneyMapForLimits = Record<string, number>;
 
 export const BUILTIN_DEFAULT_LIMITS: Limits = {
+  [AUTOMATED_BLOCK_PROJECTS_NO_POST]: null,
   "projects.maxLinkedProjects": 1000,
   "projects.maxOwnedProjects": 50,
   "projects.maxMembersPerProject": 1000,
@@ -211,6 +218,12 @@ export class LimitsPolicy {
 
   defaultRecordPageSize(): number {
     return this.limits["records.defaultPageSize"];
+  }
+
+  /** Blocks record posting until `automated.block.projects.no_post` expires. */
+  allowsProjectRecordPost(nowMs: number): boolean {
+    const blockUntil = this.limits[AUTOMATED_BLOCK_PROJECTS_NO_POST];
+    return Number.isSafeInteger(nowMs) && (blockUntil === null || nowMs >= blockUntil);
   }
 
   /** Limits project display names to `projects.maxProjectNameLength`. */
