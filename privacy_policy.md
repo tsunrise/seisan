@@ -14,37 +14,29 @@ This policy applies to Seisan and to the website and application at seisan.waga.
 
 ## 2. Personal Information We Collect
 
-We collect personal information that you provide, information created when you use Seisan, and technical information processed to operate and secure the service.
+The personal information we collect depends on how you use Seisan and which features are available. We collect information that you provide, information created through your use of Seisan, information provided by other users in shared projects, and technical information processed to operate and secure the service.
 
-### Account and Login Information
+Examples include the following categories.
 
-- Email address.
-- Login attempt identifiers, login-code verification data, login attempt status, cooldown and failed-attempt state.
-- Session cookie and session-token data used to keep you signed in.
-- Logout and token-revocation data, such as hashed revoked session tokens.
+### Account, Authentication, and Contact Information
 
-### Project and Ledger Information
+This may include identifiers and contact details such as email address, login and verification information, session and cookie information, account status, and security or authentication records.
 
-- Project IDs and project names.
-- Project owner email addresses.
-- Project visibility settings.
-- Allowed email addresses for restricted projects.
-- Member display names.
-- Linked member email addresses.
-- Expense names and other ledger record descriptions.
-- Payment, split, transfer, balance, and settlement amounts.
-- Record authors, member IDs, record IDs, timestamps, deleted-member status, and record-revert information.
+### Project, Collaboration, and User-Provided Content
 
-### Administrative and Abuse-Prevention Information
+This may include information connected to projects and shared workspaces, such as project names, project settings, access controls, member profiles or display names, linked or invited users, ledger entries, descriptions, notes, comments, attachments, history, timestamps, and other information that users choose to enter or generate while using Seisan.
 
-- Per-user or default service limits and temporary automated blocks.
-- Project and user summary information used for admin, rate-limit, and operational purposes.
-- Security, abuse-prevention, and rate-limit data associated with requests.
+### Financial, Ledger, and Activity Information
+
+This may include information used to track shared expenses and settlement activity, such as amounts, splits, reimbursements, balances, transfers, reversals, record authors, participation, and related project activity. Seisan is not intended to collect payment-card numbers, bank account credentials, or other payment account credentials.
+
+### Administrative, Support, and Abuse-Prevention Information
+
+This may include information used to operate, moderate, support, secure, and administer Seisan, such as service limits, configuration, temporary blocks, user or project summaries, request history, support or privacy-request correspondence, abuse-prevention signals, and operational records.
 
 ### Technical Information
 
-- IP address, user-agent, request headers, request metadata, device/browser signals, logs, error data, and other information needed to route, secure, debug, and operate the service.
-- Browser sessionStorage entries used to restore timeline scroll position. These entries may include a project ID, record IDs, scroll position, and timestamp. They are stored in your browser and are intended to be short-lived.
+This may include information about the browser, device, network, request, and application interaction, such as IP address, user-agent, request headers, request metadata, logs, error data, security signals, rate-limit data, and local browser storage used for service functionality.
 
 We do not intentionally collect government ID numbers, payment-card numbers, bank account credentials, precise geolocation, health information, biometric identifiers, or account passwords.
 
