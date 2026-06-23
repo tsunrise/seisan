@@ -106,6 +106,9 @@ export function recordTitle(record: ProjectRecord, members: ProjectMember[]): st
   if (description.type === "transfer") {
     return `Transferred ${memberName(members, description.to)} ${formatCents(description.amount)}`;
   }
+  if (description.type === "promise") {
+    return promiseCardTitle(description, members);
+  }
   return `Reverted #${description.id}`;
 }
 
@@ -123,6 +126,10 @@ export function recordDetailTitle(record: ProjectRecord, members: ProjectMember[
       members,
       description.to,
     )} ${formatCents(description.amount)}`;
+  }
+
+  if (description.type === "promise") {
+    return promiseTitle(description, members);
   }
 
   return recordTitle(record, members);
@@ -165,6 +172,12 @@ export function deriveDelta(description: RecordDescription): MoneyByMemberId {
     return normalizeMoneyMap({
       [description.from]: -description.amount,
       [description.to]: description.amount,
+    });
+  }
+  if (description.type === "promise") {
+    return normalizeMoneyMap({
+      [description.debtorMemberId]: description.amount,
+      [description.creditorMemberId]: -description.amount,
     });
   }
   if (description.type === "revert") {
@@ -231,6 +244,27 @@ export function allocateRatio(
     assigned += amount;
   }
   return normalizeMoneyMap(allocation);
+}
+
+function promiseTitle(
+  description: Extract<RecordDescription, { type: "promise" }>,
+  members: ProjectMember[],
+): string {
+  const title = `${memberName(members, description.debtorMemberId)} should pay ${memberName(
+    members,
+    description.creditorMemberId,
+  )} ${formatCents(description.amount)}`;
+  return description.reason ? `${title} for ${description.reason}` : title;
+}
+
+function promiseCardTitle(
+  description: Extract<RecordDescription, { type: "promise" }>,
+  members: ProjectMember[],
+): string {
+  const title = `Should pay ${memberName(members, description.creditorMemberId)} ${formatCents(
+    description.amount,
+  )}`;
+  return description.reason ? `${title} for ${description.reason}` : title;
 }
 
 function pad2(value: number): string {

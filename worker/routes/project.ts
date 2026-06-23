@@ -139,6 +139,24 @@ const TransferDescription = z
     }
   });
 
+const PromiseDescription = z
+  .object({
+    type: z.literal("promise"),
+    debtorMemberId: MemberId,
+    creditorMemberId: MemberId,
+    amount: Cents.positive(),
+    reason: z.string().trim().min(1).max(ABSOLUTE_TEXT_LIMIT).optional(),
+  })
+  .superRefine((description, context) => {
+    if (description.debtorMemberId === description.creditorMemberId) {
+      context.addIssue({
+        code: "custom",
+        message: "Promise endpoints must differ.",
+        path: ["creditorMemberId"],
+      });
+    }
+  });
+
 const RevertDescription = z.object({
   type: z.literal("revert"),
   id: z.number().int().positive(),
@@ -147,6 +165,7 @@ const RevertDescription = z.object({
 const RecordDescription = z.discriminatedUnion("type", [
   ExpenseDescription,
   TransferDescription,
+  PromiseDescription,
   RevertDescription,
 ]);
 

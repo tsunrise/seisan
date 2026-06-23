@@ -22,6 +22,13 @@ export type RecordDescription =
       amount: number;
     }
   | {
+      type: "promise";
+      debtorMemberId: number;
+      creditorMemberId: number;
+      amount: number;
+      reason?: string;
+    }
+  | {
       type: "revert";
       id: number;
     };

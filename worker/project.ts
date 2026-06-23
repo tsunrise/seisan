@@ -115,12 +115,24 @@ export type TransferDescription = {
   amount: Cents;
 };
 
+export type PromiseDescription = {
+  type: "promise";
+  debtorMemberId: MemberId;
+  creditorMemberId: MemberId;
+  amount: Cents;
+  reason?: string;
+};
+
 export type RevertDescription = {
   type: "revert";
   id: number;
 };
 
-export type RecordDescription = ExpenseDescription | TransferDescription | RevertDescription;
+export type RecordDescription =
+  | ExpenseDescription
+  | TransferDescription
+  | PromiseDescription
+  | RevertDescription;
 
 export type ProjectAcl = { type: "public" } | { type: "restricted"; emails: string[] };
 export type ProjectAclType = ProjectAcl["type"];

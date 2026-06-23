@@ -1,5 +1,6 @@
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import HandshakeIcon from "@mui/icons-material/Handshake";
 import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
 import { ButtonBase, Stack, Typography } from "@mui/material";
 import type { ReactNode } from "react";
@@ -10,6 +11,7 @@ import { InlineAlert } from "../components/InlineAlert";
 import { PanelFrame } from "../components/PanelFrame";
 import { ledgerColors } from "../theme";
 import { ExpenseComposer } from "./ExpenseComposer";
+import { PromiseComposer } from "./PromiseComposer";
 import { TransferComposer } from "./TransferComposer";
 
 export function NewRecordPanel({
@@ -21,7 +23,7 @@ export function NewRecordPanel({
   currentMember: api.ProjectMember | null;
   onPosted: () => void;
 }) {
-  const [mode, setMode] = useState<"choice" | "expense" | "transfer">("choice");
+  const [mode, setMode] = useState<"choice" | "expense" | "transfer" | "promise">("choice");
 
   if (!currentMember) {
     return (
@@ -53,6 +55,17 @@ export function NewRecordPanel({
     );
   }
 
+  if (mode === "promise") {
+    return (
+      <PromiseComposer
+        project={project}
+        currentMember={currentMember}
+        onPosted={onPosted}
+        onBack={() => setMode("choice")}
+      />
+    );
+  }
+
   return (
     <PanelFrame title="New record" backTo={`/project/${project.id}`}>
       <Stack spacing={1.25}>
@@ -67,6 +80,12 @@ export function NewRecordPanel({
           title="Transfer"
           description="Record money paid from one member to another."
           onClick={() => setMode("transfer")}
+        />
+        <RecordTypeButton
+          icon={<HandshakeIcon />}
+          title="Promise"
+          description="Record money one member should pay another."
+          onClick={() => setMode("promise")}
         />
       </Stack>
     </PanelFrame>

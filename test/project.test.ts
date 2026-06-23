@@ -51,6 +51,36 @@ function appendRecordBody(name = "Lunch") {
   };
 }
 
+function promiseRecordBody({
+  debtorMemberId = 1,
+  creditorMemberId = 2,
+  amount = 100,
+  reason,
+  delta,
+}: {
+  debtorMemberId?: number;
+  creditorMemberId?: number;
+  amount?: number;
+  reason?: string;
+  delta?: Record<string, number>;
+} = {}) {
+  return {
+    delta:
+      delta ??
+      ({
+        [String(debtorMemberId)]: amount,
+        [String(creditorMemberId)]: -amount,
+      } as Record<string, number>),
+    description: {
+      type: "promise" as const,
+      debtorMemberId,
+      creditorMemberId,
+      amount,
+      ...(reason !== undefined ? { reason } : {}),
+    },
+  };
+}
+
 function stubRateLimit(success: boolean): { binding: RateLimit; limit: ReturnType<typeof vi.fn> } {
   const limit = vi.fn(async () => ({ success }));
   return { binding: { limit } as RateLimit, limit };
@@ -678,6 +708,267 @@ describe("project routes", () => {
     );
     expect(overflow.status).toBe(409);
     expect(await overflow.json()).toEqual({ error: "money_limit_exceeded" });
+  });
+
+  it("posts promise records with debtor-positive balances and optional reasons", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+    const bob = await createMember(testEnv, project.id, "Bob");
+
+    const promiseWithReason = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        promiseRecordBody({
+          debtorMemberId: 1,
+          creditorMemberId: bob.id,
+          amount: 1234,
+          reason: "Dinner",
+        }),
+        await authHeaders(),
+      ),
+    );
+    expect(promiseWithReason.status).toBe(201);
+    expect(await promiseWithReason.json()).toEqual({ id: 1 });
+
+    const firstView = await getProject(testEnv, project.id);
+    expect(firstView.balance).toEqual({ "1": 1234, [String(bob.id)]: -1234 });
+    expect(firstView.records).toMatchObject([
+      {
+        id: 1,
+        delta: { "1": 1234, [String(bob.id)]: -1234 },
+        description: {
+          type: "promise",
+          debtorMemberId: 1,
+          creditorMemberId: bob.id,
+          amount: 1234,
+          reason: "Dinner",
+        },
+      },
+    ]);
+
+    const promiseWithoutReason = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        promiseRecordBody({
+          debtorMemberId: bob.id,
+          creditorMemberId: 1,
+          amount: 500,
+        }),
+        await authHeaders(),
+      ),
+    );
+    expect(promiseWithoutReason.status).toBe(201);
+    expect(await promiseWithoutReason.json()).toEqual({ id: 2 });
+
+    const secondView = await getProject(testEnv, project.id);
+    expect(secondView.balance).toEqual({ "1": 734, [String(bob.id)]: -734 });
+    expect((secondView.records[0] as { description: Record<string, unknown> }).description).toEqual(
+      {
+        type: "promise",
+        debtorMemberId: bob.id,
+        creditorMemberId: 1,
+        amount: 500,
+      },
+    );
+  });
+
+  it("rejects invalid promise records", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+    const bob = await createMember(testEnv, project.id, "Bob");
+    const carol = await createMember(testEnv, project.id, "Carol");
+
+    const mismatchedDelta = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        promiseRecordBody({
+          debtorMemberId: 1,
+          creditorMemberId: bob.id,
+          amount: 100,
+          delta: { "1": -100, [String(bob.id)]: 100 },
+        }),
+        await authHeaders(),
+      ),
+    );
+    expect(mismatchedDelta.status).toBe(400);
+    expect(await mismatchedDelta.json()).toEqual({ error: "invalid_request" });
+
+    const sameMembers = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        promiseRecordBody({
+          debtorMemberId: 1,
+          creditorMemberId: 1,
+          amount: 100,
+          delta: { "1": 100 },
+        }),
+        await authHeaders(),
+      ),
+    );
+    expect(sameMembers.status).toBe(400);
+    expect(await sameMembers.json()).toEqual({ error: "invalid_request" });
+
+    const blankReason = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        promiseRecordBody({
+          debtorMemberId: 1,
+          creditorMemberId: bob.id,
+          amount: 100,
+          reason: "",
+        }),
+        await authHeaders(),
+      ),
+    );
+    expect(blankReason.status).toBe(400);
+    expect(await blankReason.json()).toEqual({ error: "invalid_request" });
+
+    const missingMember = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        promiseRecordBody({
+          debtorMemberId: 1,
+          creditorMemberId: 999,
+          amount: 100,
+        }),
+        await authHeaders(),
+      ),
+    );
+    expect(missingMember.status).toBe(400);
+    expect(await missingMember.json()).toEqual({ error: "invalid_request" });
+
+    const deleteCarol = await dispatch(`/project/${project.id}/members/${carol.id}`, testEnv, {
+      method: "DELETE",
+      headers: await authHeaders(),
+    });
+    expect(deleteCarol.status).toBe(204);
+
+    const deletedMember = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        promiseRecordBody({
+          debtorMemberId: 1,
+          creditorMemberId: carol.id,
+          amount: 100,
+        }),
+        await authHeaders(),
+      ),
+    );
+    expect(deletedMember.status).toBe(400);
+    expect(await deletedMember.json()).toEqual({ error: "invalid_request" });
+  });
+
+  it("enforces promise money limits and supports reverting promises", async () => {
+    const { env: testEnv } = makeEnv();
+    const owner = `promise-limit-${crypto.randomUUID()}@example.com`;
+    await putUserLimits(
+      testEnv,
+      owner,
+      limitsDocument({
+        "money.maxAmountCents": 100,
+        "money.maxBalanceCents": 100,
+      }),
+    );
+    const project = await createProject(testEnv, { owner, ownerMemberName: "Alice" });
+    const bob = await createMember(testEnv, project.id, "Bob", owner);
+
+    const oversized = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        promiseRecordBody({
+          debtorMemberId: 1,
+          creditorMemberId: bob.id,
+          amount: 101,
+        }),
+        await authHeaders(owner),
+      ),
+    );
+    expect(oversized.status).toBe(409);
+    expect(await oversized.json()).toEqual({ error: "money_limit_exceeded" });
+
+    const maxPromise = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        promiseRecordBody({
+          debtorMemberId: 1,
+          creditorMemberId: bob.id,
+          amount: 100,
+        }),
+        await authHeaders(owner),
+      ),
+    );
+    expect(maxPromise.status).toBe(201);
+
+    const overflow = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        promiseRecordBody({
+          debtorMemberId: 1,
+          creditorMemberId: bob.id,
+          amount: 1,
+        }),
+        await authHeaders(owner),
+      ),
+    );
+    expect(overflow.status).toBe(409);
+    expect(await overflow.json()).toEqual({ error: "money_limit_exceeded" });
+
+    const revert = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          delta: { "1": -100, [String(bob.id)]: 100 },
+          description: { type: "revert", id: 1 },
+        },
+        await authHeaders(owner),
+      ),
+    );
+    expect(revert.status).toBe(201);
+    expect(await revert.json()).toEqual({ id: 2 });
+
+    const view = await getProject(testEnv, project.id, owner);
+    const revertRecord = view.records.find(
+      (record): record is { id: number; createdAt: number } =>
+        typeof record === "object" &&
+        record !== null &&
+        "id" in record &&
+        (record as { id: number }).id === 2,
+    );
+    expect(view).toMatchObject({ balance: {}, records: [{ id: 2 }, { id: 1 }] });
+    expect(view.records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 1,
+          reverted: {
+            recordId: 2,
+            authorMemberId: 1,
+            createdAt: revertRecord?.createdAt,
+          },
+        }),
+      ]),
+    );
   });
 
   it("creates restricted projects and enforces ACLs separately from members", async () => {

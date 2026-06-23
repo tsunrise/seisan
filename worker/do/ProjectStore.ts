@@ -309,6 +309,10 @@ export class ProjectStore extends DurableObject<Env> {
       referencedMemberIds.add(description.from);
       referencedMemberIds.add(description.to);
     }
+    if (description.type === "promise") {
+      referencedMemberIds.add(description.debtorMemberId);
+      referencedMemberIds.add(description.creditorMemberId);
+    }
     if (referencedMemberIds.size > 0) {
       const activeMemberIds = this.getActiveMemberIds();
       for (const memberId of referencedMemberIds) {
@@ -968,6 +972,12 @@ export class ProjectStore extends DurableObject<Env> {
     if (description.type === "transfer") {
       return policy.allowsMoneyAmount(description.amount) ? null : "money_limit_exceeded";
     }
+    if (description.type === "promise") {
+      if (description.reason !== undefined && !policy.allowsExpenseName(description.reason)) {
+        return "record_limit_exceeded";
+      }
+      return policy.allowsMoneyAmount(description.amount) ? null : "money_limit_exceeded";
+    }
     return null;
   }
 
@@ -1399,9 +1409,22 @@ export class ProjectStore extends DurableObject<Env> {
     }
 
     if (description.type === "transfer") {
+      if (description.from === description.to || description.amount <= 0) {
+        return null;
+      }
       return MoneyByMemberIdUtils.normalize({
         [String(description.from)]: -description.amount,
         [String(description.to)]: description.amount,
+      });
+    }
+
+    if (description.type === "promise") {
+      if (description.debtorMemberId === description.creditorMemberId || description.amount <= 0) {
+        return null;
+      }
+      return MoneyByMemberIdUtils.normalize({
+        [String(description.debtorMemberId)]: description.amount,
+        [String(description.creditorMemberId)]: -description.amount,
       });
     }
 
@@ -1412,6 +1435,12 @@ export class ProjectStore extends DurableObject<Env> {
   }
 
   private static normalizeRecordDescription(description: RecordDescription): RecordDescription {
+    if (description.type === "promise") {
+      const { reason, ...promise } = description;
+      const normalizedReason = reason?.trim();
+      return normalizedReason ? { ...promise, reason: normalizedReason } : promise;
+    }
+
     if (description.type !== "expense") {
       return description;
     }
