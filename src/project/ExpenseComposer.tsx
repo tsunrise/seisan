@@ -1,5 +1,14 @@
 import AddIcon from "@mui/icons-material/Add";
-import { Button, MenuItem, Stack, TextField, ToggleButton, ToggleButtonGroup } from "@mui/material";
+import {
+  Box,
+  Button,
+  MenuItem,
+  Stack,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from "@mui/material";
 import type { FormEvent } from "react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
@@ -11,6 +20,7 @@ import { PanelFrame } from "../components/PanelFrame";
 import { activeMembers, allocateEqual, allocateRatio, deriveDelta, parseCents } from "../domain";
 import type { SplitMode } from "../types";
 import { MemberSplitRow } from "./MemberSplitRow";
+import { RecordFormBridge } from "./RecordFormBridge";
 
 export function ExpenseComposer({
   project,
@@ -92,73 +102,120 @@ export function ExpenseComposer({
       onBack={onBack}
     >
       <Stack component="form" spacing={2} onSubmit={submit}>
-        <TextField
-          label="Name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          required
-        />
-        <TextField
-          label="Amount"
-          inputMode="decimal"
-          value={amount}
-          onChange={(event) => setAmount(event.target.value)}
-          placeholder="12.34"
-          required
-        />
-        <TextField
-          select
-          label="Paid by"
-          value={String(paidBy)}
-          onChange={(event) => setPaidBy(Number(event.target.value))}
-        >
-          {members.map((member) => (
-            <MenuItem key={member.id} value={String(member.id)}>
-              {member.name}
-            </MenuItem>
-          ))}
-        </TextField>
-        <ToggleButtonGroup
-          exclusive
-          fullWidth
-          value={splitMode}
-          onChange={(_, next: SplitMode | null) => {
-            if (next) {
-              setSplitMode(next);
-            }
+        <Box
+          sx={{
+            display: "grid",
+            gap: { xs: 0.75, sm: 1 },
+            gridTemplateColumns: "1fr",
+            alignItems: "center",
           }}
         >
-          <ToggleButton value="equal">Equal</ToggleButton>
-          <ToggleButton value="ratio">Ratio</ToggleButton>
-          <ToggleButton value="custom">Custom</ToggleButton>
-        </ToggleButtonGroup>
-        <Stack spacing={1}>
-          {members.map((member) => (
-            <MemberSplitRow
-              key={member.id}
-              member={member}
-              selected={selectedIds.includes(member.id)}
-              splitMode={splitMode}
-              value={
-                splitMode === "ratio"
-                  ? (ratios[member.id] ?? "1")
-                  : (customAmounts[member.id] ?? "")
-              }
-              amount={liability[String(member.id)] ?? 0}
-              onSelected={(selected) =>
-                setSelectedIds((ids) =>
-                  selected
-                    ? [...ids, member.id].sort((left, right) => left - right)
-                    : ids.filter((id) => id !== member.id),
-                )
-              }
-              onValue={(value) =>
-                splitMode === "ratio"
-                  ? setRatios((next) => ({ ...next, [member.id]: value }))
-                  : setCustomAmounts((next) => ({ ...next, [member.id]: value }))
-              }
-            />
-          ))}
+          <TextField
+            select
+            label="Payer"
+            value={String(paidBy)}
+            onChange={(event) => setPaidBy(Number(event.target.value))}
+          >
+            {members.map((member) => (
+              <MenuItem key={member.id} value={String(member.id)}>
+                {member.name}
+              </MenuItem>
+            ))}
+          </TextField>
+        </Box>
+        <Box
+          sx={{
+            display: "grid",
+            gap: { xs: 0.75, sm: 1 },
+            gridTemplateColumns: { xs: "1fr", sm: "auto minmax(0, 1fr)" },
+            alignItems: "center",
+          }}
+        >
+          <RecordFormBridge>paid</RecordFormBridge>
+          <TextField
+            label="Amount"
+            inputMode="decimal"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            placeholder="12.34"
+            required
+          />
+        </Box>
+        <Box
+          sx={{
+            display: "grid",
+            gap: { xs: 0.75, sm: 1 },
+            gridTemplateColumns: { xs: "1fr", sm: "auto minmax(0, 1fr)" },
+            alignItems: "center",
+          }}
+        >
+          <RecordFormBridge>for</RecordFormBridge>
+          <TextField
+            label="Expense"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            required
+          />
+        </Box>
+        <Stack spacing={1.25}>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            sx={{ alignItems: { xs: "stretch", sm: "center" }, gap: 1 }}
+          >
+            <Typography variant="h3" sx={{ flex: "1 1 auto" }}>
+              Shared with
+            </Typography>
+            <ToggleButtonGroup
+              exclusive
+              fullWidth
+              size="small"
+              value={splitMode}
+              onChange={(_, next: SplitMode | null) => {
+                if (next) {
+                  setSplitMode(next);
+                }
+              }}
+              sx={{
+                flex: { xs: "1 1 auto", sm: "0 0 240px" },
+                "& .MuiToggleButton-root": {
+                  minHeight: 36,
+                  px: 1.5,
+                },
+              }}
+            >
+              <ToggleButton value="equal">Equal</ToggleButton>
+              <ToggleButton value="ratio">Ratio</ToggleButton>
+              <ToggleButton value="custom">Custom</ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
+          <Stack spacing={0.25}>
+            {members.map((member) => (
+              <MemberSplitRow
+                key={member.id}
+                member={member}
+                selected={selectedIds.includes(member.id)}
+                splitMode={splitMode}
+                value={
+                  splitMode === "ratio"
+                    ? (ratios[member.id] ?? "1")
+                    : (customAmounts[member.id] ?? "")
+                }
+                amount={liability[String(member.id)] ?? 0}
+                onSelected={(selected) =>
+                  setSelectedIds((ids) =>
+                    selected
+                      ? [...ids, member.id].sort((left, right) => left - right)
+                      : ids.filter((id) => id !== member.id),
+                  )
+                }
+                onValue={(value) =>
+                  splitMode === "ratio"
+                    ? setRatios((next) => ({ ...next, [member.id]: value }))
+                    : setCustomAmounts((next) => ({ ...next, [member.id]: value }))
+                }
+              />
+            ))}
+          </Stack>
         </Stack>
         <MoneyTable title="Preview" project={project} map={delta} />
         {error ? <InlineAlert>{error}</InlineAlert> : null}

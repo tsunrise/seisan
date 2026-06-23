@@ -1,5 +1,5 @@
 import AddIcon from "@mui/icons-material/Add";
-import { Button, MenuItem, Stack, TextField } from "@mui/material";
+import { Box, Button, MenuItem, Stack, TextField } from "@mui/material";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
@@ -9,6 +9,7 @@ import { InlineAlert } from "../components/InlineAlert";
 import { MoneyTable } from "../components/MoneyTable";
 import { PanelFrame } from "../components/PanelFrame";
 import { activeMembers, deriveDelta, parseCents } from "../domain";
+import { RecordFormBridge } from "./RecordFormBridge";
 
 export function TransferComposer({
   project,
@@ -55,30 +56,40 @@ export function TransferComposer({
   return (
     <PanelFrame title="New transfer" backTo={`/project/${project.id}/records/new`} onBack={onBack}>
       <Stack component="form" spacing={2} onSubmit={submit}>
-        <TextField
-          select
-          label="From"
-          value={String(from)}
-          onChange={(event) => setFrom(Number(event.target.value))}
+        <Box
+          sx={{
+            display: "grid",
+            gap: { xs: 0.75, sm: 1 },
+            gridTemplateColumns: { xs: "1fr", sm: "minmax(0, 1fr) auto minmax(0, 1fr)" },
+            alignItems: "center",
+          }}
         >
-          {members.map((member) => (
-            <MenuItem key={member.id} value={String(member.id)}>
-              {member.name}
-            </MenuItem>
-          ))}
-        </TextField>
-        <TextField
-          select
-          label="To"
-          value={String(to)}
-          onChange={(event) => setTo(Number(event.target.value))}
-        >
-          {members.map((member) => (
-            <MenuItem key={member.id} value={String(member.id)}>
-              {member.name}
-            </MenuItem>
-          ))}
-        </TextField>
+          <TextField
+            select
+            label="From"
+            value={String(from)}
+            onChange={(event) => setFrom(Number(event.target.value))}
+          >
+            {members.map((member) => (
+              <MenuItem key={member.id} value={String(member.id)}>
+                {member.name}
+              </MenuItem>
+            ))}
+          </TextField>
+          <RecordFormBridge>paid</RecordFormBridge>
+          <TextField
+            select
+            label="To"
+            value={String(to)}
+            onChange={(event) => setTo(Number(event.target.value))}
+          >
+            {members.map((member) => (
+              <MenuItem key={member.id} value={String(member.id)}>
+                {member.name}
+              </MenuItem>
+            ))}
+          </TextField>
+        </Box>
         <TextField
           label="Amount"
           inputMode="decimal"

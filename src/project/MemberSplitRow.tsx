@@ -25,14 +25,29 @@ export function MemberSplitRow({
     <Stack
       component="label"
       direction="row"
-      sx={{ alignItems: "center", gap: 1.25, minHeight: 48, cursor: "pointer" }}
+      sx={{
+        alignItems: "center",
+        cursor: "pointer",
+        gap: 1.25,
+        minHeight: 48,
+        py: 0.75,
+      }}
     >
       <Checkbox
         checked={selected}
         onChange={(event) => onSelected(event.target.checked)}
         sx={{ p: 0.5 }}
       />
-      <Typography sx={{ minWidth: 0, flex: "1 1 auto" }}>{member.name}</Typography>
+      <Typography
+        sx={{
+          minWidth: 0,
+          flex: "1 1 auto",
+          color: selected ? "text.primary" : "text.secondary",
+          fontWeight: selected ? 500 : 450,
+        }}
+      >
+        {member.name}
+      </Typography>
       <Stack
         direction="row"
         sx={{ alignItems: "center", justifyContent: "flex-end", gap: 1.25, minWidth: 0 }}
