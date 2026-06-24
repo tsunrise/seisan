@@ -16,22 +16,23 @@ import { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router";
 
 import * as api from "../api";
+import { getApiErrorMessage } from "../apiErrorMessages";
 import { AllowedEmailList } from "../components/AllowedEmailList";
 import { BackLink } from "../components/BackLink";
-import { InlineAlert } from "../components/InlineAlert";
 import { panelFrameSx } from "../components/styles";
 import { useCurrentUser } from "../hooks/useCurrentUser";
+import { useAppSnackbar } from "../hooks/useAppSnackbar";
 import { loginPath } from "../utils";
 
 export function CreateProjectPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { showError, showSuccess } = useAppSnackbar();
   const user = useCurrentUser({ required: true });
   const [name, setName] = useState("");
   const [ownerMemberName, setOwnerMemberName] = useState("");
   const [visibility, setVisibility] = useState<api.ProjectAcl["type"]>("public");
   const [allowedEmails, setAllowedEmails] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
 
   if (user.status === "error") {
     return <Navigate to={loginPath(location)} replace />;
@@ -39,7 +40,6 @@ export function CreateProjectPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    setError(null);
     const acl =
       visibility === "public"
         ? ({ type: "public" } as const)
@@ -50,9 +50,10 @@ export function CreateProjectPage() {
         ownerMemberName: ownerMemberName || undefined,
         acl,
       });
+      showSuccess("Project created.");
       navigate(`/project/${project.id}`);
-    } catch {
-      setError("Could not create the project.");
+    } catch (error) {
+      showError(getApiErrorMessage(error));
     }
   }
 
@@ -95,7 +96,6 @@ export function CreateProjectPage() {
                 onListChange={setAllowedEmails}
               />
             ) : null}
-            {error ? <InlineAlert>{error}</InlineAlert> : null}
             <Button type="submit" variant="contained" startIcon={<AddIcon />}>
               Create
             </Button>

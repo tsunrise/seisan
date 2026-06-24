@@ -5,6 +5,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router";
 
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { useProject } from "../hooks/useProject";
+import { InlineAlert } from "../components/InlineAlert";
 import { DesktopPlaceholder } from "../project/DesktopPlaceholder";
 import { JoinPanel } from "../project/JoinPanel";
 import { JoinPromptPanel } from "../project/JoinPromptPanel";
@@ -19,7 +20,7 @@ import { findLinkedMember } from "../domain";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { ledgerColors } from "../theme";
 import { loginPath } from "../utils";
-import { NotFoundPage } from "./NotFoundPage";
+import { NoAccessPage, NotFoundPage } from "./NotFoundPage";
 
 export function ProjectPage({ panel }: { panel: ProjectPanel }) {
   const params = useParams();
@@ -92,8 +93,23 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
       </Box>
     );
   }
-  if (project.status === "error") {
+  if (project.status === "error" && project.errorCode === "not_found") {
     return <NotFoundPage />;
+  }
+  if (project.status === "error" && project.errorCode === "forbidden") {
+    return <NoAccessPage />;
+  }
+  if (project.status === "error") {
+    return (
+      <Box
+        component="main"
+        sx={{ minHeight: "100svh", display: "grid", placeItems: "center", p: 3 }}
+      >
+        <Box sx={{ width: "min(480px, 100%)" }}>
+          <InlineAlert>{project.error}</InlineAlert>
+        </Box>
+      </Box>
+    );
   }
   if (panel === "recordDetail" && recordId !== null && !recordIdIsValid) {
     return <NotFoundPage />;

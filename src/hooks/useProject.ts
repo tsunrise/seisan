@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import * as api from "../api";
+import { getApiErrorMessage } from "../apiErrorMessages";
 import type { Loadable } from "../types";
 
 const PROJECT_RECORD_PAGE_SIZE = 50;
@@ -100,12 +101,17 @@ export function useProject(projectId: string, reloadKey: number): Loadable<Pagin
           setState({ status: "ready", data: project, error: null });
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (active && generation === generationRef.current) {
           projectRef.current = null;
           hasMoreRecordsRef.current = false;
           setPagination({ hasMoreRecords: false, loadingOlderRecords: false });
-          setState({ status: "error", data: null, error: "Could not load project." });
+          setState({
+            status: "error",
+            data: null,
+            error: getApiErrorMessage(error),
+            errorCode: error instanceof api.ApiError ? error.code : null,
+          });
         }
       });
     return () => {
@@ -156,12 +162,17 @@ export function useProject(projectId: string, reloadKey: number): Loadable<Pagin
         });
         setState({ status: "ready", data: mergedProject, error: null });
       }
-    } catch {
+    } catch (error) {
       if (generation === generationRef.current) {
         setState((current) =>
           current.status === "ready"
             ? current
-            : { status: "error", data: null, error: "Could not load project." },
+            : {
+                status: "error",
+                data: null,
+                error: getApiErrorMessage(error),
+                errorCode: error instanceof api.ApiError ? error.code : null,
+              },
         );
       }
     } finally {

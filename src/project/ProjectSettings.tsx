@@ -21,11 +21,12 @@ import {
 import { useState } from "react";
 
 import * as api from "../api";
+import { getApiErrorMessage } from "../apiErrorMessages";
 import { AllowedEmailList } from "../components/AllowedEmailList";
 import { Amount } from "../components/Amount";
-import { InlineAlert } from "../components/InlineAlert";
 import { PanelFrame } from "../components/PanelFrame";
 import { panelFrameSx } from "../components/styles";
+import { useAppSnackbar } from "../hooks/useAppSnackbar";
 
 const memberActionButtonSx = {
   border: 0,
@@ -50,6 +51,7 @@ export function ProjectSettings({
   currentMember: api.ProjectMember | null;
   onReload: () => void;
 }) {
+  const { showError, showSuccess } = useAppSnackbar();
   const [manage, setManage] = useState(false);
   const [newMemberName, setNewMemberName] = useState("");
   const [visibility, setVisibility] = useState<api.ProjectAcl["type"]>(project.acl.type);
@@ -60,7 +62,6 @@ export function ProjectSettings({
   const [kickingMember, setKickingMember] = useState(false);
   const [confirmingLeaveProject, setConfirmingLeaveProject] = useState(false);
   const [leavingProject, setLeavingProject] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const isOwner = currentEmail === project.owner;
   const activeMembers = project.members.filter((member) => !member.deleted);
   const allowedEmails = project.acl.type === "restricted" ? project.acl.emails : [];
@@ -74,13 +75,13 @@ export function ProjectSettings({
     }
     setVisibility(nextVisibility);
     setSavingVisibility(true);
-    setError(null);
     try {
       await api.setAclType(project.id, nextVisibility);
       onReload();
-    } catch {
+      showSuccess("Project visibility updated.");
+    } catch (error) {
       setVisibility(project.acl.type);
-      setError("Could not update project visibility.");
+      showError(getApiErrorMessage(error));
     } finally {
       setSavingVisibility(false);
     }
@@ -92,7 +93,6 @@ export function ProjectSettings({
     if (emailsToAdd.length === 0 && emailsToRemove.length === 0) {
       return;
     }
-    setError(null);
     try {
       if (emailsToAdd.length > 0) {
         await api.appendAclEmails(project.id, emailsToAdd);
@@ -101,9 +101,10 @@ export function ProjectSettings({
         await api.removeAclEmails(project.id, emailsToRemove);
       }
       onReload();
-    } catch {
-      setError("Could not update allowed emails.");
-      throw new Error("Could not update allowed emails.");
+      showSuccess("Allowed emails updated.");
+    } catch (error) {
+      showError(getApiErrorMessage(error));
+      throw error;
     }
   }
 
@@ -111,13 +112,13 @@ export function ProjectSettings({
     if (!newMemberName.trim()) {
       return;
     }
-    setError(null);
     try {
       await api.createMember(project.id, newMemberName);
       setNewMemberName("");
       onReload();
-    } catch {
-      setError("Could not add that member.");
+      showSuccess("Member added.");
+    } catch (error) {
+      showError(getApiErrorMessage(error));
     }
   }
 
@@ -130,24 +131,24 @@ export function ProjectSettings({
     if (!editingMember || !editingName.trim()) {
       return;
     }
-    setError(null);
     try {
       await api.patchMember(project.id, editingMember.id, { name: editingName.trim() });
       setEditingMember(null);
       setEditingName("");
       onReload();
-    } catch {
-      setError("Could not rename that member.");
+      showSuccess("Member renamed.");
+    } catch (error) {
+      showError(getApiErrorMessage(error));
     }
   }
 
   async function deleteMember(member: api.ProjectMember) {
-    setError(null);
     try {
       await api.deleteMember(project.id, member.id);
       onReload();
-    } catch {
-      setError("Only zero-balance members can be deleted.");
+      showSuccess("Member deleted.");
+    } catch (error) {
+      showError(getApiErrorMessage(error));
     }
   }
 
@@ -156,14 +157,14 @@ export function ProjectSettings({
       return;
     }
     setKickingMember(true);
-    setError(null);
     try {
       await api.unlinkMemberEmail(project.id, memberToKick.linkedEmail);
       setMemberToKick(null);
       onReload();
-    } catch {
+      showSuccess("Email unlinked.");
+    } catch (error) {
       setMemberToKick(null);
-      setError("Could not unlink that email.");
+      showError(getApiErrorMessage(error));
     } finally {
       setKickingMember(false);
     }
@@ -174,14 +175,14 @@ export function ProjectSettings({
       return;
     }
     setLeavingProject(true);
-    setError(null);
     try {
       await api.leaveProject(project.id);
       setConfirmingLeaveProject(false);
       onReload();
-    } catch {
+      showSuccess("Left project.");
+    } catch (error) {
       setConfirmingLeaveProject(false);
-      setError("Could not leave this project.");
+      showError(getApiErrorMessage(error));
     } finally {
       setLeavingProject(false);
     }
@@ -341,7 +342,6 @@ export function ProjectSettings({
             </Button>
           </Stack>
         ) : null}
-        {error ? <InlineAlert>{error}</InlineAlert> : null}
       </Stack>
       <Dialog open={editingMember !== null} onClose={() => setEditingMember(null)} fullWidth>
         <DialogTitle>Rename member</DialogTitle>

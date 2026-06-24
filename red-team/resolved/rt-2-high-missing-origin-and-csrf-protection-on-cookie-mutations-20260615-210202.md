@@ -12,11 +12,11 @@ On the live local API at `http://localhost:5173/api/*`, I logged in as `victim-.
 
 Observed results:
 
-| Request | Forged Origin | Result |
-| --- | --- | --- |
-| `PUT /api/project` with `Content-Type: application/json` | `https://evil.example` | `201`, project created |
-| `PUT /api/project` with `Content-Type: text/plain` containing JSON | `https://evil.waga.me` | `201`, project created |
-| `POST /api/logout` | `https://evil.waga.me` | `204`, then `GET /api/whoami` returned `401` |
+| Request                                                            | Forged Origin          | Result                                       |
+| ------------------------------------------------------------------ | ---------------------- | -------------------------------------------- |
+| `PUT /api/project` with `Content-Type: application/json`           | `https://evil.example` | `201`, project created                       |
+| `PUT /api/project` with `Content-Type: text/plain` containing JSON | `https://evil.waga.me` | `201`, project created                       |
+| `POST /api/logout`                                                 | `https://evil.waga.me` | `204`, then `GET /api/whoami` returned `401` |
 
 ## Root Cause Analysis
 

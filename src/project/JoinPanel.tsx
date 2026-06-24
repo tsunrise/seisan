@@ -12,8 +12,10 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 
 import * as api from "../api";
+import { getApiErrorMessage } from "../apiErrorMessages";
 import { InlineAlert } from "../components/InlineAlert";
 import { PanelFrame } from "../components/PanelFrame";
+import { useAppSnackbar } from "../hooks/useAppSnackbar";
 import { loginPath } from "../utils";
 
 export function JoinPanel({
@@ -29,6 +31,7 @@ export function JoinPanel({
 }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { showError, showSuccess } = useAppSnackbar();
   const unlinkedMembers = project.members.filter(
     (member) => !member.deleted && !member.linkedEmail,
   );
@@ -36,7 +39,6 @@ export function JoinPanel({
     unlinkedMembers[0] ? `member:${unlinkedMembers[0].id}` : "new",
   );
   const [name, setName] = useState("");
-  const [error, setError] = useState<string | null>(null);
 
   if (currentMember) {
     return (
@@ -63,17 +65,17 @@ export function JoinPanel({
   }
 
   async function join() {
-    setError(null);
     try {
       if (selection.startsWith("member:")) {
         await api.joinProject(project.id, { memberId: Number(selection.slice("member:".length)) });
       } else {
         await api.joinProject(project.id, { name });
       }
+      showSuccess("Joined project.");
       onReload();
       navigate(`/project/${project.id}`, { replace: true });
-    } catch {
-      setError("Could not join this project.");
+    } catch (error) {
+      showError(getApiErrorMessage(error));
     }
   }
 
@@ -118,7 +120,6 @@ export function JoinPanel({
             </Stack>
           </RadioGroup>
         </FormControl>
-        {error ? <InlineAlert>{error}</InlineAlert> : null}
         <Button
           variant="contained"
           startIcon={<CheckIcon />}

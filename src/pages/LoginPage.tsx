@@ -4,14 +4,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 
 import * as api from "../api";
+import { getApiErrorMessage } from "../apiErrorMessages";
 import { BrandLink } from "../components/BrandLink";
 import { InlineAlert } from "../components/InlineAlert";
 import { pageCenterSx, panelFrameSx } from "../components/styles";
+import { useAppSnackbar } from "../hooks/useAppSnackbar";
 import { Turnstile } from "../components/Turnstile";
 import { getLoginTurnstileSiteKey, shouldUseLoginTurnstile } from "../turnstile";
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const { showError } = useAppSnackbar();
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -67,8 +70,8 @@ export function LoginPage() {
       }
       await api.verifyLoginCode(attemptId, email, code);
       navigate(returnTo, { replace: true });
-    } catch {
-      setError(step === "email" ? "Unable to send a code." : "That code did not work.");
+    } catch (error) {
+      showError(getApiErrorMessage(error));
       if (step === "email") {
         resetTurnstile();
       }

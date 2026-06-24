@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import * as api from "../api";
+import { getApiErrorMessage } from "../apiErrorMessages";
 import type { Loadable } from "../types";
 
 export function useProjects(
@@ -24,9 +25,14 @@ export function useProjects(
           setState({ status: "ready", data: projects, error: null });
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (active) {
-          setState({ status: "error", data: null, error: "Could not load projects." });
+          setState({
+            status: "error",
+            data: null,
+            error: getApiErrorMessage(error),
+            errorCode: error instanceof api.ApiError ? error.code : null,
+          });
         }
       });
     return () => {

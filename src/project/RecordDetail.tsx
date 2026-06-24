@@ -15,7 +15,7 @@ import { type ReactNode, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
 import * as api from "../api";
-import { InlineAlert } from "../components/InlineAlert";
+import { getApiErrorMessage } from "../apiErrorMessages";
 import { MoneyTable } from "../components/MoneyTable";
 import { PanelFrame } from "../components/PanelFrame";
 import { panelFrameSx } from "../components/styles";
@@ -26,6 +26,7 @@ import {
   recordDetailTitle,
   recordSubtitle,
 } from "../domain";
+import { useAppSnackbar } from "../hooks/useAppSnackbar";
 
 export function RecordDetail({
   project,
@@ -39,7 +40,7 @@ export function RecordDetail({
   onPosted: () => void;
 }) {
   const navigate = useNavigate();
-  const [error, setError] = useState<string | null>(null);
+  const { showError, showSuccess } = useAppSnackbar();
   const [confirmingRevert, setConfirmingRevert] = useState(false);
   const [reverting, setReverting] = useState(false);
   const canRevert =
@@ -58,17 +59,17 @@ export function RecordDetail({
       return;
     }
     setReverting(true);
-    setError(null);
     try {
       await api.appendRecord(project.id, {
         description: { type: "revert", id: record.id },
         delta: negateMoneyMap(record.delta),
       });
+      showSuccess("Record reverted.");
       setConfirmingRevert(false);
       onPosted();
       navigate(`/project/${project.id}`);
-    } catch {
-      setError("Could not revert this record.");
+    } catch (error) {
+      showError(getApiErrorMessage(error));
     } finally {
       setReverting(false);
     }
@@ -141,7 +142,6 @@ export function RecordDetail({
               />
             </>
           ) : null}
-          {error ? <InlineAlert>{error}</InlineAlert> : null}
           {canRevert ? (
             <Button
               variant="outlined"

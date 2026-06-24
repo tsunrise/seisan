@@ -5,10 +5,12 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 
 import * as api from "../api";
+import { getApiErrorMessage } from "../apiErrorMessages";
 import { InlineAlert } from "../components/InlineAlert";
 import { MoneyTable } from "../components/MoneyTable";
 import { PanelFrame } from "../components/PanelFrame";
 import { activeMembers, deriveDelta, parseCents } from "../domain";
+import { useAppSnackbar } from "../hooks/useAppSnackbar";
 import { RecordFormBridge } from "./RecordFormBridge";
 
 export function PromiseComposer({
@@ -23,6 +25,7 @@ export function PromiseComposer({
   onBack: () => void;
 }) {
   const navigate = useNavigate();
+  const { showError, showSuccess } = useAppSnackbar();
   const members = activeMembers(project.members);
   const [debtorMemberId, setDebtorMemberId] = useState(currentMember.id);
   const [creditorMemberId, setCreditorMemberId] = useState(
@@ -52,10 +55,11 @@ export function PromiseComposer({
     }
     try {
       await api.appendRecord(project.id, { description, delta });
+      showSuccess("Record posted.");
       onPosted();
       navigate(`/project/${project.id}`);
-    } catch {
-      setError("Could not post this promise.");
+    } catch (error) {
+      showError(getApiErrorMessage(error));
     }
   }
 

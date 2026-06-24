@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import * as api from "../api";
+import { getApiErrorMessage } from "../apiErrorMessages";
 import type { Loadable, User } from "../types";
 
 export function useCurrentUser({ required }: { required: boolean }): Loadable<User | null> {
@@ -27,7 +28,12 @@ export function useCurrentUser({ required }: { required: boolean }): Loadable<Us
           setState({ status: "ready", data: null, error: null });
           return;
         }
-        setState({ status: "error", data: null, error: "Please sign in." });
+        setState({
+          status: "error",
+          data: null,
+          error: getApiErrorMessage(error),
+          errorCode: error instanceof api.ApiError ? error.code : null,
+        });
       });
     return () => {
       active = false;
