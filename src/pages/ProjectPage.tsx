@@ -5,6 +5,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router";
 
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { useProject } from "../hooks/useProject";
+import { useProjects } from "../hooks/useProjects";
 import { InlineAlert } from "../components/InlineAlert";
 import { DesktopPlaceholder } from "../project/DesktopPlaceholder";
 import { JoinPanel } from "../project/JoinPanel";
@@ -34,6 +35,8 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
   const [missingRecordId, setMissingRecordId] = useState<number | null>(null);
   const loadingDetailRecordIdRef = useRef<number | null>(null);
   const project = useProject(projectId, reloadKey);
+  const registryEnabled = user.status === "ready" && Boolean(user.data);
+  const projectSummaries = useProjects(registryEnabled);
   const currentEmail = user.status === "ready" ? (user.data?.email ?? null) : null;
   const timelineIsVisibleOnDesktop = useMediaQuery(theme.breakpoints.up("md"));
   useDocumentTitle(project.status === "ready" ? `${project.data.name} - Seisan` : "Seisan");
@@ -143,7 +146,12 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
       }}
     >
       <Box sx={{ display: { xs: "none", md: "none", lg: "block" } }}>
-        <ProjectRail project={project.data} currentMember={currentMember} />
+        <ProjectRail
+          project={project.data}
+          currentMember={currentMember}
+          projects={projectSummaries}
+          registryEnabled={registryEnabled}
+        />
       </Box>
       <Box
         component="section"

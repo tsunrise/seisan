@@ -186,7 +186,8 @@ pnpm run build
 - Keep malformed schema tests for zod-covered request bodies.
 - After changing bindings or Wrangler config, regenerate `worker-configuration.d.ts`.
 - For frontend-only changes, usually run `pnpm run typecheck:frontend`, `pnpm run format:check`, and `pnpm run lint`. Run `pnpm run build` when touching routing, theme/styles, Vite config, shared imports, or assets used by the production bundle.
-- Use browser verification when changing visible layout, responsive behavior, scrolling, or user flows, or when explicitly requested. Do not run full browser-flow checks for every small code cleanup.
+- Use browser verification when changing visible layout, responsive behavior, scrolling, or user flows, or when explicitly requested. Always use the in-app Browser plugin (`[@Browser](plugin://browser@openai-bundled)`) instead of standalone Playwright for this verification. Do not run full browser-flow checks for every small code cleanup.
+- When verifying visual changes, take a screenshot with the in-app Browser and inspect it visually with multimodal capability. Do not rely only on DOM geometry, computed styles, or coordinate checks for UI quality.
 - When changing timeline pagination or scroll restoration, verify the main cases when practical: initial latest-record positioning, loading older records without scroll jumps, record detail navigation and back, and mobile fixed action clearance.
 
 ## Editing Conventions

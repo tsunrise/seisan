@@ -1,7 +1,7 @@
 import { createTheme } from "@mui/material/styles";
 
 export const ledgerColors = {
-  paperBg: "#f4f2ea",
+  paperBg: "#f6f5f0",
   paper: "#fffdf5",
   ink: "#22211f",
   muted: "#6f6b62",
@@ -75,10 +75,7 @@ export const theme = createTheme({
         },
         body: {
           minWidth: 320,
-          background: `linear-gradient(rgba(23, 23, 23, 0.025) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(23, 23, 23, 0.018) 1px, transparent 1px),
-            ${ledgerColors.paperBg}`,
-          backgroundSize: "28px 28px",
+          background: ledgerColors.paperBg,
           fontSynthesis: "none",
           textRendering: "optimizeLegibility",
           WebkitFontSmoothing: "antialiased",
