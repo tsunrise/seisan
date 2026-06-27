@@ -44,30 +44,9 @@ Script commands:
 
 Agents may edit markdown report bodies manually, but must run `sync` afterward. Agents must not hand-edit metadata.
 
-## Scan Agent: State And Server Lifecycle
+## Scan Agent: Local Dev Server Lifecycle
 
-Always control the local dev server and local Worker state yourself.
-
-1. Record baseline facts:
-   - `git rev-parse HEAD`
-   - `date '+%Y-%m-%d %H:%M:%S %Z'`
-   - `git status --short`
-2. Back up local Worker state before starting the dev server:
-   - If `.wrangler/state` exists, move it to `.wrangler/state-backup-<YYYYMMDD-HHMMSS>`.
-   - If that backup name already exists, choose a unique timestamped suffix.
-   - Do not delete the user's original state.
-3. Ensure the assessment starts with no `.wrangler/state` directory.
-4. Start the server with `pnpm run dev` from the repo root. Keep the command session ID.
-5. Wait until `http://localhost:5173/api/ping` returns `200`.
-6. Run all live probes only against `http://localhost:5173` or `http://127.0.0.1:5173`.
-7. Stop the exact `pnpm run dev` session you started, normally by sending `Ctrl-C`.
-8. Restore state in a cleanup block before finishing:
-   - Stop the server first.
-   - Move or remove the assessment-generated `.wrangler/state`.
-   - Move `.wrangler/state-backup-<timestamp>` back to `.wrangler/state` if a backup exists.
-   - Verify with `git status --short`.
-
-If cleanup fails, do not continue silently. Report the exact backup path and current `.wrangler/state` path.
+Before live local API probes, read and follow `$seisan-local-dev-server` at `.agents/skills/seisan-local-dev-server/SKILL.md`. Always control the local dev server and local Worker state yourself, and restore the user's original Wrangler state before finishing.
 
 ## Scan Agent: Assessment Workflow
 
@@ -171,7 +150,7 @@ When asked to resolve a red-team issue:
 4. Add or update focused tests proving the issue is fixed or no longer valid.
 5. Run the narrowest relevant verification commands.
 6. If the resolution is `Fixed`, run a live local replay before moving the report:
-   - Use the same state and server lifecycle as the scan agent: record baseline facts, back up `.wrangler/state`, ensure a clean `.wrangler/state`, start `pnpm run dev`, wait for `/api/ping`, stop the exact dev-server session, and restore the user's original state before finishing.
+   - Follow `$seisan-local-dev-server` for the clean Wrangler state, dev-server start, `/api/ping` readiness check, local API calls, exact server stop, cleanup, state restore, and final status verification.
    - Recreate the report's `## Reproduce Steps` against `http://localhost:5173` or `http://127.0.0.1:5173` using the clean local state. Seed accounts, projects, admin limits, or other prerequisites through the API as needed.
    - Verify that the abusive path no longer works. Prefer the same request sequence that previously demonstrated the issue, and capture the new statuses/responses in the resolved report's `## Resolution` section.
    - If the original reproduction cannot be replayed exactly, document the gap and run the closest live API proof plus focused tests. Do not mark `Fixed` if there is no live evidence that the reported path is blocked.
