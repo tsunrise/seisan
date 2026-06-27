@@ -92,7 +92,7 @@
       "name": "APPEND_RECORD_PROJECT_RATE_LIMITER",
       "namespace_id": "2026061802",
       "simple": {
-        "limit": 60,
+        "limit": 120,
         "period": 60,
       },
     },
@@ -171,7 +171,7 @@
           "name": "APPEND_RECORD_PROJECT_RATE_LIMITER",
           "namespace_id": "2026061812",
           "simple": {
-            "limit": 60,
+            "limit": 120,
             "period": 60,
           },
         },
@@ -263,7 +263,7 @@
           "name": "APPEND_RECORD_PROJECT_RATE_LIMITER",
           "namespace_id": "2026061822",
           "simple": {
-            "limit": 60,
+            "limit": 120,
             "period": 60,
           },
         },
@@ -353,7 +353,7 @@
           "name": "APPEND_RECORD_PROJECT_RATE_LIMITER",
           "namespace_id": "2026061832",
           "simple": {
-            "limit": 60,
+            "limit": 120,
             "period": 60,
           },
         },

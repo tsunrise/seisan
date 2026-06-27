@@ -2,11 +2,10 @@ import { DurableObject } from "cloudflare:workers";
 
 import { normalizeEmail } from "../email";
 import {
-  AUTOMATED_BLOCK_PROJECTS_NO_POST,
   LimitsKvStore,
   LimitsDocument,
+  parseStoredLimitsDocument,
   resolveLimits,
-  type AutomatedBlockFeature,
   type LimitsTarget,
 } from "../limits";
 import { runSqlMigrations, type SqlMigration } from "./migrations";
@@ -101,63 +100,6 @@ export class LimitsStore extends DurableObject<Env> {
     return { ok: true, updatedAt: input.nowMs };
   }
 
-  async setAutomatedBlock(input: {
-    target: LimitsTarget;
-    feature: AutomatedBlockFeature;
-    timestamp: number;
-    nowMs: number;
-  }): Promise<
-    { ok: true; updated: boolean } | { ok: false; error: "invalid_input" | "kv_write_failed" }
-  > {
-    if (
-      input.target.type !== "user" ||
-      input.feature !== AUTOMATED_BLOCK_PROJECTS_NO_POST ||
-      !Number.isSafeInteger(input.timestamp) ||
-      input.timestamp < 0 ||
-      !Number.isSafeInteger(input.nowMs)
-    ) {
-      return { ok: false, error: "invalid_input" };
-    }
-
-    const existingDocument = this.readStoredLimits(input.target) ?? {};
-    const existingBlock = existingDocument[input.feature];
-    if (typeof existingBlock === "number" && existingBlock >= input.timestamp) {
-      return { ok: true, updated: false };
-    }
-
-    const nextDocument: LimitsDocument = {
-      ...existingDocument,
-      [input.feature]: input.timestamp,
-    };
-    if (!this.canStoreLimits(input.target, nextDocument)) {
-      return { ok: false, error: "invalid_input" };
-    }
-
-    const limitsJson = LimitsStore.serializeDocument(nextDocument);
-    this.ctx.storage.sql.exec(
-      `INSERT INTO limits (limit_key, limit_json, updated_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT(limit_key) DO UPDATE SET
-        limit_json = excluded.limit_json,
-        updated_at = excluded.updated_at`,
-      LimitsStore.storageKeyForTarget(input.target),
-      limitsJson,
-      input.nowMs,
-    );
-
-    try {
-      await new LimitsKvStore(this.bindings.CONFIGS).put(input.target, nextDocument);
-    } catch (error) {
-      console.error("failed to publish limit to KV", {
-        target: LimitsStore.storageKeyForTarget(input.target),
-        error,
-      });
-      return { ok: false, error: "kv_write_failed" };
-    }
-
-    return { ok: true, updated: true };
-  }
-
   private static storageKeyForTarget(target: LimitsTarget): string {
     return target.type === "default" ? "default" : `user:${normalizeEmail(target.email)}`;
   }
@@ -194,8 +136,7 @@ export class LimitsStore extends DurableObject<Env> {
   private static parseStoredLimits(value: string): LimitsDocument | null {
     try {
       const parsed = JSON.parse(value);
-      const limits = LimitsDocument.safeParse(parsed);
-      return limits.success ? limits.data : null;
+      return parseStoredLimitsDocument(parsed);
     } catch {
       return null;
     }

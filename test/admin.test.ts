@@ -61,6 +61,7 @@ describe("admin routes", () => {
 
     const userLimits = limitsDocument({
       "money.maxAmountCents": 42,
+      "records.allow_post": false,
     });
     const putUser = await adminDispatch(
       `/limits/user/${encodeURIComponent(userEmail)}`,
@@ -89,7 +90,10 @@ describe("admin routes", () => {
 
     const schema = await adminDispatch("/limits-schema", testEnv);
     expect(schema.status).toBe(200);
-    expect(await schema.json()).toEqual(LIMIT_DEFINITIONS);
+    const schemaBody = await schema.json();
+    expect(schemaBody).toEqual(LIMIT_DEFINITIONS);
+    expect(schemaBody).toContainEqual({ name: "records.allow_post", type: "boolean" });
+    expect(schemaBody).not.toContainEqual(expect.objectContaining({ type: "option<timestamp>" }));
   });
 
   it("protects admin endpoints with Cloudflare Access outside local dev", async () => {

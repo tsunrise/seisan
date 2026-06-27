@@ -1,7 +1,6 @@
 import AddIcon from "@mui/icons-material/Add";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CheckIcon from "@mui/icons-material/Check";
-import ClearIcon from "@mui/icons-material/Clear";
 import PeopleIcon from "@mui/icons-material/People";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import SecurityIcon from "@mui/icons-material/Security";
@@ -72,9 +71,6 @@ type Loadable<T> =
 
 type LimitSource = "Built In" | "Default" | "User";
 type LimitDraftDocument = Partial<Record<api.LimitName, string>>;
-
-const dateTimeLocalPattern =
-  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/u;
 
 interface AdminLimitsData {
   schema: api.AdminLimitDefinition[];
@@ -452,7 +448,7 @@ function documentToLimitDraft(
   for (const definition of schema) {
     const value = document[definition.name];
     if (value !== undefined) {
-      draft[definition.name] = formatLimitValue(definition, value);
+      draft[definition.name] = formatLimitValue(value);
     }
   }
   return draft;
@@ -488,10 +484,10 @@ function getLimitValue(
   if (target === "user") {
     const globalValue = data.global[name];
     if (globalValue !== undefined) {
-      return formatLimitValue(definition, globalValue);
+      return formatLimitValue(globalValue);
     }
   }
-  return formatLimitValue(definition, data.builtIn[name]);
+  return formatLimitValue(data.builtIn[name]);
 }
 
 function LimitSourceChip({ source }: { source: LimitSource }) {
@@ -539,20 +535,6 @@ function parseLimitDraftValue(
     return { ok: false, error: `${definition.name} must be true or false.` };
   }
 
-  if (definition.type === "option<timestamp>") {
-    if (trimmed === "" || trimmed === "null") {
-      return { ok: true, value: null };
-    }
-    const parsed = /^\d+$/u.test(trimmed) ? Number(trimmed) : parseDateTimeLocalValue(trimmed);
-    if (parsed === null) {
-      return { ok: false, error: `${definition.name} must be null or a timestamp.` };
-    }
-    if (!Number.isSafeInteger(parsed)) {
-      return { ok: false, error: `${definition.name} must be a safe timestamp.` };
-    }
-    return { ok: true, value: parsed };
-  }
-
   if (!/^-?\d+$/u.test(trimmed)) {
     return { ok: false, error: `${definition.name} must be an integer.` };
   }
@@ -563,68 +545,8 @@ function parseLimitDraftValue(
   return { ok: true, value: parsed };
 }
 
-function formatLimitValue(definition: api.AdminLimitDefinition, value: api.LimitValue): string {
-  if (definition.type === "option<timestamp>") {
-    return typeof value === "number" ? formatDateTimeLocalValue(value) : "";
-  }
-  if (value === null) {
-    return "null";
-  }
+function formatLimitValue(value: api.LimitValue): string {
   return String(value);
-}
-
-function formatDateTimeLocalValue(timestamp: number): string {
-  const date = new Date(timestamp);
-  if (!Number.isSafeInteger(timestamp) || Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  const milliseconds = date.getMilliseconds();
-  const fractional = milliseconds === 0 ? "" : `.${padNumber(milliseconds, 3)}`;
-  return `${padNumber(date.getFullYear(), 4)}-${padNumber(date.getMonth() + 1, 2)}-${padNumber(
-    date.getDate(),
-    2,
-  )}T${padNumber(date.getHours(), 2)}:${padNumber(date.getMinutes(), 2)}:${padNumber(
-    date.getSeconds(),
-    2,
-  )}${fractional}`;
-}
-
-function parseDateTimeLocalValue(value: string): number | null {
-  const match = dateTimeLocalPattern.exec(value);
-  if (!match) {
-    return null;
-  }
-
-  const [, rawYear, rawMonth, rawDay, rawHours, rawMinutes, rawSeconds = "0", rawMillis = ""] =
-    match;
-  const year = Number(rawYear);
-  const month = Number(rawMonth);
-  const day = Number(rawDay);
-  const hours = Number(rawHours);
-  const minutes = Number(rawMinutes);
-  const seconds = Number(rawSeconds);
-  const milliseconds = Number(rawMillis.padEnd(3, "0"));
-  const date = new Date(year, month - 1, day, hours, minutes, seconds, milliseconds);
-
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day ||
-    date.getHours() !== hours ||
-    date.getMinutes() !== minutes ||
-    date.getSeconds() !== seconds ||
-    date.getMilliseconds() !== milliseconds
-  ) {
-    return null;
-  }
-
-  const timestamp = date.getTime();
-  return Number.isSafeInteger(timestamp) ? timestamp : null;
-}
-
-function padNumber(value: number, length: number): string {
-  return String(value).padStart(length, "0");
 }
 
 function LimitValueInput({
@@ -642,36 +564,6 @@ function LimitValueInput({
         <MenuItem value="true">true</MenuItem>
         <MenuItem value="false">false</MenuItem>
       </Select>
-    );
-  }
-
-  if (definition.type === "option<timestamp>") {
-    return (
-      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-        <TextField
-          type="datetime-local"
-          size="small"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          slotProps={{
-            htmlInput: {
-              step: 0.001,
-            },
-          }}
-          sx={{ width: { xs: 220, sm: 280 } }}
-        />
-        <Tooltip title="Clear">
-          <span>
-            <IconButton
-              aria-label={`Clear ${definition.name}`}
-              disabled={value === ""}
-              onClick={() => onChange("")}
-            >
-              <ClearIcon fontSize="small" />
-            </IconButton>
-          </span>
-        </Tooltip>
-      </Stack>
     );
   }
 

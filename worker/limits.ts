@@ -8,20 +8,17 @@ export const ABSOLUTE_LIST_LIMIT = 10_000;
 
 const positiveSafeIntegerSchema = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const nonNegativeSafeIntegerSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
-const optionalTimestampSchema = nonNegativeSafeIntegerSchema.nullable();
-
-export const AUTOMATED_BLOCK_PROJECTS_NO_POST = "automated.block.projects.no_post";
-export type AutomatedBlockFeature = typeof AUTOMATED_BLOCK_PROJECTS_NO_POST;
+const LEGACY_RECORD_POST_BLOCK_LIMIT_KEY = "automated.block.projects.no_post";
 
 export const Limits = z
   .object({
-    [AUTOMATED_BLOCK_PROJECTS_NO_POST]: optionalTimestampSchema,
     "projects.maxLinkedProjects": positiveSafeIntegerSchema,
     "projects.maxOwnedProjects": positiveSafeIntegerSchema,
     "projects.maxMembersPerProject": positiveSafeIntegerSchema,
     "projects.maxProjectNameLength": positiveSafeIntegerSchema.max(ABSOLUTE_TEXT_LIMIT),
     "projects.maxMemberNameLength": positiveSafeIntegerSchema.max(ABSOLUTE_TEXT_LIMIT),
     "projects.maxAclEmails": nonNegativeSafeIntegerSchema.max(ABSOLUTE_LIST_LIMIT),
+    "records.allow_post": z.boolean(),
     "records.defaultPageSize": positiveSafeIntegerSchema,
     "records.maxPageSize": positiveSafeIntegerSchema,
     "records.maxRecordsPerOwnedProject": nonNegativeSafeIntegerSchema,
@@ -46,20 +43,20 @@ export const LimitsDocument = z
   });
 export type LimitsDocument = Partial<Limits>;
 
-export type LimitValueType = "integer" | "boolean" | "option<timestamp>";
+export type LimitValueType = "integer" | "boolean";
 export interface LimitDefinition {
   name: keyof Limits;
   type: LimitValueType;
 }
 
 export const LIMIT_DEFINITIONS = [
-  { name: AUTOMATED_BLOCK_PROJECTS_NO_POST, type: "option<timestamp>" },
   { name: "projects.maxLinkedProjects", type: "integer" },
   { name: "projects.maxOwnedProjects", type: "integer" },
   { name: "projects.maxMembersPerProject", type: "integer" },
   { name: "projects.maxProjectNameLength", type: "integer" },
   { name: "projects.maxMemberNameLength", type: "integer" },
   { name: "projects.maxAclEmails", type: "integer" },
+  { name: "records.allow_post", type: "boolean" },
   { name: "records.defaultPageSize", type: "integer" },
   { name: "records.maxPageSize", type: "integer" },
   { name: "records.maxRecordsPerOwnedProject", type: "integer" },
@@ -73,13 +70,13 @@ export type LimitsTarget = { type: "default" } | { type: "user"; email: string }
 type MoneyMapForLimits = Record<string, number>;
 
 export const BUILTIN_DEFAULT_LIMITS: Limits = {
-  [AUTOMATED_BLOCK_PROJECTS_NO_POST]: null,
   "projects.maxLinkedProjects": 1000,
   "projects.maxOwnedProjects": 50,
   "projects.maxMembersPerProject": 1000,
   "projects.maxProjectNameLength": 120,
   "projects.maxMemberNameLength": 100,
   "projects.maxAclEmails": 100,
+  "records.allow_post": true,
   "records.defaultPageSize": 50,
   "records.maxPageSize": 1024,
   "records.maxRecordsPerOwnedProject": 100000,
@@ -104,6 +101,26 @@ export function resolveLimits(
   return parsed.success
     ? { ok: true, limits: parsed.data }
     : { ok: false, issues: parsed.error.issues };
+}
+
+export function parseStoredLimitsDocument(value: unknown): LimitsDocument | null {
+  const document = LimitsDocument.safeParse(stripLegacyStoredLimitKeys(value));
+  return document.success ? document.data : null;
+}
+
+function stripLegacyStoredLimitKeys(value: unknown): unknown {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  const document = value as Record<string, unknown>;
+  if (!(LEGACY_RECORD_POST_BLOCK_LIMIT_KEY in document)) {
+    return value;
+  }
+
+  const withoutLegacy = { ...document };
+  delete withoutLegacy[LEGACY_RECORD_POST_BLOCK_LIMIT_KEY];
+  return withoutLegacy;
 }
 
 export class LimitsKvStore {
@@ -174,12 +191,14 @@ export class LimitsKvStore {
       return null;
     }
 
-    const document = LimitsDocument.safeParse(parsed);
-    if (!document.success) {
-      console.error("invalid limit document", { scope, issues: document.error.issues });
+    const document = parseStoredLimitsDocument(parsed);
+    if (document === null) {
+      const strictDocument = LimitsDocument.safeParse(parsed);
+      const issues = strictDocument.success ? [] : strictDocument.error.issues;
+      console.error("invalid limit document", { scope, issues });
       return null;
     }
-    return document.data;
+    return document;
   }
 
   private resolveWithFallback(
@@ -220,10 +239,9 @@ export class LimitsPolicy {
     return this.limits["records.defaultPageSize"];
   }
 
-  /** Blocks record posting until `automated.block.projects.no_post` expires. */
-  allowsProjectRecordPost(nowMs: number): boolean {
-    const blockUntil = this.limits[AUTOMATED_BLOCK_PROJECTS_NO_POST];
-    return Number.isSafeInteger(nowMs) && (blockUntil === null || nowMs >= blockUntil);
+  /** Controls whether a user may post records. */
+  allowsRecordPost(): boolean {
+    return this.limits["records.allow_post"];
   }
 
   /** Limits project display names to `projects.maxProjectNameLength`. */

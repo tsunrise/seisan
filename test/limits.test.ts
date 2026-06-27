@@ -1,7 +1,7 @@
+import { runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  AUTOMATED_BLOCK_PROJECTS_NO_POST,
   BUILTIN_DEFAULT_LIMITS,
   LIMITS_STORE_NAME,
   LimitsDocument,
@@ -72,45 +72,49 @@ describe("limits", () => {
     });
   });
 
-  it("supports optional timestamp limits for automated no-post blocks", () => {
+  it("supports boolean record posting limits", () => {
     expect(
       LimitsDocument.safeParse({
-        [AUTOMATED_BLOCK_PROJECTS_NO_POST]: null,
+        "records.allow_post": true,
       }).success,
     ).toBe(true);
     expect(
       LimitsDocument.safeParse({
-        [AUTOMATED_BLOCK_PROJECTS_NO_POST]: 1_000,
+        "records.allow_post": false,
       }).success,
     ).toBe(true);
     expect(
       LimitsDocument.safeParse({
-        [AUTOMATED_BLOCK_PROJECTS_NO_POST]: -1,
+        "records.allow_post": "false",
+      }).success,
+    ).toBe(false);
+    expect(
+      LimitsDocument.safeParse({
+        "automated.block.projects.no_post": null,
       }).success,
     ).toBe(false);
 
     const defaultResolved = resolveLimits();
     expect(defaultResolved).toMatchObject({
       ok: true,
-      limits: { [AUTOMATED_BLOCK_PROJECTS_NO_POST]: null },
+      limits: { "records.allow_post": true },
     });
 
     const blockedResolved = resolveLimits(
       {},
       {
-        [AUTOMATED_BLOCK_PROJECTS_NO_POST]: 5_000,
+        "records.allow_post": false,
       },
     );
     expect(blockedResolved).toMatchObject({
       ok: true,
-      limits: { [AUTOMATED_BLOCK_PROJECTS_NO_POST]: 5_000 },
+      limits: { "records.allow_post": false },
     });
     if (!blockedResolved.ok) {
       throw new Error("expected resolved limits");
     }
     const policy = new LimitsPolicy(blockedResolved.limits);
-    expect(policy.allowsProjectRecordPost(4_999)).toBe(false);
-    expect(policy.allowsProjectRecordPost(5_000)).toBe(true);
+    expect(policy.allowsRecordPost()).toBe(false);
   });
 
   it("rejects invalid effective resolved limits", () => {
@@ -151,61 +155,44 @@ describe("limits", () => {
     expect(withInvalidDefault).toEqual(BUILTIN_DEFAULT_LIMITS);
   });
 
-  it("sets automated user blocks only when the new timestamp extends the existing block", async () => {
+  it("ignores legacy automated no-post keys in stored limit documents", async () => {
     const { env: testEnv } = makeEnv();
-    const email = `automated-block-${crypto.randomUUID()}@example.com`;
-    const store = testEnv.LIMITS_STORE.getByName(LIMITS_STORE_NAME);
-
-    const first = await store.setAutomatedBlock({
-      target: { type: "user", email },
-      feature: AUTOMATED_BLOCK_PROJECTS_NO_POST,
-      timestamp: 10_000,
-      nowMs: 1_000,
-    });
-    expect(first).toEqual({ ok: true, updated: true });
-    await expect(testEnv.CONFIGS.get(LimitsKvStore.userKey(email), "json")).resolves.toEqual({
-      [AUTOMATED_BLOCK_PROJECTS_NO_POST]: 10_000,
-    });
-
-    const earlier = await store.setAutomatedBlock({
-      target: { type: "user", email },
-      feature: AUTOMATED_BLOCK_PROJECTS_NO_POST,
-      timestamp: 9_000,
-      nowMs: 2_000,
-    });
-    expect(earlier).toEqual({ ok: true, updated: false });
-    await expect(store.getLimits({ type: "user", email })).resolves.toMatchObject({
-      ok: true,
-      limits: { [AUTOMATED_BLOCK_PROJECTS_NO_POST]: 10_000 },
-      updatedAt: 1_000,
-    });
-
-    await store.putLimits({
-      target: { type: "user", email },
-      limits: {
-        [AUTOMATED_BLOCK_PROJECTS_NO_POST]: 10_000,
-        "money.maxAmountCents": 42,
-      },
-      nowMs: 3_000,
-    });
-    const later = await store.setAutomatedBlock({
-      target: { type: "user", email },
-      feature: AUTOMATED_BLOCK_PROJECTS_NO_POST,
-      timestamp: 15_000,
-      nowMs: 4_000,
-    });
-    expect(later).toEqual({ ok: true, updated: true });
-    const expectedLimits = {
-      [AUTOMATED_BLOCK_PROJECTS_NO_POST]: 15_000,
+    const email = `legacy-automated-block-${crypto.randomUUID()}@example.com`;
+    const legacyLimits = {
+      "automated.block.projects.no_post": 10_000,
       "money.maxAmountCents": 42,
     };
-    await expect(store.getLimits({ type: "user", email })).resolves.toMatchObject({
-      ok: true,
-      limits: expectedLimits,
-      updatedAt: 4_000,
+
+    await testEnv.CONFIGS.put(LimitsKvStore.userKey(email), JSON.stringify(legacyLimits));
+    const withLegacyKv = await new LimitsKvStore(testEnv.CONFIGS).load(email);
+    expect(withLegacyKv).toMatchObject({
+      "records.allow_post": true,
+      "money.maxAmountCents": 42,
     });
-    await expect(testEnv.CONFIGS.get(LimitsKvStore.userKey(email), "json")).resolves.toEqual(
-      expectedLimits,
-    );
+
+    const store = testEnv.LIMITS_STORE.getByName(LIMITS_STORE_NAME);
+    await runInDurableObject(store, async (_instance, state) => {
+      state.storage.sql.exec(
+        `INSERT INTO limits (limit_key, limit_json, updated_at)
+         VALUES (?, ?, ?)`,
+        `user:${email}`,
+        JSON.stringify({
+          "automated.block.projects.no_post": 20_000,
+          "records.allow_post": false,
+        }),
+        1_000,
+      );
+    });
+
+    await expect(
+      store.getLimits({
+        type: "user",
+        email,
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      limits: { "records.allow_post": false },
+      updatedAt: 1_000,
+    });
   });
 });

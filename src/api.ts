@@ -72,13 +72,13 @@ export interface ProjectSummary {
 export type WithSyncTime<T> = T & { lastSyncAt: number };
 
 export interface Limits {
-  "automated.block.projects.no_post": number | null;
   "projects.maxLinkedProjects": number;
   "projects.maxOwnedProjects": number;
   "projects.maxMembersPerProject": number;
   "projects.maxProjectNameLength": number;
   "projects.maxMemberNameLength": number;
   "projects.maxAclEmails": number;
+  "records.allow_post": boolean;
   "records.defaultPageSize": number;
   "records.maxPageSize": number;
   "records.maxRecordsPerOwnedProject": number;
@@ -93,7 +93,7 @@ export type LimitsDocument = Partial<Record<LimitName, LimitValue>>;
 
 export interface AdminLimitDefinition {
   name: LimitName;
-  type: "integer" | "boolean" | "option<timestamp>";
+  type: "integer" | "boolean";
 }
 
 export interface AdminPage {

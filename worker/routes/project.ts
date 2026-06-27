@@ -10,19 +10,11 @@ import {
   requireAuth,
   requireSameOriginWhenPresent,
 } from "../auth";
-import { APPEND_RECORD_AUTOMATED_NO_POST_BLOCK_MS } from "../constants";
 import { sha256Hex } from "../crypto";
 import type { ProjectStore } from "../do/ProjectStore";
 import { normalizeEmail, normalizedEmailSchema } from "../email";
 import { ErrorResponse } from "../error";
-import {
-  ABSOLUTE_LIST_LIMIT,
-  ABSOLUTE_TEXT_LIMIT,
-  AUTOMATED_BLOCK_PROJECTS_NO_POST,
-  LIMITS_STORE_NAME,
-  LimitsKvStore,
-  LimitsPolicy,
-} from "../limits";
+import { ABSOLUTE_LIST_LIMIT, ABSOLUTE_TEXT_LIMIT, LimitsKvStore, LimitsPolicy } from "../limits";
 import {
   PROJECTS_REGISTRY_NAME,
   MoneyByMemberIdUtils,
@@ -721,17 +713,14 @@ projectApp.post("/project/:id", requireSameOriginWhenPresent, requireAuth, async
   }
 
   const callerEmail = normalizeEmail(getRequiredIdentity(context).email);
-  const nowMs = Date.now();
   const rateLimiter = new AppendRecordRateLimiter(context.env);
-  const [productLimits, accountRateLimit] = await Promise.all([
-    new LimitsKvStore(context.env.CONFIGS).load(callerEmail),
-    rateLimiter.limitAccount(callerEmail),
-  ]);
-  if (!new LimitsPolicy(productLimits).allowsProjectRecordPost(nowMs)) {
-    return ErrorResponse.rateLimited("account");
+  const productLimits = await new LimitsKvStore(context.env.CONFIGS).load(callerEmail);
+  if (!new LimitsPolicy(productLimits).allowsRecordPost()) {
+    return ErrorResponse.postingBlocked();
   }
+
+  const accountRateLimit = await rateLimiter.limitAccount(callerEmail);
   if (!accountRateLimit.ok) {
-    queueAutomatedProjectNoPostBlock(context, callerEmail, nowMs);
     return ErrorResponse.rateLimited("account");
   }
 
@@ -744,7 +733,7 @@ projectApp.post("/project/:id", requireSameOriginWhenPresent, requireAuth, async
     callerEmail,
     delta: parsed.data.delta,
     description: parsed.data.description,
-    nowMs,
+    nowMs: Date.now(),
   });
   if (!result.ok) {
     return mapProjectStoreError(result.error);
@@ -840,40 +829,6 @@ class AppendRecordRateLimiter {
   private static projectKey(projectId: string): string {
     return `${AppendRecordRateLimiter.projectKeyPrefix}${projectId}`;
   }
-}
-
-async function setAutomatedProjectNoPostBlock(
-  context: AppContext,
-  callerEmail: string,
-  nowMs: number,
-): Promise<void> {
-  const result = await context.env.LIMITS_STORE.getByName(LIMITS_STORE_NAME).setAutomatedBlock({
-    target: { type: "user", email: callerEmail },
-    feature: AUTOMATED_BLOCK_PROJECTS_NO_POST,
-    timestamp: nowMs + APPEND_RECORD_AUTOMATED_NO_POST_BLOCK_MS,
-    nowMs,
-  });
-  if (!result.ok) {
-    console.error("failed to set automated project no-post block", {
-      email: callerEmail,
-      error: result.error,
-    });
-  }
-}
-
-function queueAutomatedProjectNoPostBlock(
-  context: AppContext,
-  callerEmail: string,
-  nowMs: number,
-): void {
-  context.executionCtx.waitUntil(
-    setAutomatedProjectNoPostBlock(context, callerEmail, nowMs).catch((error: unknown) => {
-      console.error("failed to set automated project no-post block", {
-        email: callerEmail,
-        error,
-      });
-    }),
-  );
 }
 
 class ProjectRefFetcher {

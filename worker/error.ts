@@ -3,6 +3,7 @@ export const ErrorResponse = {
   invalidRequest: () => Response.json({ error: "invalid_request" }, { status: 400 }),
   notFound: () => Response.json({ error: "not_found" }, { status: 404 }),
   forbidden: () => Response.json({ error: "forbidden" }, { status: 403 }),
+  postingBlocked: () => Response.json({ error: "posting_blocked" }, { status: 403 }),
   conflict: (error = "conflict") => Response.json({ error }, { status: 409 }),
   rateLimited: (reason: "account" | "project") =>
     Response.json({ error: "rate_limited", reason }, { status: 429 }),

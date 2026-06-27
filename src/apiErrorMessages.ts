@@ -6,6 +6,7 @@ const networkErrorMessage = "Could not reach Seisan. Check your connection and t
 const defaultApiErrorMessages: Record<string, string> = {
   unauthorized: "Please sign in again.",
   forbidden: "You do not have access to do that.",
+  posting_blocked: "Your account is blocked from posting records.",
   not_found: "That item could not be found.",
   invalid_request: "Check the details and try again.",
   conflict: "That change conflicts with the current state.",
@@ -18,8 +19,10 @@ const defaultApiErrorMessages: Record<string, string> = {
   acl_limit_exceeded: "This project has reached the allowed-email limit.",
   money_limit_exceeded: "That amount is over the supported limit.",
   rate_limited: "You have been rate limited.",
-  "rate_limited:account": "Your account is posting too many records in a short time. Try again later.",
-  "rate_limited:project": "This project is receiving too many posts in a short time. Try again later.",
+  "rate_limited:account":
+    "Your account is posting too many records in a short time. Try again later.",
+  "rate_limited:project":
+    "This project is receiving too many posts in a short time. Try again later.",
   internal_server_error: "Something went wrong on the server. Try again later.",
 };
 
