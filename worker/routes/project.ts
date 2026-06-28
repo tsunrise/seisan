@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { describeRoute } from "hono-openapi";
 import { z } from "zod";
 
 import {
@@ -15,6 +16,13 @@ import type { ProjectStore } from "../do/ProjectStore";
 import { normalizeEmail, normalizedEmailSchema } from "../email";
 import { ErrorResponse } from "../error";
 import { ABSOLUTE_LIST_LIMIT, ABSOLUTE_TEXT_LIMIT, LimitsKvStore, LimitsPolicy } from "../limits";
+import {
+  errorResponses,
+  OpenApiParameters,
+  OpenApiRequests,
+  OpenApiResponses,
+  OpenApiSecurity,
+} from "../model";
 import {
   PROJECTS_REGISTRY_NAME,
   MoneyByMemberIdUtils,
@@ -195,147 +203,196 @@ const ProjectCreate = z.object({
   ownerMemberName: MemberName.optional(),
 });
 
-projectApp.put("/project", requireSameOriginWhenPresent, requireAuth, async (context) => {
-  const parsed = await parseJson(context, ProjectCreate);
-  if (!parsed.ok) {
-    return ErrorResponse.invalidRequest();
-  }
-
-  const owner = normalizeEmail(getRequiredIdentity(context).email);
-  const productLimits = await new LimitsKvStore(context.env.CONFIGS).load(owner);
-  const policy = new LimitsPolicy(productLimits);
-  if (!policy.allowsProjectName(parsed.data.name)) {
-    return ErrorResponse.conflict("project_limit_exceeded");
-  }
-  if (
-    parsed.data.ownerMemberName !== undefined &&
-    !policy.allowsMemberName(parsed.data.ownerMemberName)
-  ) {
-    return ErrorResponse.conflict("member_limit_exceeded");
-  }
-  if (
-    parsed.data.acl.type === "restricted" &&
-    !policy.allowsAclEmailCount(parsed.data.acl.emails.length)
-  ) {
-    return ErrorResponse.conflict("acl_limit_exceeded");
-  }
-
-  const projectId = crypto.randomUUID();
-  const projectDoId = context.env.PROJECT_STORE.newUniqueId();
-  const projectDoIdString = projectDoId.toString();
-  const nowMs = Date.now();
-  const registry = context.env.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME);
-  const registered = await registry.registerProject({
-    id: projectId,
-    doId: projectDoIdString,
-    ownerEmail: owner,
-    limits: productLimits,
-    nowMs,
-  });
-  if (!registered.ok) {
-    return registered.error === "project_limit_exceeded"
-      ? ErrorResponse.conflict("project_limit_exceeded")
-      : ErrorResponse.internalServerError();
-  }
-
-  const project = context.env.PROJECT_STORE.get(projectDoId);
-  const created = await project.initialize({
-    publicId: projectId,
-    name: parsed.data.name,
-    acl: parsed.data.acl,
-    ownerEmail: owner,
-    ownerMemberName: parsed.data.ownerMemberName,
-    nowMs,
-  });
-  if (!created.ok) {
-    return mapProjectStoreError(created.error);
-  }
-
-  return context.json(
-    {
-      id: projectId,
-      name: parsed.data.name,
-      owner,
-      acl: parsed.data.acl,
-      members: created.members,
+projectApp.put(
+  "/project",
+  describeRoute({
+    tags: ["Projects"],
+    summary: "Create a project.",
+    security: OpenApiSecurity.SessionCookie,
+    requestBody: OpenApiRequests.ProjectCreate,
+    responses: {
+      201: OpenApiResponses.ProjectCreated,
+      ...errorResponses(400, 401, 403, 409, 500),
     },
-    201,
-  );
-});
+  }),
+  requireSameOriginWhenPresent,
+  requireAuth,
+  async (context) => {
+    const parsed = await parseJson(context, ProjectCreate);
+    if (!parsed.ok) {
+      return ErrorResponse.invalidRequest();
+    }
 
-projectApp.get("/project/:id", optionalAuth, async (context) => {
-  if (!isValidProjectId(context.req.param("id"))) {
-    return ErrorResponse.notFound();
-  }
+    const owner = normalizeEmail(getRequiredIdentity(context).email);
+    const productLimits = await new LimitsKvStore(context.env.CONFIGS).load(owner);
+    const policy = new LimitsPolicy(productLimits);
+    if (!policy.allowsProjectName(parsed.data.name)) {
+      return ErrorResponse.conflict("project_limit_exceeded");
+    }
+    if (
+      parsed.data.ownerMemberName !== undefined &&
+      !policy.allowsMemberName(parsed.data.ownerMemberName)
+    ) {
+      return ErrorResponse.conflict("member_limit_exceeded");
+    }
+    if (
+      parsed.data.acl.type === "restricted" &&
+      !policy.allowsAclEmailCount(parsed.data.acl.emails.length)
+    ) {
+      return ErrorResponse.conflict("acl_limit_exceeded");
+    }
 
-  const identity = context.get("identity");
-  const callerEmail = identity ? normalizeEmail(identity.email) : null;
-  const productLimits = await new LimitsKvStore(context.env.CONFIGS).load(callerEmail);
-  const policy = new LimitsPolicy(productLimits);
-  const limit = ProjectRouteParams.parseRecordLimit(context.req.query("limit"), policy);
-  const offset = ProjectRouteParams.parseRecordOffset(context.req.query("offset"));
-  if (limit === "exceeded") {
-    return ErrorResponse.conflict("record_limit_exceeded");
-  }
-  if (limit === null || offset === null) {
-    return ErrorResponse.invalidRequest();
-  }
+    const projectId = crypto.randomUUID();
+    const projectDoId = context.env.PROJECT_STORE.newUniqueId();
+    const projectDoIdString = projectDoId.toString();
+    const nowMs = Date.now();
+    const registry = context.env.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME);
+    const registered = await registry.registerProject({
+      id: projectId,
+      doId: projectDoIdString,
+      ownerEmail: owner,
+      limits: productLimits,
+      nowMs,
+    });
+    if (!registered.ok) {
+      return registered.error === "project_limit_exceeded"
+        ? ErrorResponse.conflict("project_limit_exceeded")
+        : ErrorResponse.internalServerError();
+    }
 
-  const projectLookup = await getProjectStore(context, context.req.param("id"));
-  if (!projectLookup) {
-    return ErrorResponse.notFound();
-  }
-  const result = await projectLookup.store.getRecords({
-    publicId: projectLookup.projectId,
-    callerEmail,
-    limit,
-    offset,
-  });
-  if (!result.ok) {
-    return mapProjectStoreError(result.error);
-  }
+    const project = context.env.PROJECT_STORE.get(projectDoId);
+    const created = await project.initialize({
+      publicId: projectId,
+      name: parsed.data.name,
+      acl: parsed.data.acl,
+      ownerEmail: owner,
+      ownerMemberName: parsed.data.ownerMemberName,
+      nowMs,
+    });
+    if (!created.ok) {
+      return mapProjectStoreError(created.error);
+    }
 
-  return context.json({
-    id: projectLookup.projectId,
-    name: result.name,
-    owner: result.owner,
-    acl: result.acl,
-    members: result.members,
-    records: result.records,
-    balance: result.balance,
-    updatedAt: result.updatedAt,
-  });
-});
+    return context.json(
+      {
+        id: projectId,
+        name: parsed.data.name,
+        owner,
+        acl: parsed.data.acl,
+        members: created.members,
+      },
+      201,
+    );
+  },
+);
+
+projectApp.get(
+  "/project/:id",
+  describeRoute({
+    tags: ["Projects"],
+    summary: "Get project details and a page of records.",
+    security: OpenApiSecurity.OptionalSessionCookie,
+    parameters: [
+      OpenApiParameters.ProjectId,
+      OpenApiParameters.RecordLimit,
+      OpenApiParameters.RecordOffset,
+    ],
+    responses: {
+      200: OpenApiResponses.Project,
+      ...errorResponses(400, 403, 404, 409),
+    },
+  }),
+  optionalAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
+    }
+
+    const identity = context.get("identity");
+    const callerEmail = identity ? normalizeEmail(identity.email) : null;
+    const productLimits = await new LimitsKvStore(context.env.CONFIGS).load(callerEmail);
+    const policy = new LimitsPolicy(productLimits);
+    const limit = ProjectRouteParams.parseRecordLimit(context.req.query("limit"), policy);
+    const offset = ProjectRouteParams.parseRecordOffset(context.req.query("offset"));
+    if (limit === "exceeded") {
+      return ErrorResponse.conflict("record_limit_exceeded");
+    }
+    if (limit === null || offset === null) {
+      return ErrorResponse.invalidRequest();
+    }
+
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
+    const result = await projectLookup.store.getRecords({
+      publicId: projectLookup.projectId,
+      callerEmail,
+      limit,
+      offset,
+    });
+    if (!result.ok) {
+      return mapProjectStoreError(result.error);
+    }
+
+    return context.json({
+      id: projectLookup.projectId,
+      name: result.name,
+      owner: result.owner,
+      acl: result.acl,
+      members: result.members,
+      records: result.records,
+      balance: result.balance,
+      updatedAt: result.updatedAt,
+    });
+  },
+);
 
 const ProjectRename = z.object({
   name: ProjectName,
 });
 
-projectApp.patch("/project/:id", requireSameOriginWhenPresent, requireAuth, async (context) => {
-  if (!isValidProjectId(context.req.param("id"))) {
-    return ErrorResponse.notFound();
-  }
+projectApp.patch(
+  "/project/:id",
+  describeRoute({
+    tags: ["Projects"],
+    summary: "Rename a project.",
+    security: OpenApiSecurity.SessionCookie,
+    parameters: [OpenApiParameters.ProjectId],
+    requestBody: OpenApiRequests.ProjectRename,
+    responses: {
+      200: OpenApiResponses.ProjectName,
+      ...errorResponses(400, 401, 403, 404, 409),
+    },
+  }),
+  requireSameOriginWhenPresent,
+  requireAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
+    }
 
-  const parsed = await parseJson(context, ProjectRename);
-  if (!parsed.ok) {
-    return ErrorResponse.invalidRequest();
-  }
+    const parsed = await parseJson(context, ProjectRename);
+    if (!parsed.ok) {
+      return ErrorResponse.invalidRequest();
+    }
 
-  const projectLookup = await getProjectStore(context, context.req.param("id"));
-  if (!projectLookup) {
-    return ErrorResponse.notFound();
-  }
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
 
-  const result = await projectLookup.store.renameProject({
-    callerEmail: getRequiredIdentity(context).email,
-    name: parsed.data.name,
-    nowMs: Date.now(),
-  });
-  if (!result.ok) {
-    return mapProjectStoreError(result.error);
-  }
-  return context.json({ name: result.name });
-});
+    const result = await projectLookup.store.renameProject({
+      callerEmail: getRequiredIdentity(context).email,
+      name: parsed.data.name,
+      nowMs: Date.now(),
+    });
+    if (!result.ok) {
+      return mapProjectStoreError(result.error);
+    }
+    return context.json({ name: result.name });
+  },
+);
 
 const ProjectAclEmails = z.object({
   emails: z
@@ -347,6 +404,17 @@ const ProjectAclEmails = z.object({
 
 projectApp.post(
   "/project/:id/acl/emails",
+  describeRoute({
+    tags: ["Project ACL"],
+    summary: "Add emails to a restricted project ACL.",
+    security: OpenApiSecurity.SessionCookie,
+    parameters: [OpenApiParameters.ProjectId],
+    requestBody: OpenApiRequests.ProjectAclEmails,
+    responses: {
+      204: OpenApiResponses.NoContent,
+      ...errorResponses(400, 401, 403, 404, 409),
+    },
+  }),
   requireSameOriginWhenPresent,
   requireAuth,
   async (context) => {
@@ -374,6 +442,17 @@ projectApp.post(
 
 projectApp.delete(
   "/project/:id/acl/emails",
+  describeRoute({
+    tags: ["Project ACL"],
+    summary: "Remove emails from a restricted project ACL.",
+    security: OpenApiSecurity.SessionCookie,
+    parameters: [OpenApiParameters.ProjectId],
+    requestBody: OpenApiRequests.ProjectAclEmails,
+    responses: {
+      204: OpenApiResponses.NoContent,
+      ...errorResponses(400, 401, 403, 404, 409),
+    },
+  }),
   requireSameOriginWhenPresent,
   requireAuth,
   async (context) => {
@@ -405,6 +484,17 @@ const ProjectAclTypeUpdate = z.object({
 
 projectApp.put(
   "/project/:id/acl/type",
+  describeRoute({
+    tags: ["Project ACL"],
+    summary: "Set a project's ACL type.",
+    security: OpenApiSecurity.SessionCookie,
+    parameters: [OpenApiParameters.ProjectId],
+    requestBody: OpenApiRequests.ProjectAclType,
+    responses: {
+      204: OpenApiResponses.NoContent,
+      ...errorResponses(400, 401, 403, 404, 409),
+    },
+  }),
   requireSameOriginWhenPresent,
   requireAuth,
   async (context) => {
@@ -436,6 +526,17 @@ const ProjectMemberCreate = z.object({
 
 projectApp.post(
   "/project/:id/members",
+  describeRoute({
+    tags: ["Project Members"],
+    summary: "Create a project member.",
+    security: OpenApiSecurity.SessionCookie,
+    parameters: [OpenApiParameters.ProjectId],
+    requestBody: OpenApiRequests.ProjectMemberCreate,
+    responses: {
+      201: OpenApiResponses.Member,
+      ...errorResponses(400, 401, 403, 404, 409),
+    },
+  }),
   requireSameOriginWhenPresent,
   requireAuth,
   async (context) => {
@@ -469,55 +570,81 @@ const ProjectJoin = z.union([
   z.object({ name: MemberName }).strict().describe("create a new member"),
 ]);
 
-projectApp.post("/project/:id/join", requireSameOriginWhenPresent, requireAuth, async (context) => {
-  if (!isValidProjectId(context.req.param("id"))) {
-    return ErrorResponse.notFound();
-  }
-
-  const parsed = await parseJson(context, ProjectJoin);
-  if (!parsed.ok) {
-    return ErrorResponse.invalidRequest();
-  }
-
-  const projectLookup = await getProjectStore(context, context.req.param("id"));
-  if (!projectLookup) {
-    return ErrorResponse.notFound();
-  }
-
-  const callerEmail = normalizeEmail(getRequiredIdentity(context).email);
-  const productLimits = await new LimitsKvStore(context.env.CONFIGS).load(callerEmail);
-  const registry = context.env.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME);
-  const reserved = await registry.addProjectMember({
-    id: projectLookup.projectId,
-    email: callerEmail,
-    limits: productLimits,
-    nowMs: Date.now(),
-  });
-  if (!reserved.ok) {
-    return reserved.error === "project_limit_exceeded"
-      ? ErrorResponse.conflict("project_limit_exceeded")
-      : ErrorResponse.internalServerError();
-  }
-
-  const result = await projectLookup.store.joinProject({
-    callerEmail,
-    join: parsed.data,
-    nowMs: Date.now(),
-  });
-  if (!result.ok) {
-    if (!reserved.alreadyMember) {
-      await registry.removeProjectMember({
-        id: projectLookup.projectId,
-        email: callerEmail,
-      });
+projectApp.post(
+  "/project/:id/join",
+  describeRoute({
+    tags: ["Project Members"],
+    summary: "Join a project as an existing or new member.",
+    security: OpenApiSecurity.SessionCookie,
+    parameters: [OpenApiParameters.ProjectId],
+    requestBody: OpenApiRequests.ProjectJoin,
+    responses: {
+      201: OpenApiResponses.Member,
+      ...errorResponses(400, 401, 403, 404, 409, 500),
+    },
+  }),
+  requireSameOriginWhenPresent,
+  requireAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
     }
-    return mapProjectStoreError(result.error);
-  }
-  return context.json({ member: result.member }, 201);
-});
+
+    const parsed = await parseJson(context, ProjectJoin);
+    if (!parsed.ok) {
+      return ErrorResponse.invalidRequest();
+    }
+
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
+
+    const callerEmail = normalizeEmail(getRequiredIdentity(context).email);
+    const productLimits = await new LimitsKvStore(context.env.CONFIGS).load(callerEmail);
+    const registry = context.env.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME);
+    const reserved = await registry.addProjectMember({
+      id: projectLookup.projectId,
+      email: callerEmail,
+      limits: productLimits,
+      nowMs: Date.now(),
+    });
+    if (!reserved.ok) {
+      return reserved.error === "project_limit_exceeded"
+        ? ErrorResponse.conflict("project_limit_exceeded")
+        : ErrorResponse.internalServerError();
+    }
+
+    const result = await projectLookup.store.joinProject({
+      callerEmail,
+      join: parsed.data,
+      nowMs: Date.now(),
+    });
+    if (!result.ok) {
+      if (!reserved.alreadyMember) {
+        await registry.removeProjectMember({
+          id: projectLookup.projectId,
+          email: callerEmail,
+        });
+      }
+      return mapProjectStoreError(result.error);
+    }
+    return context.json({ member: result.member }, 201);
+  },
+);
 
 projectApp.post(
   "/project/:id/leave",
+  describeRoute({
+    tags: ["Project Members"],
+    summary: "Leave a project and unlink the current account from its member.",
+    security: OpenApiSecurity.SessionCookie,
+    parameters: [OpenApiParameters.ProjectId],
+    responses: {
+      204: OpenApiResponses.NoContent,
+      ...errorResponses(401, 403, 404, 409, 500),
+    },
+  }),
   requireSameOriginWhenPresent,
   requireAuth,
   async (context) => {
@@ -558,6 +685,17 @@ const ProjectMemberEmailUnlink = z.object({
 
 projectApp.delete(
   "/project/:id/member-links",
+  describeRoute({
+    tags: ["Project Members"],
+    summary: "Unlink an email from a project member.",
+    security: OpenApiSecurity.SessionCookie,
+    parameters: [OpenApiParameters.ProjectId],
+    requestBody: OpenApiRequests.ProjectMemberEmailUnlink,
+    responses: {
+      204: OpenApiResponses.NoContent,
+      ...errorResponses(400, 401, 403, 404, 409, 500),
+    },
+  }),
   requireSameOriginWhenPresent,
   requireAuth,
   async (context) => {
@@ -605,6 +743,17 @@ const ProjectMemberPatch = z.union([
 
 projectApp.patch(
   "/project/:id/members/:memberId",
+  describeRoute({
+    tags: ["Project Members"],
+    summary: "Patch a project member.",
+    security: OpenApiSecurity.SessionCookie,
+    parameters: [OpenApiParameters.ProjectId, OpenApiParameters.MemberId],
+    requestBody: OpenApiRequests.ProjectMemberPatch,
+    responses: {
+      200: OpenApiResponses.Member,
+      ...errorResponses(400, 401, 403, 404, 409, 500),
+    },
+  }),
   requireSameOriginWhenPresent,
   requireAuth,
   async (context) => {
@@ -653,6 +802,16 @@ projectApp.patch(
 
 projectApp.delete(
   "/project/:id/members/:memberId",
+  describeRoute({
+    tags: ["Project Members"],
+    summary: "Soft-delete a project member.",
+    security: OpenApiSecurity.SessionCookie,
+    parameters: [OpenApiParameters.ProjectId, OpenApiParameters.MemberId],
+    responses: {
+      204: OpenApiResponses.NoContent,
+      ...errorResponses(401, 403, 404, 409, 500),
+    },
+  }),
   requireSameOriginWhenPresent,
   requireAuth,
   async (context) => {
@@ -697,50 +856,66 @@ const ProjectAppendRecord = z.object({
   description: RecordDescription,
 });
 
-projectApp.post("/project/:id", requireSameOriginWhenPresent, requireAuth, async (context) => {
-  if (!isValidProjectId(context.req.param("id"))) {
-    return ErrorResponse.notFound();
-  }
+projectApp.post(
+  "/project/:id",
+  describeRoute({
+    tags: ["Project Records"],
+    summary: "Append a record to a project.",
+    security: OpenApiSecurity.SessionCookie,
+    parameters: [OpenApiParameters.ProjectId],
+    requestBody: OpenApiRequests.ProjectAppendRecord,
+    responses: {
+      201: OpenApiResponses.RecordCreated,
+      ...errorResponses(400, 401, 403, 404, 409, 429),
+    },
+  }),
+  requireSameOriginWhenPresent,
+  requireAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
+    }
 
-  const parsed = await parseJson(context, ProjectAppendRecord);
-  if (!parsed.ok) {
-    return ErrorResponse.invalidRequest();
-  }
+    const parsed = await parseJson(context, ProjectAppendRecord);
+    if (!parsed.ok) {
+      return ErrorResponse.invalidRequest();
+    }
 
-  const projectLookup = await getProjectStore(context, context.req.param("id"));
-  if (!projectLookup) {
-    return ErrorResponse.notFound();
-  }
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
 
-  const callerEmail = normalizeEmail(getRequiredIdentity(context).email);
-  const rateLimiter = new AppendRecordRateLimiter(context.env);
-  const productLimits = await new LimitsKvStore(context.env.CONFIGS).load(callerEmail);
-  if (!new LimitsPolicy(productLimits).allowsRecordPost()) {
-    return ErrorResponse.postingBlocked();
-  }
+    const callerEmail = normalizeEmail(getRequiredIdentity(context).email);
+    const rateLimiter = new AppendRecordRateLimiter(context.env);
+    const productLimits = await new LimitsKvStore(context.env.CONFIGS).load(callerEmail);
+    if (!new LimitsPolicy(productLimits).allowsRecordPost()) {
+      return ErrorResponse.postingBlocked();
+    }
 
-  const accountRateLimit = await rateLimiter.limitAccount(callerEmail);
-  if (!accountRateLimit.ok) {
-    return ErrorResponse.rateLimited("account");
-  }
+    const accountRateLimit = await rateLimiter.limitAccount(callerEmail);
+    if (!accountRateLimit.ok) {
+      return ErrorResponse.rateLimited("account");
+    }
 
-  const projectRateLimit = await rateLimiter.limitProject(projectLookup.projectId);
-  if (!projectRateLimit.ok) {
-    return ErrorResponse.rateLimited("project");
-  }
+    const projectRateLimit = await rateLimiter.limitProject(projectLookup.projectId);
+    if (!projectRateLimit.ok) {
+      return ErrorResponse.rateLimited("project");
+    }
 
-  const result = await projectLookup.store.postRecord({
-    callerEmail,
-    delta: parsed.data.delta,
-    description: parsed.data.description,
-    nowMs: Date.now(),
-  });
-  if (!result.ok) {
-    return mapProjectStoreError(result.error);
-  }
+    const result = await projectLookup.store.postRecord({
+      callerEmail,
+      delta: parsed.data.delta,
+      description: parsed.data.description,
+      nowMs: Date.now(),
+    });
+    if (!result.ok) {
+      return mapProjectStoreError(result.error);
+    }
 
-  return context.json({ id: result.id }, 201);
-});
+    return context.json({ id: result.id }, 201);
+  },
+);
 
 async function getProjectStore(
   context: AppContext,

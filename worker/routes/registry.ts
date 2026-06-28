@@ -1,8 +1,10 @@
 import { Hono } from "hono";
+import { describeRoute } from "hono-openapi";
 
 import { type AppContext, type EnvWithIdentity, getRequiredIdentity, requireAuth } from "../auth";
 import { normalizeEmail } from "../email";
 import { ErrorResponse } from "../error";
+import { errorResponses, OpenApiResponses, OpenApiSecurity } from "../model";
 import { PROJECTS_REGISTRY_NAME, type ProjectSummary, type WithSyncTime } from "../project";
 
 const REGISTRY_LIST_CACHE_TTL_SECONDS = 10;
@@ -15,28 +17,41 @@ interface RegistryListCacheBody {
 
 export const registryApp = new Hono<EnvWithIdentity>();
 
-registryApp.get("/registry", requireAuth, async (context) => {
-  const identity = getRequiredIdentity(context);
-  const email = normalizeEmail(identity.email);
-  const cached = await RegistryListCache.read(email);
-  if (cached) {
-    return cached;
-  }
-
-  const registry = context.env.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME);
-  const listed = await registry.listProjects({ callerEmail: email });
-  if (!listed.ok) {
-    return ErrorResponse.invalidRequest();
-  }
-  const body = { projects: listed.projects };
-  RegistryListCache.write(context, email, body);
-  return new Response(JSON.stringify(body), {
-    headers: {
-      "Content-Type": "application/json",
-      "Cache-Control": "private, no-store",
+registryApp.get(
+  "/registry",
+  describeRoute({
+    tags: ["Registry"],
+    summary: "List projects visible to the authenticated caller.",
+    security: OpenApiSecurity.SessionCookie,
+    responses: {
+      200: OpenApiResponses.Registry,
+      ...errorResponses(400, 401),
     },
-  });
-});
+  }),
+  requireAuth,
+  async (context) => {
+    const identity = getRequiredIdentity(context);
+    const email = normalizeEmail(identity.email);
+    const cached = await RegistryListCache.read(email);
+    if (cached) {
+      return cached;
+    }
+
+    const registry = context.env.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME);
+    const listed = await registry.listProjects({ callerEmail: email });
+    if (!listed.ok) {
+      return ErrorResponse.invalidRequest();
+    }
+    const body = { projects: listed.projects };
+    RegistryListCache.write(context, email, body);
+    return new Response(JSON.stringify(body), {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "private, no-store",
+      },
+    });
+  },
+);
 
 class RegistryListCache {
   static async read(email: string): Promise<Response | null> {

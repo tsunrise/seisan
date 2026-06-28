@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
+import { describeRoute } from "hono-openapi";
 import { z } from "zod";
 
 import {
@@ -23,6 +24,7 @@ import {
 } from "../crypto";
 import { normalizeEmail } from "../email";
 import { ErrorResponse } from "../error";
+import { errorResponses, OpenApiRequests, OpenApiResponses, OpenApiSecurity } from "../model";
 import { verifyTurnstileToken } from "../turnstile";
 
 interface LocalDevLoginConfig {
@@ -46,108 +48,159 @@ const LoginVerify = z.object({
 
 export const loginApp = new Hono<EnvWithIdentity>();
 
-loginApp.post("/login/attempt", async (context) => {
-  const parsed = await parseJson(context, LoginAttempt);
-  if (!parsed.ok) {
-    return ErrorResponse.invalidRequest();
-  }
+loginApp.post(
+  "/login/attempt",
+  describeRoute({
+    tags: ["Auth"],
+    summary: "Request an email login code.",
+    requestBody: OpenApiRequests.LoginAttempt,
+    responses: {
+      202: OpenApiResponses.LoginAttemptAccepted,
+      ...errorResponses(400),
+    },
+  }),
+  async (context) => {
+    const parsed = await parseJson(context, LoginAttempt);
+    if (!parsed.ok) {
+      return ErrorResponse.invalidRequest();
+    }
 
-  const { email } = parsed.data;
-  const attemptId = generateLoginAttemptId();
-  const isLocalDevAttempt = isLocalDevLogin(context);
-  if (isLocalDevAttempt) {
-    console.log("local dev login code requested", { email });
-    return context.json({ ok: true, id: attemptId }, 202);
-  } else if (!(await verifyTurnstileToken(context, parsed.data.turnstileToken))) {
-    return ErrorResponse.invalidRequest();
-  }
+    const { email } = parsed.data;
+    const attemptId = generateLoginAttemptId();
+    const isLocalDevAttempt = isLocalDevLogin(context);
+    if (isLocalDevAttempt) {
+      console.log("local dev login code requested", { email });
+      return context.json({ ok: true, id: attemptId }, 202);
+    } else if (!(await verifyTurnstileToken(context, parsed.data.turnstileToken))) {
+      return ErrorResponse.invalidRequest();
+    }
 
-  const nowMs = Date.now();
-  const code = generateLoginCode();
-  const emailHash = await sha256Hex(email);
-  const codeHash = await hashLoginCode(email, code, context.env.AUTH_SECRET);
-  const attempt = await context.env.LOGIN_ATTEMPT_STORE.getByName(emailHash).createAttempt({
-    emailHash,
-    attemptId,
-    email,
-    codeHash,
-    nowMs,
-    expiresAtMs: nowMs + LOGIN_CODE_TTL_MS,
-  });
+    const nowMs = Date.now();
+    const code = generateLoginCode();
+    const emailHash = await sha256Hex(email);
+    const codeHash = await hashLoginCode(email, code, context.env.AUTH_SECRET);
+    const attempt = await context.env.LOGIN_ATTEMPT_STORE.getByName(emailHash).createAttempt({
+      emailHash,
+      attemptId,
+      email,
+      codeHash,
+      nowMs,
+      expiresAtMs: nowMs + LOGIN_CODE_TTL_MS,
+    });
 
-  if (!attempt.ok) {
-    return context.json({ ok: true }, 202);
-  }
+    if (!attempt.ok) {
+      return context.json({ ok: true }, 202);
+    }
 
-  const emailMessage = buildLoginEmail({ code, loginLocation: getLoginLocation(context) });
-  context.executionCtx.waitUntil(
-    context.env.SEND_EMAIL.send({
-      from: context.env.LOGIN_EMAIL_FROM,
-      to: email,
-      subject: emailMessage.subject,
-      text: emailMessage.text,
-      html: emailMessage.html,
-    })
-      .then(() => {
-        console.log("email sent");
+    const emailMessage = buildLoginEmail({ code, loginLocation: getLoginLocation(context) });
+    context.executionCtx.waitUntil(
+      context.env.SEND_EMAIL.send({
+        from: context.env.LOGIN_EMAIL_FROM,
+        to: email,
+        subject: emailMessage.subject,
+        text: emailMessage.text,
+        html: emailMessage.html,
       })
-      .catch((error: unknown) => {
-        console.error("failed to send login email", error);
-      }),
-  );
+        .then(() => {
+          console.log("email sent");
+        })
+        .catch((error: unknown) => {
+          console.error("failed to send login email", error);
+        }),
+    );
 
-  return context.json({ ok: true, id: attempt.id }, 202);
-});
+    return context.json({ ok: true, id: attempt.id }, 202);
+  },
+);
 
-loginApp.post("/login/verify", requireSameOriginWhenPresent, async (context) => {
-  const parsed = await parseJson(context, LoginVerify);
-  if (!parsed.ok) {
-    return ErrorResponse.invalidRequest();
-  }
+loginApp.post(
+  "/login/verify",
+  describeRoute({
+    tags: ["Auth"],
+    summary: "Verify an email login code and create a session.",
+    requestBody: OpenApiRequests.LoginVerify,
+    responses: {
+      200: OpenApiResponses.Ok,
+      ...errorResponses(400, 401, 403),
+    },
+  }),
+  requireSameOriginWhenPresent,
+  async (context) => {
+    const parsed = await parseJson(context, LoginVerify);
+    if (!parsed.ok) {
+      return ErrorResponse.invalidRequest();
+    }
 
-  const { id, email, code } = parsed.data;
-  if (isLocalDevLogin(context, code)) {
+    const { id, email, code } = parsed.data;
+    if (isLocalDevLogin(context, code)) {
+      const { token } = await signSessionToken(email, context.env.AUTH_SECRET);
+      setSessionCookie(context, token);
+      return context.json({ ok: true });
+    }
+
+    const emailHash = await sha256Hex(email);
+    const codeHash = await hashLoginCode(email, code, context.env.AUTH_SECRET);
+    const verification = await context.env.LOGIN_ATTEMPT_STORE.getByName(emailHash).verifyAttempt({
+      emailHash,
+      attemptId: id,
+      codeHash,
+      nowMs: Date.now(),
+    });
+
+    if (!verification.ok) {
+      return ErrorResponse.unauthorized();
+    }
+
     const { token } = await signSessionToken(email, context.env.AUTH_SECRET);
     setSessionCookie(context, token);
     return context.json({ ok: true });
-  }
+  },
+);
 
-  const emailHash = await sha256Hex(email);
-  const codeHash = await hashLoginCode(email, code, context.env.AUTH_SECRET);
-  const verification = await context.env.LOGIN_ATTEMPT_STORE.getByName(emailHash).verifyAttempt({
-    emailHash,
-    attemptId: id,
-    codeHash,
-    nowMs: Date.now(),
-  });
-
-  if (!verification.ok) {
-    return ErrorResponse.unauthorized();
-  }
-
-  const { token } = await signSessionToken(email, context.env.AUTH_SECRET);
-  setSessionCookie(context, token);
-  return context.json({ ok: true });
-});
-
-loginApp.post("/logout", requireSameOriginWhenPresent, async (context) => {
-  const token = getSessionToken(context);
-  if (token) {
-    const payload = await verifySessionToken(token, context.env.AUTH_SECRET, {
-      ignoreExpiration: true,
-    });
-    if (payload) {
-      await revokeToken(context.env, token, payload.exp);
+loginApp.post(
+  "/logout",
+  describeRoute({
+    tags: ["Auth"],
+    summary: "Clear the current session.",
+    security: OpenApiSecurity.SessionCookie,
+    responses: {
+      204: OpenApiResponses.NoContent,
+      ...errorResponses(403),
+    },
+  }),
+  requireSameOriginWhenPresent,
+  async (context) => {
+    const token = getSessionToken(context);
+    if (token) {
+      const payload = await verifySessionToken(token, context.env.AUTH_SECRET, {
+        ignoreExpiration: true,
+      });
+      if (payload) {
+        await revokeToken(context.env, token, payload.exp);
+      }
     }
-  }
 
-  clearSessionCookie(context);
-  return context.body(null, 204);
-});
+    clearSessionCookie(context);
+    return context.body(null, 204);
+  },
+);
 
-loginApp.get("/whoami", requireAuth, (context) => {
-  return context.json(getRequiredIdentity(context));
-});
+loginApp.get(
+  "/whoami",
+  describeRoute({
+    tags: ["Auth"],
+    summary: "Get the current authenticated identity.",
+    security: OpenApiSecurity.SessionCookie,
+    responses: {
+      200: OpenApiResponses.Identity,
+      ...errorResponses(401),
+    },
+  }),
+  requireAuth,
+  (context) => {
+    return context.json(getRequiredIdentity(context));
+  },
+);
 
 function getLocalDevLoginConfig(context: AppContext): LocalDevLoginConfig | null {
   const hostname = new URL(context.req.url).hostname;
