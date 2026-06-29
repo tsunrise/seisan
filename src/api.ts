@@ -78,6 +78,8 @@ export interface Limits {
   "projects.maxProjectNameLength": number;
   "projects.maxMemberNameLength": number;
   "projects.maxAclEmails": number;
+  "apikeys.max_keys": number;
+  "apikeys.max_expiry": number;
   "records.allow_post": boolean;
   "records.defaultPageSize": number;
   "records.maxPageSize": number;

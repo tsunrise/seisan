@@ -8,7 +8,9 @@ import {
   cleanupWorkerTestState,
   dispatch,
   jsonBody,
+  limitsDocument,
   makeEnv,
+  putUserLimits,
 } from "./workerTestHelpers";
 
 const API_KEY_PATTERN = /^seisan_v1_[A-Za-z0-9_-]{16}_[A-Za-z0-9_-]{32}$/u;
@@ -211,6 +213,57 @@ describe("API key routes", () => {
       headers: await authHeaders(email),
     });
     expect(unknownDelete.status).toBe(404);
+  });
+
+  it("enforces API key count and expiry limits", async () => {
+    const { env: testEnv } = makeEnv();
+    const cappedEmail = "limited-api-keys@example.com";
+    await putUserLimits(
+      testEnv,
+      cappedEmail,
+      limitsDocument({
+        "apikeys.max_keys": 2,
+      }),
+    );
+
+    await createApiKey(testEnv, { email: cappedEmail, label: "First" });
+    await createApiKey(testEnv, { email: cappedEmail, label: "Second" });
+
+    const overQuota = await dispatch(
+      "/api-keys",
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          label: "Third",
+          expiresAt: Math.floor(Date.now() / 1000) + 86_400,
+        },
+        await authHeaders(cappedEmail),
+      ),
+    );
+    expect(overQuota.status).toBe(409);
+    expect(await overQuota.json()).toEqual({ error: "api_key_limit_exceeded" });
+
+    const listed = await dispatch("/api-keys", testEnv, {
+      headers: await authHeaders(cappedEmail),
+    });
+    expect(((await listed.json()) as ApiKeyListResponse).keys).toHaveLength(2);
+
+    const expiryEmail = "limited-api-expiry@example.com";
+    const overExpiry = await dispatch(
+      "/api-keys",
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          label: "Too long",
+          expiresAt: Number.MAX_SAFE_INTEGER,
+        },
+        await authHeaders(expiryEmail),
+      ),
+    );
+    expect(overExpiry.status).toBe(409);
+    expect(await overExpiry.json()).toEqual({ error: "api_key_limit_exceeded" });
   });
 });
 

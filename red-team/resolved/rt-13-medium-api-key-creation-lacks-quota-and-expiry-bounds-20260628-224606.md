@@ -2,6 +2,7 @@
 
 Date: 2026-06-28 22:30:32 PDT
 Commit: 7c452780551a0b06094be5be42d136c51716b2c3
+Resolution: Fixed
 
 An authenticated session can create API keys without a per-user count limit or maximum lifetime, causing durable-object rows and KV verifier projections to grow without a product-policy control. Live local probing created 31 active keys for one account, and a schema-accepted Number.MAX_SAFE_INTEGER expiration triggered a verifier publish failure and 500 response because the generated KV expirationTtl exceeded the runtime range.
 
@@ -26,3 +27,7 @@ Live local probe against `http://localhost:5173` on a fresh Wrangler state:
 The product-limit model in `worker/limits.ts` defines project, record, and money limits, but no API-key count or lifetime limit, so admin-lowered limits cannot constrain this resource path.
 
 The 500 response comes from `worker/apiKey.ts`: `ApiKeyVerificationKvStore.expirationTtl()` returns `expiresAt - nowSeconds` without capping to the KV/runtime-supported range. The API route accepts `Number.MAX_SAFE_INTEGER`, but `kv.put(..., { expirationTtl })` rejects that value and the route maps the publish failure to `internal_server_error`.
+
+## Resolution
+
+Implemented apikeys.max_keys and apikeys.max_expiry in the flat limits model. API key creation now loads per-user limits, and UserAPIKeysStore rejects creates that exceed the requested lifetime limit or the unrevoked unexpired key quota before publishing KV. Verified with pnpm test test/apiKeys.test.ts test/limits.test.ts, pnpm run typecheck:worker, pnpm run typecheck:frontend, pnpm run lint, and Prettier on touched files. Live localhost replay created 10 default-limit keys with 201 responses, confirmed bearer /api/whoami returned 200, confirmed the 11th create returned 409 api_key_limit_exceeded, confirmed GET /api/api-keys returned count 10, and confirmed Number.MAX_SAFE_INTEGER expiry returned 409 api_key_limit_exceeded instead of 500. The local fixed-code login was not configured, so the replay used a signed localhost session cookie generated from local AUTH_SECRET.

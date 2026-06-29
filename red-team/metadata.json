@@ -126,12 +126,13 @@
     },
     {
       "id": "RT-13",
-      "status": "active",
+      "status": "resolved",
       "severity": "Medium",
       "title": "API Key Creation Lacks Quota And Expiry Bounds",
-      "file": "active/rt-13-api-key-creation-lacks-quota-and-expiry-bounds-20260628-223032.md",
+      "file": "resolved/rt-13-medium-api-key-creation-lacks-quota-and-expiry-bounds-20260628-224606.md",
       "date": "2026-06-28 22:30:32 PDT",
-      "commit": "7c452780551a0b06094be5be42d136c51716b2c3"
+      "commit": "7c452780551a0b06094be5be42d136c51716b2c3",
+      "resolution": "Fixed"
     },
     {
       "id": "RT-14",

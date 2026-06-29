@@ -24,6 +24,8 @@ describe("limits", () => {
     expect(
       LimitsDocument.safeParse({
         "projects.maxOwnedProjects": 10,
+        "apikeys.max_keys": 5,
+        "apikeys.max_expiry": 86_400,
         "money.maxAmountCents": 10_000,
       }).success,
     ).toBe(true);
@@ -55,6 +57,8 @@ describe("limits", () => {
     const resolved = resolveLimits(
       {
         "projects.maxOwnedProjects": 75,
+        "apikeys.max_keys": 5,
+        "apikeys.max_expiry": 86_400,
         "money.maxAmountCents": 10_000,
       },
       {
@@ -67,9 +71,30 @@ describe("limits", () => {
       limits: {
         ...BUILTIN_DEFAULT_LIMITS,
         "projects.maxOwnedProjects": 10,
+        "apikeys.max_keys": 5,
+        "apikeys.max_expiry": 86_400,
         "money.maxAmountCents": 10_000,
       },
     });
+  });
+
+  it("supports API key limit policy helpers", () => {
+    const resolved = resolveLimits(
+      {},
+      {
+        "apikeys.max_keys": 2,
+        "apikeys.max_expiry": 60,
+      },
+    );
+    if (!resolved.ok) {
+      throw new Error("expected resolved limits");
+    }
+
+    const policy = new LimitsPolicy(resolved.limits);
+    expect(policy.allowsAdditionalApiKey(1)).toBe(true);
+    expect(policy.allowsAdditionalApiKey(2)).toBe(false);
+    expect(policy.allowsApiKeyExpiry(1_000, 1_060)).toBe(true);
+    expect(policy.allowsApiKeyExpiry(1_000, 1_061)).toBe(false);
   });
 
   it("supports boolean record posting limits", () => {

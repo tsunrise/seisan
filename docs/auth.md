@@ -56,6 +56,8 @@ Properties:
 - `keyId` is 12 random bytes encoded as 16 base64url characters.
 - `secret` is 24 random bytes encoded as 32 base64url characters.
 - The stored verifier is `sha256Hex(fullApiKey)`, compared with `timingSafeEqual`.
+- A user may have at most `apikeys.max_keys` unrevoked, unexpired keys. The built-in default is 10.
+- Requested key lifetime must not exceed `apikeys.max_expiry` seconds. The built-in default is 31,536,000 seconds, or 365 days.
 
 `UserAPIKeysStore` is the source of truth for user API-key metadata. It is sharded per normalized email hash and stores key ID, email, hash, label, creation time, expiration time, revocation time, and projection publish state.
 

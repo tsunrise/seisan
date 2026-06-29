@@ -5,9 +5,11 @@ import { normalizeEmail } from "./email";
 export const LIMITS_STORE_NAME = "limits";
 export const ABSOLUTE_TEXT_LIMIT = 10_000;
 export const ABSOLUTE_LIST_LIMIT = 10_000;
+export const API_KEY_DEFAULT_MAX_EXPIRY_SECONDS = 365 * 24 * 60 * 60;
 
 const positiveSafeIntegerSchema = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const nonNegativeSafeIntegerSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+const KV_MAX_EXPIRATION_TTL_SECONDS = 2_147_483_647;
 const LEGACY_RECORD_POST_BLOCK_LIMIT_KEY = "automated.block.projects.no_post";
 
 export const Limits = z
@@ -18,6 +20,8 @@ export const Limits = z
     "projects.maxProjectNameLength": positiveSafeIntegerSchema.max(ABSOLUTE_TEXT_LIMIT),
     "projects.maxMemberNameLength": positiveSafeIntegerSchema.max(ABSOLUTE_TEXT_LIMIT),
     "projects.maxAclEmails": nonNegativeSafeIntegerSchema.max(ABSOLUTE_LIST_LIMIT),
+    "apikeys.max_keys": nonNegativeSafeIntegerSchema.max(ABSOLUTE_LIST_LIMIT),
+    "apikeys.max_expiry": positiveSafeIntegerSchema.max(KV_MAX_EXPIRATION_TTL_SECONDS),
     "records.allow_post": z.boolean(),
     "records.defaultPageSize": positiveSafeIntegerSchema,
     "records.maxPageSize": positiveSafeIntegerSchema,
@@ -56,6 +60,8 @@ export const LIMIT_DEFINITIONS = [
   { name: "projects.maxProjectNameLength", type: "integer" },
   { name: "projects.maxMemberNameLength", type: "integer" },
   { name: "projects.maxAclEmails", type: "integer" },
+  { name: "apikeys.max_keys", type: "integer" },
+  { name: "apikeys.max_expiry", type: "integer" },
   { name: "records.allow_post", type: "boolean" },
   { name: "records.defaultPageSize", type: "integer" },
   { name: "records.maxPageSize", type: "integer" },
@@ -76,6 +82,8 @@ export const BUILTIN_DEFAULT_LIMITS: Limits = {
   "projects.maxProjectNameLength": 120,
   "projects.maxMemberNameLength": 100,
   "projects.maxAclEmails": 100,
+  "apikeys.max_keys": 10,
+  "apikeys.max_expiry": API_KEY_DEFAULT_MAX_EXPIRY_SECONDS,
   "records.allow_post": true,
   "records.defaultPageSize": 50,
   "records.maxPageSize": 1024,
@@ -280,6 +288,22 @@ export class LimitsPolicy {
     return this.allowsAdditionalCount(
       currentActiveMembers,
       this.limits["projects.maxMembersPerProject"],
+    );
+  }
+
+  /** Limits how many unrevoked, unexpired API keys a user can have through `apikeys.max_keys`. */
+  allowsAdditionalApiKey(currentKeys: number): boolean {
+    return this.allowsAdditionalCount(currentKeys, this.limits["apikeys.max_keys"]);
+  }
+
+  /** Limits requested API-key lifetime to `apikeys.max_expiry` seconds. */
+  allowsApiKeyExpiry(createdAt: number, expiresAt: number): boolean {
+    return (
+      Number.isSafeInteger(createdAt) &&
+      Number.isSafeInteger(expiresAt) &&
+      createdAt >= 0 &&
+      expiresAt > createdAt &&
+      expiresAt - createdAt <= this.limits["apikeys.max_expiry"]
     );
   }
 

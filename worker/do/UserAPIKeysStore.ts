@@ -9,6 +9,7 @@ import {
   ApiKeyVerificationKvStore,
 } from "../apiKey";
 import { normalizedEmailSchema } from "../email";
+import { Limits, LimitsPolicy } from "../limits";
 import { runSqlMigrations, type SqlMigration } from "./migrations";
 
 interface ApiKeyRow extends Record<string, SqlStorageValue> {
@@ -20,6 +21,10 @@ interface ApiKeyRow extends Record<string, SqlStorageValue> {
   expires_at: number;
   revoked_at: number | null;
   published_at: number | null;
+}
+
+interface CountRow extends Record<string, SqlStorageValue> {
+  count: number;
 }
 
 const NonNegativeSafeInteger = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
@@ -38,6 +43,7 @@ const CreateApiKeyInput = z
     label: ApiKeyLabel,
     createdAt: NonNegativeSafeInteger,
     expiresAt: NonNegativeSafeInteger,
+    limits: Limits,
   })
   .strict();
 
@@ -96,15 +102,26 @@ export class UserAPIKeysStore extends DurableObject<Env> {
     return { ok: true, keys: rows.map(rowToMetadata) };
   }
 
-  async createKey(
-    input: unknown,
-  ): Promise<
+  async createKey(input: unknown): Promise<
     | { ok: true; key: ApiKeyMetadata }
-    | { ok: false; error: "already_exists" | "invalid_input" | "kv_write_failed" }
+    | {
+        ok: false;
+        error: "already_exists" | "invalid_input" | "api_key_limit_exceeded" | "kv_write_failed";
+      }
   > {
     const parsed = CreateApiKeyInput.safeParse(input);
     if (!parsed.success || parsed.data.expiresAt <= parsed.data.createdAt) {
       return { ok: false, error: "invalid_input" };
+    }
+
+    const policy = new LimitsPolicy(parsed.data.limits);
+    if (
+      !policy.allowsApiKeyExpiry(parsed.data.createdAt, parsed.data.expiresAt) ||
+      !policy.allowsAdditionalApiKey(
+        this.countUnrevokedUnexpiredKeys(parsed.data.email, parsed.data.createdAt),
+      )
+    ) {
+      return { ok: false, error: "api_key_limit_exceeded" };
     }
 
     const existing = this.readKey(parsed.data.keyId);
@@ -214,6 +231,20 @@ export class UserAPIKeysStore extends DurableObject<Env> {
         )
         .toArray()[0] ?? null
     );
+  }
+
+  private countUnrevokedUnexpiredKeys(email: string, nowSeconds: number): number {
+    const row =
+      this.ctx.storage.sql
+        .exec<CountRow>(
+          `SELECT COUNT(*) AS count
+           FROM api_keys
+           WHERE email = ? AND revoked_at IS NULL AND expires_at > ?`,
+          email,
+          nowSeconds,
+        )
+        .toArray()[0] ?? null;
+    return row?.count ?? 0;
   }
 }
 

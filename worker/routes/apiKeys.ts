@@ -13,6 +13,7 @@ import { sha256Hex } from "../crypto";
 import type { UserAPIKeysStore } from "../do/UserAPIKeysStore";
 import { normalizeEmail } from "../email";
 import { ErrorResponse } from "../error";
+import { LimitsKvStore } from "../limits";
 
 const CreateApiKey = z
   .object({
@@ -49,6 +50,7 @@ apiKeysApp.post("/api-keys", requireSameOriginWhenPresent, requireSessionAuth, a
   }
 
   const email = normalizeEmail(getRequiredIdentity(context).email);
+  const productLimits = await new LimitsKvStore(context.env.CONFIGS).load(email);
   const store = await getUserAPIKeysStore(context.env, email);
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const apiKey = SampleApiKey();
@@ -59,6 +61,7 @@ apiKeysApp.post("/api-keys", requireSameOriginWhenPresent, requireSessionAuth, a
       label: parsed.data.label,
       createdAt: nowSeconds,
       expiresAt: parsed.data.expiresAt,
+      limits: productLimits,
     });
     if (result.ok) {
       return context.json({ apiKey: apiKey.value, key: result.key }, 201);
@@ -110,6 +113,8 @@ function mapApiKeyStoreError(error: string): Response {
       return ErrorResponse.invalidRequest();
     case "not_found":
       return ErrorResponse.notFound();
+    case "api_key_limit_exceeded":
+      return ErrorResponse.conflict("api_key_limit_exceeded");
     case "kv_write_failed":
       return ErrorResponse.internalServerError();
     default:
