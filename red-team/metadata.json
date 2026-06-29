@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "activeDir": "active",
   "resolvedDir": "resolved",
-  "nextId": 13,
+  "nextId": 15,
   "issues": [
     {
       "id": "RT-1",
@@ -123,6 +123,24 @@
       "date": "2026-06-20 20:41:28 PDT",
       "commit": "422376e9c6daaf4573c1210a8c3bea497b70fbff",
       "resolution": "Fixed"
+    },
+    {
+      "id": "RT-13",
+      "status": "active",
+      "severity": "Medium",
+      "title": "API Key Creation Lacks Quota And Expiry Bounds",
+      "file": "active/rt-13-api-key-creation-lacks-quota-and-expiry-bounds-20260628-223032.md",
+      "date": "2026-06-28 22:30:32 PDT",
+      "commit": "7c452780551a0b06094be5be42d136c51716b2c3"
+    },
+    {
+      "id": "RT-14",
+      "status": "active",
+      "severity": "Medium",
+      "title": "API Key Revocation Can Commit Metadata Before Verifier Invalidation",
+      "file": "active/rt-14-api-key-revocation-can-commit-metadata-before-verifier-invalidation-20260628-223040.md",
+      "date": "2026-06-28 22:30:40 PDT",
+      "commit": "7c452780551a0b06094be5be42d136c51716b2c3"
     }
   ]
 }
