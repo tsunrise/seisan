@@ -1,14 +1,10 @@
 {
   "openapi": "3.1.0",
-  "info": {
-    "title": "Seisan API",
-    "description": "Worker API for Seisan group expense projects.",
-    "version": "0.0.0"
-  },
+  "info": { "title": "Seisan API", "description": "API for Seisan.", "version": "0.0.0" },
   "servers": [{ "url": "/", "description": "Current origin" }],
   "components": {
     "securitySchemes": {
-      "sessionCookie": { "type": "apiKey", "in": "cookie", "name": "__Host-seisan_session" }
+      "apiKeyBearer": { "type": "http", "scheme": "bearer", "bearerFormat": "seisan_v1 API key" }
     }
   },
   "tags": [
@@ -21,176 +17,12 @@
     { "name": "Project Records" }
   ],
   "paths": {
-    "/api/login/attempt": {
-      "post": {
-        "operationId": "postApiLoginAttempt",
-        "tags": ["Auth"],
-        "summary": "Request an email login code.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "email": {
-                    "type": "string",
-                    "format": "email",
-                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
-                  },
-                  "turnstileToken": { "type": "string", "minLength": 1, "maxLength": 2048 }
-                },
-                "required": ["email"],
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": "Login attempt accepted.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": { "type": "boolean", "const": true },
-                    "id": { "type": "string" }
-                  },
-                  "required": ["ok"],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Malformed or invalid request.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "error": { "type": "string" }, "reason": { "type": "string" } },
-                  "required": ["error"],
-                  "additionalProperties": false
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/login/verify": {
-      "post": {
-        "operationId": "postApiLoginVerify",
-        "tags": ["Auth"],
-        "summary": "Verify an email login code and create a session.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "id": { "type": "string", "pattern": "^[0-9A-Za-z]{32}$" },
-                  "email": {
-                    "type": "string",
-                    "format": "email",
-                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
-                  },
-                  "code": { "type": "string", "pattern": "^\\d{6}$" }
-                },
-                "required": ["id", "email", "code"],
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "ok": { "type": "boolean", "const": true } },
-                  "required": ["ok"],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Malformed or invalid request.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "error": { "type": "string" }, "reason": { "type": "string" } },
-                  "required": ["error"],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is required or invalid.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "error": { "type": "string" }, "reason": { "type": "string" } },
-                  "required": ["error"],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "The caller is not allowed to perform this action.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "error": { "type": "string" }, "reason": { "type": "string" } },
-                  "required": ["error"],
-                  "additionalProperties": false
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/logout": {
-      "post": {
-        "operationId": "postApiLogout",
-        "tags": ["Auth"],
-        "summary": "Clear the current session.",
-        "security": [{ "sessionCookie": [] }],
-        "responses": {
-          "204": { "description": "Successful no-content response." },
-          "403": {
-            "description": "The caller is not allowed to perform this action.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "error": { "type": "string" }, "reason": { "type": "string" } },
-                  "required": ["error"],
-                  "additionalProperties": false
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/whoami": {
       "get": {
         "operationId": "getApiWhoami",
         "tags": ["Auth"],
         "summary": "Get the current authenticated identity.",
-        "security": [{ "sessionCookie": [] }],
+        "security": [{ "apiKeyBearer": [] }],
         "responses": {
           "200": {
             "description": "Authenticated identity.",
@@ -232,7 +64,7 @@
         "operationId": "getApiRegistry",
         "tags": ["Registry"],
         "summary": "List projects visible to the authenticated caller.",
-        "security": [{ "sessionCookie": [] }],
+        "security": [{ "apiKeyBearer": [] }],
         "responses": {
           "200": {
             "description": "Projects visible to the authenticated caller.",
@@ -351,7 +183,7 @@
         "operationId": "putApiProject",
         "tags": ["Projects"],
         "summary": "Create a project.",
-        "security": [{ "sessionCookie": [] }],
+        "security": [{ "apiKeyBearer": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -538,7 +370,7 @@
         "operationId": "getApiProjectById",
         "tags": ["Projects"],
         "summary": "Get project details and a page of records.",
-        "security": [{}, { "sessionCookie": [] }],
+        "security": [{}, { "apiKeyBearer": [] }],
         "parameters": [
           {
             "name": "id",
@@ -861,7 +693,7 @@
         "operationId": "patchApiProjectById",
         "tags": ["Projects"],
         "summary": "Rename a project.",
-        "security": [{ "sessionCookie": [] }],
+        "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
             "name": "id",
@@ -969,7 +801,7 @@
         "operationId": "postApiProjectById",
         "tags": ["Project Records"],
         "summary": "Append a record to a project.",
-        "security": [{ "sessionCookie": [] }],
+        "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
             "name": "id",
@@ -1195,7 +1027,7 @@
         "operationId": "postApiProjectByIdAclEmails",
         "tags": ["Project ACL"],
         "summary": "Add emails to a restricted project ACL.",
-        "security": [{ "sessionCookie": [] }],
+        "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
             "name": "id",
@@ -1302,7 +1134,7 @@
         "operationId": "deleteApiProjectByIdAclEmails",
         "tags": ["Project ACL"],
         "summary": "Remove emails from a restricted project ACL.",
-        "security": [{ "sessionCookie": [] }],
+        "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
             "name": "id",
@@ -1411,7 +1243,7 @@
         "operationId": "putApiProjectByIdAclType",
         "tags": ["Project ACL"],
         "summary": "Set a project's ACL type.",
-        "security": [{ "sessionCookie": [] }],
+        "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
             "name": "id",
@@ -1509,7 +1341,7 @@
         "operationId": "postApiProjectByIdMembers",
         "tags": ["Project Members"],
         "summary": "Create a project member.",
-        "security": [{ "sessionCookie": [] }],
+        "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
             "name": "id",
@@ -1639,7 +1471,7 @@
         "operationId": "postApiProjectByIdJoin",
         "tags": ["Project Members"],
         "summary": "Join a project as an existing or new member.",
-        "security": [{ "sessionCookie": [] }],
+        "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
             "name": "id",
@@ -1800,7 +1632,7 @@
         "operationId": "postApiProjectByIdLeave",
         "tags": ["Project Members"],
         "summary": "Leave a project and unlink the current account from its member.",
-        "security": [{ "sessionCookie": [] }],
+        "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
             "name": "id",
@@ -1885,7 +1717,7 @@
         "operationId": "deleteApiProjectByIdMemberLinks",
         "tags": ["Project Members"],
         "summary": "Unlink an email from a project member.",
-        "security": [{ "sessionCookie": [] }],
+        "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
             "name": "id",
@@ -2002,7 +1834,7 @@
         "operationId": "patchApiProjectByIdMembersByMemberId",
         "tags": ["Project Members"],
         "summary": "Patch a project member.",
-        "security": [{ "sessionCookie": [] }],
+        "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
             "name": "id",
@@ -2162,7 +1994,7 @@
         "operationId": "deleteApiProjectByIdMembersByMemberId",
         "tags": ["Project Members"],
         "summary": "Soft-delete a project member.",
-        "security": [{ "sessionCookie": [] }],
+        "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
             "name": "id",

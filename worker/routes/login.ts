@@ -11,6 +11,7 @@ import {
   parseJson,
   requireAuth,
   requireSameOriginWhenPresent,
+  requireSessionAuth,
 } from "../auth";
 import { LOGIN_CODE_TTL_MS, SESSION_COOKIE_NAME, SESSION_TTL_SECONDS } from "../constants";
 import {
@@ -162,13 +163,13 @@ loginApp.post(
   describeRoute({
     tags: ["Auth"],
     summary: "Clear the current session.",
-    security: OpenApiSecurity.SessionCookie,
     responses: {
       204: OpenApiResponses.NoContent,
-      ...errorResponses(403),
+      ...errorResponses(401, 403),
     },
   }),
   requireSameOriginWhenPresent,
+  requireSessionAuth,
   async (context) => {
     const token = getSessionToken(context);
     if (token) {
@@ -190,7 +191,7 @@ loginApp.get(
   describeRoute({
     tags: ["Auth"],
     summary: "Get the current authenticated identity.",
-    security: OpenApiSecurity.SessionCookie,
+    security: OpenApiSecurity.ApiKeyBearer,
     responses: {
       200: OpenApiResponses.Identity,
       ...errorResponses(401),

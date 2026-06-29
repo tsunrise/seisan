@@ -58,6 +58,14 @@ describe("durable objects", () => {
     await runInDurableObject(testEnv.LIMITS_STORE.getByName("limits"), async (_instance, state) => {
       await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(1);
     });
+    const apiKeysStore = testEnv.USER_API_KEYS_STORE.getByName("api-keys-migration");
+    expect(await apiKeysStore.listKeys({ email: "owner@example.com" })).toEqual({
+      ok: true,
+      keys: [],
+    });
+    await runInDurableObject(apiKeysStore, async (_instance, state) => {
+      await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(1);
+    });
     await runInDurableObject(
       testEnv.PROJECT_STORE.get(testEnv.PROJECT_STORE.idFromString(cachedProject?.doId ?? "")),
       async (_instance, state) => {

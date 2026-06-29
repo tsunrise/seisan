@@ -39,6 +39,11 @@
       "binding": "CONFIGS",
       "id": "69f9ead42e6a4f589d9d3c3d823a3dcb",
     },
+    {
+      "binding": "API_KEY_VERIFICATION",
+      "id": "f7f75969976d45d1b5438cb974fd8ed0",
+
+    },
   ],
   "durable_objects": {
     "bindings": [
@@ -58,6 +63,10 @@
         "name": "LIMITS_STORE",
         "class_name": "LimitsStore",
       },
+      {
+        "name": "USER_API_KEYS_STORE",
+        "class_name": "UserAPIKeysStore",
+      },
     ],
   },
   "migrations": [
@@ -72,6 +81,10 @@
     {
       "tag": "v3",
       "new_sqlite_classes": ["LimitsStore"],
+    },
+    {
+      "tag": "v4",
+      "new_sqlite_classes": ["UserAPIKeysStore"],
     },
   ],
   "send_email": [
@@ -118,6 +131,9 @@
         {
           "binding": "CONFIGS",
         },
+        {
+          "binding": "API_KEY_VERIFICATION",
+        },
       ],
       "durable_objects": {
         "bindings": [
@@ -137,6 +153,10 @@
             "name": "LIMITS_STORE",
             "class_name": "LimitsStore",
           },
+          {
+            "name": "USER_API_KEYS_STORE",
+            "class_name": "UserAPIKeysStore",
+          },
         ],
       },
       "migrations": [
@@ -151,6 +171,10 @@
         {
           "tag": "v3",
           "new_sqlite_classes": ["LimitsStore"],
+        },
+        {
+          "tag": "v4",
+          "new_sqlite_classes": ["UserAPIKeysStore"],
         },
       ],
       "send_email": [
@@ -209,6 +233,11 @@
           "binding": "CONFIGS",
           "id": "69f9ead42e6a4f589d9d3c3d823a3dcb",
         },
+        {
+          "binding": "API_KEY_VERIFICATION",
+          // TODO: replace with the created dev KV namespace ID before deployment.
+          "id": "f7f75969976d45d1b5438cb974fd8ed0"
+        },
       ],
       "durable_objects": {
         "bindings": [
@@ -228,6 +257,10 @@
             "name": "LIMITS_STORE",
             "class_name": "LimitsStore",
           },
+          {
+            "name": "USER_API_KEYS_STORE",
+            "class_name": "UserAPIKeysStore",
+          },
         ],
       },
       "migrations": [
@@ -242,6 +275,10 @@
         {
           "tag": "v3",
           "new_sqlite_classes": ["LimitsStore"],
+        },
+        {
+          "tag": "v4",
+          "new_sqlite_classes": ["UserAPIKeysStore"],
         },
       ],
       "send_email": [
@@ -299,6 +336,10 @@
           "binding": "CONFIGS",
           "id": "631f1962518b49e78ff823299a14c9f1",
         },
+        {
+          "binding": "API_KEY_VERIFICATION",
+          "id": "689f3d0eaae149b2969824e7c86c3c4e"
+        },
       ],
       "durable_objects": {
         "bindings": [
@@ -318,6 +359,10 @@
             "name": "LIMITS_STORE",
             "class_name": "LimitsStore",
           },
+          {
+            "name": "USER_API_KEYS_STORE",
+            "class_name": "UserAPIKeysStore",
+          },
         ],
       },
       "migrations": [
@@ -332,6 +377,10 @@
         {
           "tag": "v3",
           "new_sqlite_classes": ["LimitsStore"],
+        },
+        {
+          "tag": "v4",
+          "new_sqlite_classes": ["UserAPIKeysStore"],
         },
       ],
       "send_email": [

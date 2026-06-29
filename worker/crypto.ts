@@ -17,6 +17,12 @@ function bytesToBase64Url(bytes: Uint8Array): string {
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "");
 }
 
+export function generateRandomBase64Url(byteLength: number): string {
+  const bytes = new Uint8Array(byteLength);
+  crypto.getRandomValues(bytes);
+  return bytesToBase64Url(bytes);
+}
+
 function base64UrlToBytes(value: string): Uint8Array | null {
   try {
     const base64 = value.replaceAll("-", "+").replaceAll("_", "/");

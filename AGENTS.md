@@ -25,6 +25,14 @@ Core pieces:
 - `scripts/client.ts` and `scripts/client-cli.ts`: Node CLI API client.
 - `test/*.test.ts`: Worker-runtime Vitest tests.
 
+## Docs
+
+When working on an area covered by a Markdown file in `docs/`, read the relevant doc before changing that area. If the implementation change affects documented behavior, storage, bindings, deployment details, or public API contracts, update the corresponding doc in the same change.
+
+| Title          | Description                                                                                                           |
+| -------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `docs/auth.md` | Auth model reference for browser sessions, API keys, verifier storage, auth bindings, and OpenAPI auth documentation. |
+
 ## Commands
 
 Use `pnpm`.

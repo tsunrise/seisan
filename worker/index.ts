@@ -3,8 +3,9 @@ import { LimitsStore } from "./do/LimitsStore";
 import { LoginAttemptStore } from "./do/LoginAttemptStore";
 import { ProjectStore } from "./do/ProjectStore";
 import { ProjectsRegistry } from "./do/ProjectsRegistry";
+import { UserAPIKeysStore } from "./do/UserAPIKeysStore";
 
-export { LimitsStore, LoginAttemptStore, ProjectStore, ProjectsRegistry };
+export { LimitsStore, LoginAttemptStore, ProjectStore, ProjectsRegistry, UserAPIKeysStore };
 
 export default {
   fetch(request, env, executionContext) {

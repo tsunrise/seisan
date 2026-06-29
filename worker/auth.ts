@@ -2,6 +2,7 @@ import { getCookie } from "hono/cookie";
 import type { Context, MiddlewareHandler } from "hono";
 import { z } from "zod";
 
+import { ApiKeyVerificationKvStore } from "./apiKey";
 import { SESSION_COOKIE_NAME } from "./constants";
 import { sha256Hex, verifySessionToken } from "./crypto";
 import { ErrorResponse } from "./error";
@@ -18,6 +19,12 @@ export type EnvWithIdentity = {
 };
 
 export type AppContext = Context<EnvWithIdentity>;
+
+type AuthenticationResult = { ok: true; identity: Identity | null } | { ok: false };
+type BearerAuthorization =
+  | { status: "absent" }
+  | { status: "present"; token: string }
+  | { status: "invalid" };
 
 export async function parseJson<T>(
   context: AppContext,
@@ -40,6 +47,11 @@ export function getSessionToken(context: AppContext): string | undefined {
 }
 
 export async function authenticate(context: AppContext): Promise<Identity | null> {
+  const result = await authenticateRequest(context);
+  return result.ok ? result.identity : null;
+}
+
+export async function authenticateSession(context: AppContext): Promise<Identity | null> {
   const token = getSessionToken(context);
   if (!token) {
     return null;
@@ -59,6 +71,21 @@ export async function authenticate(context: AppContext): Promise<Identity | null
   }
 
   return { email: payload.email };
+}
+
+async function authenticateRequest(context: AppContext): Promise<AuthenticationResult> {
+  const bearer = getBearerAuthorization(context);
+  if (bearer.status === "invalid") {
+    return { ok: false };
+  }
+  if (bearer.status === "present") {
+    const verification = await new ApiKeyVerificationKvStore(
+      context.env.API_KEY_VERIFICATION,
+    ).verify(bearer.token);
+    return verification.ok ? { ok: true, identity: { email: verification.email } } : { ok: false };
+  }
+
+  return { ok: true, identity: await authenticateSession(context) };
 }
 
 export function getRequiredIdentity(context: AppContext): Identity {
@@ -88,12 +115,27 @@ export const requireSameOriginWhenPresent: MiddlewareHandler<EnvWithIdentity> = 
 };
 
 export const optionalAuth: MiddlewareHandler<EnvWithIdentity> = async (context, next) => {
-  context.set("identity", (await authenticate(context)) ?? undefined);
+  const result = await authenticateRequest(context);
+  if (!result.ok) {
+    return ErrorResponse.unauthorized();
+  }
+
+  context.set("identity", result.identity ?? undefined);
   await next();
 };
 
 export const requireAuth: MiddlewareHandler<EnvWithIdentity> = async (context, next) => {
-  const identity = await authenticate(context);
+  const result = await authenticateRequest(context);
+  if (!result.ok || !result.identity) {
+    return ErrorResponse.unauthorized();
+  }
+
+  context.set("identity", result.identity);
+  await next();
+};
+
+export const requireSessionAuth: MiddlewareHandler<EnvWithIdentity> = async (context, next) => {
+  const identity = await authenticateSession(context);
   if (!identity) {
     return ErrorResponse.unauthorized();
   }
@@ -101,6 +143,22 @@ export const requireAuth: MiddlewareHandler<EnvWithIdentity> = async (context, n
   context.set("identity", identity);
   await next();
 };
+
+function getBearerAuthorization(context: AppContext): BearerAuthorization {
+  const authorization = context.req.header("Authorization");
+  if (authorization === undefined) {
+    return { status: "absent" };
+  }
+  if (!/^Bearer\b/iu.test(authorization)) {
+    return { status: "absent" };
+  }
+
+  const match = /^Bearer\s+(\S+)$/iu.exec(authorization);
+  if (!match) {
+    return { status: "invalid" };
+  }
+  return { status: "present", token: match[1] };
+}
 
 function isCanonicalOrigin(origin: string): boolean {
   try {

@@ -2,7 +2,6 @@ import { resolver, type DescribeRouteOptions, type GenerateSpecOptions } from "h
 import type { OpenAPIV3_1 } from "openapi-types";
 import { z } from "zod";
 
-import { SESSION_COOKIE_NAME } from "./constants";
 import { ABSOLUTE_LIST_LIMIT, ABSOLUTE_TEXT_LIMIT } from "./limits";
 
 type OpenApiResponses = NonNullable<DescribeRouteOptions["responses"]>;
@@ -180,15 +179,15 @@ export const OpenApiSpecOptions = {
     info: {
       title: "Seisan API",
       version: "0.0.0",
-      description: "Worker API for Seisan group expense projects.",
+      description: "API for Seisan.",
     },
     servers: [{ url: "/", description: "Current origin" }],
     components: {
       securitySchemes: {
-        sessionCookie: {
-          type: "apiKey",
-          in: "cookie",
-          name: SESSION_COOKIE_NAME,
+        apiKeyBearer: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "seisan_v1 API key",
         },
       },
     },
@@ -202,17 +201,22 @@ export const OpenApiSpecOptions = {
       { name: "Project Records" },
     ],
   },
-  exclude: /^\/api\/admin(?:\/|$)/u,
+  exclude: [
+    /^\/api\/admin(?:\/|$)/u,
+    /^\/api\/api-keys(?:\/|$)/u,
+    /^\/api\/login(?:\/|$)/u,
+    /^\/api\/logout$/u,
+  ],
 } satisfies Partial<GenerateSpecOptions>;
 
 const NoSecurity = {} satisfies OpenAPIV3_1.SecurityRequirementObject;
-const SessionCookieSecurity = {
-  sessionCookie: [] as string[],
+const ApiKeyBearerSecurity = {
+  apiKeyBearer: [] as string[],
 } satisfies OpenAPIV3_1.SecurityRequirementObject;
 
 export const OpenApiSecurity = {
-  SessionCookie: [SessionCookieSecurity],
-  OptionalSessionCookie: [NoSecurity, SessionCookieSecurity],
+  ApiKeyBearer: [ApiKeyBearerSecurity],
+  OptionalApiKeyBearer: [NoSecurity, ApiKeyBearerSecurity],
 } satisfies Record<string, OpenAPIV3_1.SecurityRequirementObject[]>;
 
 export const OpenApiParameters = {

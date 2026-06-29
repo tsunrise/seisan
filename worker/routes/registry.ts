@@ -22,7 +22,7 @@ registryApp.get(
   describeRoute({
     tags: ["Registry"],
     summary: "List projects visible to the authenticated caller.",
-    security: OpenApiSecurity.SessionCookie,
+    security: OpenApiSecurity.ApiKeyBearer,
     responses: {
       200: OpenApiResponses.Registry,
       ...errorResponses(400, 401),

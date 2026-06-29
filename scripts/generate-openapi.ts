@@ -6,7 +6,6 @@ import { clearSpecsContext, generateSpecs } from "hono-openapi";
 import { format, resolveConfig } from "prettier";
 
 import { app } from "../worker/app";
-import { SESSION_COOKIE_NAME } from "../worker/constants";
 import { OpenApiSpecOptions } from "../worker/model";
 
 const outputPath = resolve(dirname(fileURLToPath(import.meta.url)), "../public/openapi.json");
@@ -55,16 +54,30 @@ function assertOpenApiSpec(spec: Awaited<ReturnType<typeof generateSpecs>>): voi
   if (spec.paths["/api/admin/projects"]) {
     throw new Error("Generated OpenAPI spec must not include /api/admin/projects.");
   }
-  if (!isSessionCookieScheme(spec.components?.securitySchemes?.sessionCookie)) {
-    throw new Error("Generated OpenAPI spec is missing the session cookie security scheme.");
+  if (
+    spec.paths["/api/api-keys"] ||
+    spec.paths["/api/logout"] ||
+    spec.paths["/api/login/attempt"] ||
+    spec.paths["/api/login/verify"]
+  ) {
+    throw new Error("Generated OpenAPI spec must not include cookie-only auth routes.");
+  }
+  if (!isApiKeyBearerScheme(spec.components?.securitySchemes?.apiKeyBearer)) {
+    throw new Error("Generated OpenAPI spec is missing the API key bearer security scheme.");
+  }
+  const serialized = JSON.stringify(spec);
+  if (serialized.includes("sessionCookie") || serialized.includes("__Host-seisan_session")) {
+    throw new Error("Generated OpenAPI spec must not mention session cookie auth.");
   }
 }
 
-function isSessionCookieScheme(value: unknown): boolean {
+function isApiKeyBearerScheme(value: unknown): boolean {
   if (!isObjectRecord(value)) {
     return false;
   }
-  return value.type === "apiKey" && value.in === "cookie" && value.name === SESSION_COOKIE_NAME;
+  return (
+    value.type === "http" && value.scheme === "bearer" && value.bearerFormat === "seisan_v1 API key"
+  );
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {

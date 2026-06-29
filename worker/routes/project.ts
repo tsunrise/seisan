@@ -208,7 +208,7 @@ projectApp.put(
   describeRoute({
     tags: ["Projects"],
     summary: "Create a project.",
-    security: OpenApiSecurity.SessionCookie,
+    security: OpenApiSecurity.ApiKeyBearer,
     requestBody: OpenApiRequests.ProjectCreate,
     responses: {
       201: OpenApiResponses.ProjectCreated,
@@ -291,7 +291,7 @@ projectApp.get(
   describeRoute({
     tags: ["Projects"],
     summary: "Get project details and a page of records.",
-    security: OpenApiSecurity.OptionalSessionCookie,
+    security: OpenApiSecurity.OptionalApiKeyBearer,
     parameters: [
       OpenApiParameters.ProjectId,
       OpenApiParameters.RecordLimit,
@@ -357,7 +357,7 @@ projectApp.patch(
   describeRoute({
     tags: ["Projects"],
     summary: "Rename a project.",
-    security: OpenApiSecurity.SessionCookie,
+    security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectRename,
     responses: {
@@ -407,7 +407,7 @@ projectApp.post(
   describeRoute({
     tags: ["Project ACL"],
     summary: "Add emails to a restricted project ACL.",
-    security: OpenApiSecurity.SessionCookie,
+    security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectAclEmails,
     responses: {
@@ -445,7 +445,7 @@ projectApp.delete(
   describeRoute({
     tags: ["Project ACL"],
     summary: "Remove emails from a restricted project ACL.",
-    security: OpenApiSecurity.SessionCookie,
+    security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectAclEmails,
     responses: {
@@ -487,7 +487,7 @@ projectApp.put(
   describeRoute({
     tags: ["Project ACL"],
     summary: "Set a project's ACL type.",
-    security: OpenApiSecurity.SessionCookie,
+    security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectAclType,
     responses: {
@@ -529,7 +529,7 @@ projectApp.post(
   describeRoute({
     tags: ["Project Members"],
     summary: "Create a project member.",
-    security: OpenApiSecurity.SessionCookie,
+    security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectMemberCreate,
     responses: {
@@ -575,7 +575,7 @@ projectApp.post(
   describeRoute({
     tags: ["Project Members"],
     summary: "Join a project as an existing or new member.",
-    security: OpenApiSecurity.SessionCookie,
+    security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectJoin,
     responses: {
@@ -638,7 +638,7 @@ projectApp.post(
   describeRoute({
     tags: ["Project Members"],
     summary: "Leave a project and unlink the current account from its member.",
-    security: OpenApiSecurity.SessionCookie,
+    security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     responses: {
       204: OpenApiResponses.NoContent,
@@ -688,7 +688,7 @@ projectApp.delete(
   describeRoute({
     tags: ["Project Members"],
     summary: "Unlink an email from a project member.",
-    security: OpenApiSecurity.SessionCookie,
+    security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectMemberEmailUnlink,
     responses: {
@@ -746,7 +746,7 @@ projectApp.patch(
   describeRoute({
     tags: ["Project Members"],
     summary: "Patch a project member.",
-    security: OpenApiSecurity.SessionCookie,
+    security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId, OpenApiParameters.MemberId],
     requestBody: OpenApiRequests.ProjectMemberPatch,
     responses: {
@@ -805,7 +805,7 @@ projectApp.delete(
   describeRoute({
     tags: ["Project Members"],
     summary: "Soft-delete a project member.",
-    security: OpenApiSecurity.SessionCookie,
+    security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId, OpenApiParameters.MemberId],
     responses: {
       204: OpenApiResponses.NoContent,
@@ -861,7 +861,7 @@ projectApp.post(
   describeRoute({
     tags: ["Project Records"],
     summary: "Append a record to a project.",
-    security: OpenApiSecurity.SessionCookie,
+    security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectAppendRecord,
     responses: {
