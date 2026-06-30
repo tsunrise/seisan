@@ -2,7 +2,6 @@ import { Stack, Typography } from "@mui/material";
 
 import type * as api from "../api";
 import { memberName } from "../domain";
-import { ledgerColors } from "../theme";
 import { Amount, type AmountColorMode } from "./Amount";
 
 export function MoneyTable({
@@ -34,13 +33,9 @@ export function MoneyTable({
           direction="row"
           sx={{
             alignItems: "center",
-            borderBottom: `1px solid ${ledgerColors.line}`,
             justifyContent: "space-between",
-            minHeight: 38,
-            py: 0.5,
-            "&:last-of-type": {
-              borderBottom: 0,
-            },
+            minHeight: 32,
+            py: 0.25,
           }}
         >
           <Typography sx={{ color: "text.secondary", fontWeight: 500 }}>

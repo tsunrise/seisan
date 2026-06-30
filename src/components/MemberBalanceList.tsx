@@ -1,7 +1,6 @@
 import { Stack, Typography } from "@mui/material";
 
 import type * as api from "../api";
-import { ledgerColors } from "../theme";
 import { Amount } from "./Amount";
 
 export function MemberBalanceList({
@@ -21,15 +20,11 @@ export function MemberBalanceList({
           direction="row"
           sx={{
             alignItems: "center",
-            borderBottom: `1px solid ${ledgerColors.line}`,
             gap: 1.5,
             justifyContent: "space-between",
-            minHeight: 38,
+            minHeight: 32,
             minWidth: 0,
-            py: 0.5,
-            "&:last-of-type": {
-              borderBottom: 0,
-            },
+            py: 0.25,
           }}
         >
           <Typography
