@@ -1,0 +1,175 @@
+# UI Style Guide
+
+This document captures the Seisan interface direction established by the project page redesign. Read it before changing visible frontend surfaces, especially project, record, list, detail, and form flows.
+
+## Design Read
+
+Seisan is a product UI for repeated group-expense work. It should feel like a calm ledger: warm paper, editorial hierarchy, thin dividers, restrained blue selection, and no decorative marketing composition.
+
+Design dials:
+
+- `DESIGN_VARIANCE 5`: ordered but not generic, with subtle asymmetry in rails and panels.
+- `MOTION_INTENSITY 3`: mostly static, with quiet hover, focus, and state transitions.
+- `VISUAL_DENSITY 5`: information-rich enough for daily use, but still readable.
+
+## Source Files
+
+Use these implementation files as the design source of truth:
+
+- `src/theme.ts`: shared palette, typography stacks, component-level MUI defaults.
+- `src/components/styles.ts`: shared panel and surface styles.
+- `src/components/PanelFrame.tsx`: standard panel title, back action, and frame behavior.
+- `src/project/RecordTimeline.tsx`: day-group timeline composition.
+- `src/project/RecordCard.tsx`: full record rows and minor system events.
+- `src/project/RecordSentenceRow.tsx`: sentence-style composer layout.
+- `src/project/timelineScroll.ts`: scroll restoration, sticky header offset, fixed mobile CTA clearance.
+- `src/project/timelineGroups.ts`: local-day grouping and day labels.
+
+## Visual System
+
+Use a warm monochrome base:
+
+- Backgrounds should read as paper, not app chrome. Prefer `ledgerColors.paper`, `ledgerColors.paperSoft`, and white-adjacent surfaces.
+- Dividers should be thin and low contrast. Prefer `ledgerColors.line`; use stronger borders only for selected or focused states.
+- Use dividers to separate sections and major rows, not individual members inside balance/member lists.
+- Blue is reserved for selection, focus, current-member emphasis, and active navigation. Do not introduce new accent colors for ordinary decoration.
+- Shadows should be absent or extremely soft. Prefer dividers and spacing over elevation.
+- Corners stay restrained: generally 4-8px. Avoid large rounded cards and pill-like primary surfaces.
+- Do not add gradients, glow effects, glassmorphism, decorative blobs, or marketing-style hero sections to app routes.
+
+Prefer existing MUI components and icons. Do not add a second UI framework or icon family for visual changes.
+
+## Typography
+
+Use the typography stacks from `ledgerFonts`:
+
+- Display serif is only for major page/detail titles, such as project names and record detail titles.
+- UI sans is for controls, labels, forms, rows, and panels.
+- Mono is for rail/date metadata and tight numeric/system metadata when it helps scanning.
+- Use tabular numbers for money, record IDs, and balances.
+- Body and metadata text should be muted but readable. Do not use placeholder-as-label or low-contrast helper text.
+
+## App Layout
+
+Preserve the responsive panel model:
+
+- Mobile: one active panel at a time. Keep the fixed post CTA clear of the latest record.
+- Tablet: timeline plus right/detail panel when space allows.
+- Desktop: left project rail, center timeline, right detail panel.
+
+Panels should feel related, not like separate products:
+
+- Same warm surface, same thin dividers, same restrained selection blue.
+- Detail and rail panels should use the same title hierarchy and spacing rhythm as the timeline.
+- Avoid nested cards. Use full-width bands, dividers, and unframed groups unless the content is a repeated item, modal, or actual framed tool.
+
+## Timeline
+
+The project timeline is the primary visual language.
+
+Records render oldest-to-newest. Each loaded day is a group:
+
+- Left column: sticky vertical day label.
+- Middle rail: thin vertical rule and avatar or system node.
+- Content column: clickable record content only.
+
+Date timeline rules:
+
+- Group by browser-local calendar day.
+- Place the day label at the first loaded record of that day.
+- Make the day label sticky below the project header while any part of that day remains visible.
+- Let the label release at the day-group boundary.
+- Keep sticky top measurement in `src/project/timelineScroll.ts`; do not add scroll listeners in render components.
+
+Full record rows:
+
+- Flat ledger rows with thin bottom dividers, not chat bubbles.
+- Actor name, title, relative metadata, record number, and viewer amount should align predictably.
+- Only the row content link is clickable. The empty rail/lane must not be clickable.
+- Selected rows use pale blue background, a subtle blue left border, and the desktop connector toward the detail panel.
+- Reverted source records remain visible with struck-through title, metadata, and amount, plus a small reverted note.
+
+Minor system events:
+
+- Use for revert records and similar low-weight history events.
+- Keep them compact, but align their right-side record number with full record rows.
+- Use a small hollow timeline node rather than a full avatar.
+- Use one quiet row with a thin divider, not a chip, toast, or full record card.
+- Keep them keyboard-focusable and accessible through the same record link behavior.
+
+## Dates, Money, And Copy
+
+Use shared domain helpers from `src/domain.ts`.
+
+- Timeline and list surfaces use relative time such as `8 minutes ago`, `3 hours ago`, `27 days ago`, `2 months ago`.
+- Detail panels use exact timestamps for auditability.
+- Money formatting must go through `formatCents` and existing amount components.
+- Member balance lists and money tables should use compact row spacing, whitespace, and alignment instead of divider lines between members.
+- Record titles must go through `recordTitle` or `recordDetailTitle`.
+- Keep copy plain and functional. Avoid explanatory UI text unless it is actual product copy.
+
+## Forms
+
+Use the sentence-style composer pattern for new records:
+
+- Expense: `[payer] paid [amount] for [expense]`.
+- Transfer: `[from] paid [to] [amount]`.
+- Promise: `[debtor] should pay [creditor] [amount] for [reason]`.
+
+Form rules:
+
+- Desktop can keep sentence fields on one or two clean rows.
+- Mobile stacks fields with visible labels and bridge words.
+- Never rely on placeholder text as the only label.
+- Keep split controls, preview, and validation visually quiet but readable.
+- Inputs should match the project page: warm surface, thin border, clear focus ring.
+
+## Interaction States
+
+Every interactive row/control needs:
+
+- A subtle hover state that does not look like a new card.
+- A visible focus state using the shared blue.
+- Accessible labels for links and icon-only controls.
+- Stable dimensions so hover, selected, and focus states do not shift layout.
+
+Keep motion minimal. Use simple CSS transitions for color, border, opacity, and small transforms only when they communicate feedback.
+
+## Responsive QA
+
+For visible UI changes, verify at least:
+
+- Desktop wide: rail, timeline, detail panel, selected connector, right-column alignment.
+- Tablet: timeline plus detail panel without the left rail.
+- Mobile: single-panel timeline, fixed post CTA clearance, detail route, and composer form.
+- Scroll states: middle of a day, partial top rows, day boundary handoff, older-record prepend, and back-from-detail restoration when practical.
+
+Check that text does not overlap, CTA labels do not wrap awkwardly, date labels do not collide with the header, and record-number columns stay aligned between full rows and minor system rows.
+
+## Anti-Patterns
+
+Avoid these unless explicitly approved:
+
+- Marketing landing-page sections inside app routes.
+- Gradient, blob, glass, or heavy-shadow decoration.
+- New color accents that compete with the selection blue.
+- Rounded pill cards for primary surfaces.
+- Cards inside cards.
+- Hand-rolled formatting for money, dates, record titles, or member names.
+- Making the empty timeline lane clickable.
+- Duplicating scroll restoration or mobile CTA clearance logic outside `timelineScroll.ts`.
+- Adding a new UI framework, icon set, animation dependency, or font-loading strategy for a local UI change.
+
+## Change Checklist
+
+Before handing off a visible frontend change:
+
+- The UI still reads as warm paper ledger.
+- Tokens come from `src/theme.ts` or a documented extension to it.
+- Shared panel styles are reused where possible.
+- Timeline date rail, record rows, and minor system events keep their alignment.
+- Relative and exact timestamps are used in the correct surfaces.
+- Form labels remain visible on mobile and desktop.
+- Hover/focus/selected states are implemented and do not shift layout.
+- Relevant frontend checks pass.
+- Browser QA is done for layout, responsive behavior, scrolling, or visible workflow changes.

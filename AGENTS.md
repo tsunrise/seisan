@@ -29,9 +29,10 @@ Core pieces:
 
 When working on an area covered by a Markdown file in `docs/`, read the relevant doc before changing that area. If the implementation change affects documented behavior, storage, bindings, deployment details, or public API contracts, update the corresponding doc in the same change.
 
-| Title          | Description                                                                                                           |
-| -------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `docs/auth.md` | Auth model reference for browser sessions, API keys, verifier storage, auth bindings, and OpenAPI auth documentation. |
+| Title                    | Description                                                                                                           |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `docs/auth.md`           | Auth model reference for browser sessions, API keys, verifier storage, auth bindings, and OpenAPI auth documentation. |
+| `docs/ui-style-guide.md` | Frontend visual system for the warm ledger-style project UI, including timeline, panel, form, and responsive rules.   |
 
 ## Commands
 
@@ -167,6 +168,7 @@ pnpm run build
 
 - Use React hooks and React Router.
 - UI uses Material UI. Prefer MUI components and idioms before custom controls.
+- Read `docs/ui-style-guide.md` before changing visible frontend surfaces so new pages follow the warm ledger-style project UI.
 - Keep large rendering modules split into separate files under `src/pages`, `src/project`, `src/components`, or `src/hooks`.
 - API calls from the browser go through `src/api.ts` and use relative `/api/*` URLs.
 - Preserve the mobile-first ledger/chat-like project timeline. Desktop should use the existing multi-pane layout, not a stretched mobile view.
