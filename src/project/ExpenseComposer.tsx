@@ -1,6 +1,5 @@
 import AddIcon from "@mui/icons-material/Add";
 import {
-  Box,
   Button,
   MenuItem,
   Stack,
@@ -23,6 +22,7 @@ import { useAppSnackbar } from "../hooks/useAppSnackbar";
 import type { SplitMode } from "../types";
 import { MemberSplitRow } from "./MemberSplitRow";
 import { RecordFormBridge } from "./RecordFormBridge";
+import { RecordSentenceField, RecordSentenceRow } from "./RecordSentenceRow";
 
 export function ExpenseComposer({
   project,
@@ -106,61 +106,42 @@ export function ExpenseComposer({
       onBack={onBack}
     >
       <Stack component="form" spacing={2} onSubmit={submit}>
-        <Box
-          sx={{
-            display: "grid",
-            gap: { xs: 0.75, sm: 1 },
-            gridTemplateColumns: "1fr",
-            alignItems: "center",
-          }}
-        >
-          <TextField
-            select
-            label="Payer"
-            value={String(paidBy)}
-            onChange={(event) => setPaidBy(Number(event.target.value))}
-          >
-            {members.map((member) => (
-              <MenuItem key={member.id} value={String(member.id)}>
-                {member.name}
-              </MenuItem>
-            ))}
-          </TextField>
-        </Box>
-        <Box
-          sx={{
-            display: "grid",
-            gap: { xs: 0.75, sm: 1 },
-            gridTemplateColumns: { xs: "1fr", sm: "auto minmax(0, 1fr)" },
-            alignItems: "center",
-          }}
-        >
+        <RecordSentenceRow>
+          <RecordSentenceField minWidth={148}>
+            <TextField
+              select
+              label="Payer"
+              value={String(paidBy)}
+              onChange={(event) => setPaidBy(Number(event.target.value))}
+            >
+              {members.map((member) => (
+                <MenuItem key={member.id} value={String(member.id)}>
+                  {member.name}
+                </MenuItem>
+              ))}
+            </TextField>
+          </RecordSentenceField>
           <RecordFormBridge>paid</RecordFormBridge>
-          <TextField
-            label="Amount"
-            inputMode="decimal"
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            placeholder="12.34"
-            required
-          />
-        </Box>
-        <Box
-          sx={{
-            display: "grid",
-            gap: { xs: 0.75, sm: 1 },
-            gridTemplateColumns: { xs: "1fr", sm: "auto minmax(0, 1fr)" },
-            alignItems: "center",
-          }}
-        >
+          <RecordSentenceField minWidth={120}>
+            <TextField
+              label="Amount"
+              inputMode="decimal"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              placeholder="12.34"
+              required
+            />
+          </RecordSentenceField>
           <RecordFormBridge>for</RecordFormBridge>
-          <TextField
-            label="Expense"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            required
-          />
-        </Box>
+          <RecordSentenceField grow minWidth={180}>
+            <TextField
+              label="Expense"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              required
+            />
+          </RecordSentenceField>
+        </RecordSentenceRow>
         <Stack spacing={1.25}>
           <Stack
             direction={{ xs: "column", sm: "row" }}

@@ -4,15 +4,19 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import type * as api from "../api";
 import { panelFrameSx } from "../components/styles";
+import { ledgerColors, ledgerFonts } from "../theme";
 import { RecordCard, RevertRecordMessage } from "./RecordCard";
+import { groupRecordsByDay } from "./timelineGroups";
 import {
   clearTimelineScroll,
   keepElementAboveMobileAction,
   LOAD_EARLIER_ROOT_MARGIN_PX,
   MOBILE_BOTTOM_SCROLL_SPACE,
+  observeTimelineStickyTop,
   readTimelineScroll,
   saveTimelineScroll,
   scrollElementToTimelineEnd,
+  TIMELINE_STICKY_TOP_VAR,
   type TimelineScrollRestore,
   topSentinelIsInLoadZone,
 } from "./timelineScroll";
@@ -26,6 +30,7 @@ export function RecordTimeline({
   isActive = true,
   scrollToLatestKey = 0,
   restoreScrollKey = "",
+  selectedRecordId = null,
 }: {
   project: api.Project;
   currentMember: api.ProjectMember | null;
@@ -35,7 +40,9 @@ export function RecordTimeline({
   isActive?: boolean;
   scrollToLatestKey?: number;
   restoreScrollKey?: string;
+  selectedRecordId?: number | null;
 }) {
+  const timelineRef = useRef<HTMLElement | null>(null);
   const topSentinelRef = useRef<HTMLDivElement | null>(null);
   const lastRecordRef = useRef<HTMLDivElement | null>(null);
   const initialScrollDoneRef = useRef(false);
@@ -45,6 +52,15 @@ export function RecordTimeline({
     () => [...project.records].sort((left, right) => left.id - right.id),
     [project.records],
   );
+  const dayGroups = useMemo(() => groupRecordsByDay(records), [records]);
+  const lastRecordId = records.at(-1)?.id;
+
+  useEffect(() => {
+    if (!isActive || !timelineRef.current) {
+      return;
+    }
+    return observeTimelineStickyTop(timelineRef.current);
+  }, [isActive]);
 
   useEffect(() => {
     if (!isActive) {
@@ -231,13 +247,14 @@ export function RecordTimeline({
 
   return (
     <Box
+      ref={timelineRef}
       component="section"
       sx={{
         display: "grid",
-        gap: { xs: 2.5, md: 3 },
-        px: { xs: 2, md: 3 },
-        pt: { xs: 2.75, md: 3.5 },
-        pb: { xs: MOBILE_BOTTOM_SCROLL_SPACE, md: 3.5 },
+        gap: 0,
+        px: { xs: 1.25, sm: 2, md: 2.5 },
+        pt: { xs: 1.5, md: 2 },
+        pb: { xs: MOBILE_BOTTOM_SCROLL_SPACE, md: 2.5 },
       }}
     >
       <Box ref={topSentinelRef} sx={{ minHeight: 1 }}>
@@ -249,7 +266,7 @@ export function RecordTimeline({
               alignItems: "center",
               justifyContent: "center",
               color: "text.secondary",
-              py: 1,
+              py: 1.5,
             }}
           >
             <CircularProgress size={16} />
@@ -257,35 +274,96 @@ export function RecordTimeline({
           </Stack>
         ) : null}
       </Box>
-      {records.map((record, index) => (
-        <Box
-          key={record.id}
-          data-record-id={record.id}
-          onKeyDownCapture={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              saveCurrentScroll(record.id);
-            }
-          }}
-          onPointerDownCapture={(event) => {
-            if (event.target instanceof Element && event.target.closest("a")) {
-              saveCurrentScroll(record.id);
-            }
-          }}
-          ref={index === records.length - 1 ? lastRecordRef : undefined}
-          sx={{ scrollMarginBottom: { xs: MOBILE_BOTTOM_SCROLL_SPACE, md: 28 } }}
-        >
-          {record.description.type === "revert" ? (
-            <RevertRecordMessage project={project} record={record} onOpen={saveCurrentScroll} />
-          ) : (
-            <RecordCard
-              project={project}
-              record={record}
-              currentMember={currentMember}
-              onOpen={saveCurrentScroll}
-            />
-          )}
-        </Box>
-      ))}
+      <Box sx={{ display: "grid", gap: 0 }}>
+        {dayGroups.map((group) => (
+          <Box
+            key={group.key}
+            component="section"
+            sx={{
+              display: "grid",
+              gridTemplateColumns: {
+                xs: "40px minmax(0, 1fr)",
+                md: "50px minmax(0, 1fr)",
+                lg: "62px minmax(0, 1fr)",
+              },
+              columnGap: { xs: 0.75, md: 1.25 },
+              position: "relative",
+            }}
+          >
+            <Box sx={{ position: "relative", minWidth: 0 }}>
+              <Typography
+                sx={{
+                  position: "sticky",
+                  top: `var(${TIMELINE_STICKY_TOP_VAR}, 0px)`,
+                  zIndex: 2,
+                  pt: { xs: 2, md: 2.75 },
+                  color: "text.secondary",
+                  fontFamily: ledgerFonts.mono,
+                  fontSize: { xs: 10.5, md: 11 },
+                  fontWeight: 700,
+                  letterSpacing: "0.08em",
+                  lineHeight: 1,
+                  textAlign: "center",
+                  textTransform: "uppercase",
+                  transform: "rotate(180deg)",
+                  writingMode: "vertical-rl",
+                  mx: "auto",
+                  maxHeight: `calc(100svh - var(${TIMELINE_STICKY_TOP_VAR}, 0px) - 24px)`,
+                  overflow: "hidden",
+                  bgcolor: ledgerColors.paper,
+                }}
+              >
+                {group.label}
+              </Typography>
+            </Box>
+            <Box sx={{ minWidth: 0 }}>
+              {group.records.map((record) => {
+                const isLastRecord = record.id === lastRecordId;
+                const selected = selectedRecordId === record.id;
+
+                return (
+                  <Box
+                    key={record.id}
+                    data-record-id={record.id}
+                    onKeyDownCapture={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        saveCurrentScroll(record.id);
+                      }
+                    }}
+                    onPointerDownCapture={(event) => {
+                      if (event.target instanceof Element && event.target.closest("a")) {
+                        saveCurrentScroll(record.id);
+                      }
+                    }}
+                    ref={isLastRecord ? lastRecordRef : undefined}
+                    sx={{
+                      scrollMarginTop: `calc(var(${TIMELINE_STICKY_TOP_VAR}, 0px) + 16px)`,
+                      scrollMarginBottom: { xs: MOBILE_BOTTOM_SCROLL_SPACE, md: 28 },
+                    }}
+                  >
+                    {record.description.type === "revert" ? (
+                      <RevertRecordMessage
+                        project={project}
+                        record={record}
+                        selected={selected}
+                        onOpen={saveCurrentScroll}
+                      />
+                    ) : (
+                      <RecordCard
+                        project={project}
+                        record={record}
+                        currentMember={currentMember}
+                        selected={selected}
+                        onOpen={saveCurrentScroll}
+                      />
+                    )}
+                  </Box>
+                );
+              })}
+            </Box>
+          </Box>
+        ))}
+      </Box>
     </Box>
   );
 }

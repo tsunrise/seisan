@@ -6,10 +6,10 @@ export function RecordFormBridge({ children }: { children: string }) {
       color="text.secondary"
       sx={{
         alignSelf: "center",
-        fontSize: 13,
-        fontWeight: 650,
+        fontSize: 14,
+        fontWeight: 700,
         lineHeight: 1.2,
-        px: { xs: 1.5, sm: 0 },
+        px: { xs: 0.25, sm: 0 },
         py: { xs: 0, sm: 1.25 },
         whiteSpace: "nowrap",
       }}

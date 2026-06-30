@@ -1,17 +1,25 @@
 import { createTheme } from "@mui/material/styles";
 
 export const ledgerColors = {
-  paperBg: "#f6f5f0",
-  paper: "#fffdf5",
-  ink: "#22211f",
-  muted: "#6f6b62",
-  line: "#c8c2b6",
+  paperBg: "#f7f6f1",
+  paper: "#fffdfa",
+  paperSoft: "#faf8f2",
+  ink: "#181713",
+  muted: "#68645b",
+  line: "#ded8cc",
+  lineStrong: "#c9c1b4",
   blue: "#1167d8",
   blueDark: "#0c4da3",
-  blueSoft: "#e8f4ff",
-  red: "#b61b2a",
-  green: "#07804f",
-  shadowInk: "rgba(34, 33, 31, 0.06)",
+  blueSoft: "#eef6ff",
+  red: "#a81721",
+  green: "#17643d",
+  shadowInk: "rgba(24, 23, 19, 0.035)",
+};
+
+export const ledgerFonts = {
+  sans: 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Geist Sans", "Aptos", sans-serif',
+  serif: 'Georgia, "Times New Roman", "Times", serif',
+  mono: '"SF Mono", "Geist Mono", "JetBrains Mono", ui-monospace, monospace',
 };
 
 export const theme = createTheme({
@@ -39,11 +47,10 @@ export const theme = createTheme({
     divider: ledgerColors.line,
   },
   shape: {
-    borderRadius: 5,
+    borderRadius: 4,
   },
   typography: {
-    fontFamily:
-      'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    fontFamily: ledgerFonts.sans,
     h1: {
       fontSize: "2rem",
       lineHeight: 1.1,
@@ -76,7 +83,9 @@ export const theme = createTheme({
         body: {
           minWidth: 320,
           background: ledgerColors.paperBg,
+          color: ledgerColors.ink,
           fontSynthesis: "none",
+          fontVariantNumeric: "tabular-nums",
           textRendering: "optimizeLegibility",
           WebkitFontSmoothing: "antialiased",
           MozOsxFontSmoothing: "grayscale",
@@ -97,7 +106,31 @@ export const theme = createTheme({
         root: {
           minHeight: 42,
           borderWidth: 1,
-          borderRadius: 5,
+          borderRadius: 4,
+          boxShadow: "none",
+          transition:
+            "background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease",
+          "&:active": {
+            transform: "translateY(1px)",
+          },
+        },
+        contained: {
+          backgroundColor: ledgerColors.ink,
+          borderColor: ledgerColors.ink,
+          color: ledgerColors.paper,
+          "&:hover": {
+            backgroundColor: "#343128",
+            borderColor: "#343128",
+            boxShadow: "none",
+          },
+        },
+        outlined: {
+          borderColor: ledgerColors.line,
+          color: ledgerColors.ink,
+          "&:hover": {
+            backgroundColor: "rgba(24, 23, 19, 0.035)",
+            borderColor: ledgerColors.lineStrong,
+          },
         },
       },
     },
@@ -105,8 +138,9 @@ export const theme = createTheme({
       styleOverrides: {
         root: {
           border: `1px solid ${ledgerColors.line}`,
-          borderRadius: 5,
+          borderRadius: 4,
           backgroundColor: ledgerColors.paper,
+          boxShadow: "none",
         },
       },
     },
@@ -120,6 +154,28 @@ export const theme = createTheme({
     MuiTextField: {
       defaultProps: {
         size: "small",
+      },
+    },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          borderRadius: 4,
+          backgroundColor: "rgba(255, 253, 250, 0.82)",
+          transition: "background-color 160ms ease, box-shadow 160ms ease",
+          "& .MuiOutlinedInput-notchedOutline": {
+            borderColor: ledgerColors.line,
+          },
+          "&:hover .MuiOutlinedInput-notchedOutline": {
+            borderColor: ledgerColors.lineStrong,
+          },
+          "&.Mui-focused": {
+            backgroundColor: ledgerColors.paper,
+            boxShadow: `0 0 0 2px rgba(17, 103, 216, 0.1)`,
+          },
+          "&.Mui-focused .MuiOutlinedInput-notchedOutline": {
+            borderColor: ledgerColors.blue,
+          },
+        },
       },
     },
     MuiFormControl: {

@@ -1,9 +1,10 @@
 import { Avatar, Box, Paper, Stack, Typography } from "@mui/material";
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 import type * as api from "../api";
 import { Amount } from "../components/Amount";
-import { formatRecordTimestamp, memberName, recordTitle } from "../domain";
+import { formatRelativeTime, memberName, recordTitle } from "../domain";
 import { ledgerColors } from "../theme";
 import { initials } from "../utils";
 import { recordActorMemberId } from "./recordActor";
@@ -12,19 +13,23 @@ export function RecordCard({
   project,
   record,
   currentMember,
+  selected = false,
   onOpen,
 }: {
   project: api.Project;
   record: api.ProjectRecord;
   currentMember: api.ProjectMember | null;
+  selected?: boolean;
   onOpen?: (recordId: number) => void;
 }) {
   const actor = project.members.find((member) => member.id === recordActorMemberId(record));
   const author = project.members.find((member) => member.id === record.authorMemberId);
-  const showPostedBy = actor !== undefined && actor.id !== record.authorMemberId;
   const subjectIsCurrentMember = actor?.id === currentMember?.id;
   const viewerDelta = currentMember ? (record.delta[String(currentMember.id)] ?? 0) : null;
   const isReverted = record.reverted !== undefined;
+  const metadataText = `${formatRelativeTime(record.createdAt)}, posted by ${
+    author?.name ?? "Unknown member"
+  }`;
   const revertedTextSx = isReverted
     ? {
         color: ledgerColors.muted,
@@ -32,253 +37,424 @@ export function RecordCard({
         textDecorationThickness: "1.5px",
       }
     : {};
-  const metadataText = showPostedBy
-    ? `${formatRecordTimestamp(record.createdAt)}, posted by ${author?.name ?? "Unknown member"}`
-    : formatRecordTimestamp(record.createdAt);
-  const bubbleBg = subjectIsCurrentMember ? ledgerColors.blueSoft : "rgba(255, 253, 245, 0.92)";
-  const bubbleHoverBg = subjectIsCurrentMember ? "#dceeff" : "rgba(247, 244, 236, 0.98)";
-  const bubbleHoverBorder = subjectIsCurrentMember ? ledgerColors.blue : "rgba(34, 33, 31, 0.42)";
-  const tailBorder = `1px solid ${ledgerColors.line}`;
-
-  const avatar = (
-    <Avatar
-      sx={{
-        width: { xs: 44, md: 48 },
-        height: { xs: 44, md: 48 },
-        alignSelf: "end",
-        justifySelf: subjectIsCurrentMember ? { xs: "start", sm: "end", md: "start" } : "start",
-        mb: 2.5,
-        color: ledgerColors.ink,
-        bgcolor: subjectIsCurrentMember ? "rgba(207, 232, 247, 0.8)" : "rgba(34, 33, 31, 0.08)",
-        border: `1px solid rgba(34, 33, 31, 0.08)`,
-        fontWeight: 750,
-      }}
-    >
-      {initials(actor?.name ?? "?")}
-    </Avatar>
-  );
-  const bubble = (
-    <Paper
-      component={Link}
-      to={`/project/${project.id}/records/${record.id}`}
-      onClick={() => onOpen?.(record.id)}
-      aria-label={`Open record #${record.id}`}
-      square={false}
-      sx={{
-        position: "relative",
-        display: "grid",
-        gap: 0.75,
-        justifySelf: subjectIsCurrentMember ? "end" : "start",
-        width: { xs: "min(100%, 390px)", md: "min(100%, 520px)" },
-        minHeight: 112,
-        p: { xs: 2, md: 2.25 },
-        border: `1px solid ${ledgerColors.line}`,
-        borderRadius: 2.5,
-        bgcolor: bubbleBg,
-        boxShadow: `0 4px 12px rgba(34, 33, 31, 0.05)`,
-        color: "inherit",
-        cursor: "pointer",
-        textDecoration: "none",
-        "&::before": {
-          content: '""',
-          position: "absolute",
-          bottom: 36,
-          width: { xs: 10, sm: 14 },
-          height: { xs: 10, sm: 14 },
-          bgcolor: bubbleBg,
-          ...(subjectIsCurrentMember
-            ? {
-                right: { xs: -5, sm: -8 },
-                borderRight: tailBorder,
-                borderBottom: tailBorder,
-                transform: "rotate(-45deg)",
-              }
-            : {
-                left: { xs: -5, sm: -8 },
-                borderLeft: tailBorder,
-                borderBottom: tailBorder,
-                transform: "rotate(45deg)",
-              }),
-        },
-        "&:hover": {
-          bgcolor: bubbleHoverBg,
-          borderColor: bubbleHoverBorder,
-          boxShadow: `0 6px 16px rgba(17, 103, 216, 0.08)`,
-        },
-        "&:hover::before": {
-          bgcolor: bubbleHoverBg,
-        },
-        "&:focus-visible": {
-          outline: `2px solid ${ledgerColors.blue}`,
-          outlineOffset: 3,
-        },
-      }}
-    >
-      <Stack
-        direction="row"
-        sx={{
-          alignItems: "baseline",
-          gap: 1.5,
-          justifyContent: "space-between",
-          minWidth: 0,
-        }}
-      >
-        <Typography
-          sx={{
-            minWidth: 0,
-            color: "text.secondary",
-            fontSize: 15,
-            fontWeight: 650,
-            overflowWrap: "anywhere",
-          }}
-        >
-          {actor?.name ?? "Unknown member"}
-        </Typography>
-        <Typography
-          sx={{
-            flexShrink: 0,
-            color: "text.secondary",
-            fontSize: 14,
-            fontWeight: 650,
-            whiteSpace: "nowrap",
-          }}
-        >
-          #{record.id}
-        </Typography>
-      </Stack>
-      <Typography
-        component="h2"
-        sx={{
-          fontSize: { xs: "1.25rem", md: "1.375rem" },
-          fontWeight: 650,
-          lineHeight: 1.25,
-          overflowWrap: "anywhere",
-          wordBreak: "break-word",
-          ...revertedTextSx,
-        }}
-      >
-        {recordTitle(record, project.members)}
-      </Typography>
-      <Stack
-        direction="row"
-        sx={{
-          alignItems: "end",
-          justifyContent: "space-between",
-          gap: 1.5,
-          minWidth: 0,
-          mt: 0.75,
-        }}
-      >
-        <Typography
-          sx={{
-            minWidth: 0,
-            color: "text.secondary",
-            fontSize: 13,
-            fontWeight: 650,
-            overflowWrap: "anywhere",
-            wordBreak: "break-word",
-            ...revertedTextSx,
-          }}
-        >
-          {metadataText}
-        </Typography>
-        {viewerDelta !== null && viewerDelta !== 0 ? (
-          <Amount amount={viewerDelta} muted={isReverted} />
-        ) : null}
-      </Stack>
-      {record.reverted ? (
-        <Typography
-          sx={{
-            color: "text.secondary",
-            fontSize: 12,
-            fontWeight: 650,
-            mt: 0.25,
-            overflowWrap: "anywhere",
-          }}
-        >
-          Reverted by {memberName(project.members, record.reverted.authorMemberId)} at{" "}
-          {formatRecordTimestamp(record.reverted.createdAt)}
-        </Typography>
-      ) : null}
-    </Paper>
-  );
 
   return (
-    <Box
-      sx={{
-        display: "grid",
-        gridTemplateColumns: subjectIsCurrentMember ? "minmax(0, 1fr) 56px" : "56px minmax(0, 1fr)",
-        gap: { xs: 1.25, md: 1.75 },
-        "@media (max-width: 899px)": {
-          gridTemplateColumns: subjectIsCurrentMember
-            ? "minmax(0, 1fr) 52px"
-            : "52px minmax(0, 1fr)",
-        },
-      }}
+    <TimelineRecordShell
+      marker={initials(actor?.name ?? "?")}
+      markerActive={subjectIsCurrentMember || selected}
     >
-      {subjectIsCurrentMember ? (
-        <>
-          {bubble}
-          {avatar}
-        </>
-      ) : (
-        <>
-          {avatar}
-          {bubble}
-        </>
-      )}
-    </Box>
+      <Paper
+        component={Link}
+        to={`/project/${project.id}/records/${record.id}`}
+        onClick={() => onOpen?.(record.id)}
+        aria-label={`Open record #${record.id}`}
+        square
+        sx={{
+          position: "relative",
+          display: "grid",
+          gridTemplateColumns: { xs: "minmax(0, 1fr)", sm: "minmax(0, 1fr) auto" },
+          columnGap: 2,
+          rowGap: 1,
+          minHeight: { xs: 126, md: 136 },
+          px: { xs: 1.75, md: 2.25 },
+          py: { xs: 2, md: 2.35 },
+          border: `1px solid ${selected ? "rgba(17, 103, 216, 0.15)" : "transparent"}`,
+          borderLeft: selected ? `3px solid ${ledgerColors.blue}` : "1px solid transparent",
+          borderBottomColor: ledgerColors.line,
+          bgcolor: selected ? "rgba(238, 246, 255, 0.72)" : "transparent",
+          boxShadow: "none",
+          color: "inherit",
+          cursor: "pointer",
+          textDecoration: "none",
+          transition: "background-color 160ms ease, border-color 160ms ease, transform 160ms ease",
+          "&::before": selected
+            ? {
+                content: '""',
+                position: "absolute",
+                top: "calc(50% - 3px)",
+                right: -42,
+                display: { xs: "none", md: "block" },
+                width: "7px",
+                height: "7px",
+                borderRadius: "50%",
+                bgcolor: ledgerColors.blue,
+              }
+            : undefined,
+          "&::after": selected
+            ? {
+                content: '""',
+                position: "absolute",
+                top: "50%",
+                right: -38,
+                display: { xs: "none", md: "block" },
+                width: "38px",
+                height: "1px",
+                bgcolor: ledgerColors.blue,
+              }
+            : undefined,
+          "&:hover": {
+            bgcolor: selected ? "rgba(238, 246, 255, 0.92)" : "rgba(24, 23, 19, 0.025)",
+            borderColor: selected ? "rgba(17, 103, 216, 0.22)" : "rgba(24, 23, 19, 0.04)",
+            borderBottomColor: ledgerColors.line,
+          },
+          "&:focus-visible": {
+            outline: `2px solid ${ledgerColors.blue}`,
+            outlineOffset: 3,
+          },
+        }}
+      >
+        <Stack spacing={0.75} sx={{ minWidth: 0 }}>
+          <Stack
+            direction="row"
+            sx={{
+              alignItems: "baseline",
+              gap: 1.5,
+              justifyContent: "space-between",
+              minWidth: 0,
+            }}
+          >
+            <Typography
+              sx={{
+                minWidth: 0,
+                color: "text.secondary",
+                fontSize: 15,
+                fontWeight: 500,
+                overflowWrap: "anywhere",
+              }}
+            >
+              {actor?.name ?? "Unknown member"}
+            </Typography>
+            <Typography
+              sx={{
+                display: { xs: "block", sm: "none" },
+                flexShrink: 0,
+                color: "text.secondary",
+                fontSize: 14,
+                fontWeight: 500,
+              }}
+            >
+              #{record.id}
+            </Typography>
+          </Stack>
+          <Typography
+            component="h2"
+            sx={{
+              fontSize: { xs: "1.12rem", lg: "1.25rem" },
+              fontWeight: 760,
+              lineHeight: 1.24,
+              overflowWrap: "anywhere",
+              wordBreak: "break-word",
+              ...revertedTextSx,
+            }}
+          >
+            {recordTitle(record, project.members)}
+          </Typography>
+          <Typography
+            sx={{
+              color: "text.secondary",
+              fontSize: 13,
+              fontWeight: 500,
+              overflowWrap: "anywhere",
+              wordBreak: "break-word",
+              ...revertedTextSx,
+            }}
+          >
+            {metadataText}
+          </Typography>
+          {record.reverted ? (
+            <Typography
+              sx={{
+                color: "text.secondary",
+                fontSize: 12,
+                fontWeight: 600,
+                overflowWrap: "anywhere",
+              }}
+            >
+              Reverted by {memberName(project.members, record.reverted.authorMemberId)}{" "}
+              {formatRelativeTime(record.reverted.createdAt)}
+            </Typography>
+          ) : null}
+        </Stack>
+        <Stack
+          sx={{
+            alignItems: { xs: "flex-start", sm: "flex-end" },
+            justifyContent: "space-between",
+            gap: 1,
+            minWidth: { sm: 96 },
+          }}
+        >
+          <Typography
+            sx={{
+              display: { xs: "none", sm: "block" },
+              color: "text.secondary",
+              fontSize: 14,
+              fontWeight: 500,
+            }}
+          >
+            #{record.id}
+          </Typography>
+          {viewerDelta !== null && viewerDelta !== 0 ? (
+            <Amount amount={viewerDelta} muted={isReverted} />
+          ) : null}
+        </Stack>
+      </Paper>
+    </TimelineRecordShell>
   );
 }
 
 export function RevertRecordMessage({
   project,
   record,
+  selected = false,
   onOpen,
 }: {
   project: api.Project;
   record: api.ProjectRecord;
+  selected?: boolean;
   onOpen?: (recordId: number) => void;
 }) {
   if (record.description.type !== "revert") {
     return null;
   }
 
+  const authorName = memberName(project.members, record.authorMemberId);
+  const metadataText = formatRelativeTime(record.createdAt);
+
+  return (
+    <TimelineSystemEventShell selected={selected}>
+      <Paper
+        component={Link}
+        to={`/project/${project.id}/records/${record.id}`}
+        onClick={() => onOpen?.(record.id)}
+        aria-label={`Open record #${record.id}`}
+        square
+        sx={{
+          position: "relative",
+          display: "grid",
+          gridTemplateColumns: {
+            xs: "minmax(0, 1fr) auto",
+            sm: "minmax(0, 1fr) auto auto",
+          },
+          alignItems: "center",
+          columnGap: { xs: 1.25, sm: 1.6 },
+          rowGap: 0.35,
+          minHeight: { xs: 48, md: 50 },
+          my: { xs: 0.8, md: 1 },
+          px: { xs: 1.75, md: 2.25 },
+          py: 0.75,
+          border: `1px solid ${selected ? "rgba(17, 103, 216, 0.15)" : "transparent"}`,
+          borderLeft: selected ? `2px solid ${ledgerColors.blue}` : "1px solid transparent",
+          borderBottomColor: ledgerColors.line,
+          bgcolor: selected ? "rgba(238, 246, 255, 0.72)" : "transparent",
+          color: "inherit",
+          boxShadow: "none",
+          cursor: "pointer",
+          textDecoration: "none",
+          transition: "background-color 160ms ease, border-color 160ms ease, transform 160ms ease",
+          "&::before": selected
+            ? {
+                content: '""',
+                position: "absolute",
+                top: "calc(50% - 3px)",
+                right: -42,
+                display: { xs: "none", md: "block" },
+                width: "7px",
+                height: "7px",
+                borderRadius: "50%",
+                bgcolor: ledgerColors.blue,
+              }
+            : undefined,
+          "&::after": selected
+            ? {
+                content: '""',
+                position: "absolute",
+                top: "50%",
+                right: -38,
+                display: { xs: "none", md: "block" },
+                width: "38px",
+                height: "1px",
+                bgcolor: ledgerColors.blue,
+              }
+            : undefined,
+          "&:hover": {
+            bgcolor: selected ? "rgba(238, 246, 255, 0.92)" : "rgba(24, 23, 19, 0.025)",
+            borderColor: selected ? "rgba(17, 103, 216, 0.22)" : "rgba(24, 23, 19, 0.04)",
+            borderBottomColor: ledgerColors.line,
+          },
+          "&:focus-visible": {
+            outline: `2px solid ${ledgerColors.blue}`,
+            outlineOffset: 3,
+          },
+        }}
+      >
+        <Box sx={{ minWidth: 0 }}>
+          <Typography
+            component="span"
+            sx={{
+              color: selected ? ledgerColors.ink : "text.secondary",
+              fontSize: { xs: 13, md: 13.5 },
+              fontWeight: 650,
+              lineHeight: 1.25,
+              overflowWrap: "anywhere",
+              wordBreak: "break-word",
+            }}
+          >
+            {authorName} reverted record #{record.description.id}
+          </Typography>
+          <Typography
+            sx={{
+              display: { xs: "block", sm: "none" },
+              color: "text.secondary",
+              fontSize: 12,
+              fontWeight: 500,
+              lineHeight: 1.4,
+              mt: 0.15,
+            }}
+          >
+            {metadataText}
+          </Typography>
+        </Box>
+        <Typography
+          sx={{
+            display: { xs: "none", sm: "block" },
+            color: "text.secondary",
+            fontSize: 12,
+            fontWeight: 500,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {metadataText}
+        </Typography>
+        <Typography
+          sx={{
+            flexShrink: 0,
+            color: "text.secondary",
+            fontSize: 13,
+            fontWeight: 500,
+            minWidth: { sm: 96 },
+            textAlign: "right",
+          }}
+        >
+          #{record.id}
+        </Typography>
+      </Paper>
+    </TimelineSystemEventShell>
+  );
+}
+
+function TimelineRecordShell({
+  marker,
+  markerActive,
+  children,
+}: {
+  marker: string;
+  markerActive: boolean;
+  children: ReactNode;
+}) {
   return (
     <Box
-      component={Link}
-      to={`/project/${project.id}/records/${record.id}`}
-      onClick={() => onOpen?.(record.id)}
-      aria-label={`Open record #${record.id}`}
       sx={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: "fit-content",
-        maxWidth: "min(100%, 420px)",
-        mx: "auto",
-        px: 1.25,
-        py: 0.375,
-        border: `1px solid rgba(34, 33, 31, 0.08)`,
-        borderRadius: 999,
-        bgcolor: "rgba(34, 33, 31, 0.1)",
-        color: "text.secondary",
-        textAlign: "center",
-        textDecoration: "none",
-        boxShadow: `0 2px 8px ${ledgerColors.shadowInk}`,
-        "&:hover": {
-          bgcolor: "rgba(34, 33, 31, 0.14)",
-          color: ledgerColors.ink,
+        position: "relative",
+        display: "grid",
+        gridTemplateColumns: {
+          xs: "40px minmax(0, 1fr)",
+          md: "46px minmax(0, 1fr)",
+          lg: "52px minmax(0, 1fr)",
         },
-        "&:focus-visible": {
-          outline: `2px solid ${ledgerColors.blue}`,
-          outlineOffset: 3,
-        },
+        columnGap: { xs: 1.25, md: 1.6 },
+        minHeight: { xs: 126, md: 136 },
       }}
     >
-      <Typography component="span" sx={{ fontSize: 12, fontWeight: 700, lineHeight: 1.2 }}>
-        {memberName(project.members, record.authorMemberId)} reverted #{record.description.id}
-      </Typography>
+      <Box
+        aria-hidden="true"
+        sx={{
+          position: "relative",
+          display: "flex",
+          justifyContent: "center",
+          "&::before": {
+            content: '""',
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: "50%",
+            borderLeft: `1px solid ${ledgerColors.line}`,
+            transform: "translateX(-0.5px)",
+          },
+        }}
+      >
+        <Avatar
+          sx={{
+            zIndex: 1,
+            mt: { xs: 2, md: 2.75 },
+            width: { xs: 36, lg: 42 },
+            height: { xs: 36, lg: 42 },
+            border: `1px solid ${markerActive ? "rgba(17, 103, 216, 0.22)" : ledgerColors.line}`,
+            bgcolor: markerActive ? ledgerColors.blueSoft : ledgerColors.paperSoft,
+            color: ledgerColors.ink,
+            fontSize: { xs: 14, md: 15 },
+            fontWeight: 760,
+          }}
+        >
+          {marker}
+        </Avatar>
+      </Box>
+      <Box sx={{ minWidth: 0 }}>{children}</Box>
+    </Box>
+  );
+}
+
+function TimelineSystemEventShell({
+  selected,
+  children,
+}: {
+  selected: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Box
+      sx={{
+        position: "relative",
+        display: "grid",
+        gridTemplateColumns: {
+          xs: "40px minmax(0, 1fr)",
+          md: "46px minmax(0, 1fr)",
+          lg: "52px minmax(0, 1fr)",
+        },
+        columnGap: { xs: 1.25, md: 1.6 },
+        minHeight: { xs: 62, md: 66 },
+      }}
+    >
+      <Box
+        aria-hidden="true"
+        sx={{
+          position: "relative",
+          display: "flex",
+          justifyContent: "center",
+          "&::before": {
+            content: '""',
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: "50%",
+            borderLeft: `1px solid ${ledgerColors.line}`,
+            transform: "translateX(-0.5px)",
+          },
+        }}
+      >
+        <Box
+          sx={{
+            zIndex: 1,
+            mt: { xs: 2.35, md: 2.6 },
+            width: { xs: 14, md: 15 },
+            height: { xs: 14, md: 15 },
+            borderRadius: "50%",
+            border: `1px solid ${selected ? "rgba(17, 103, 216, 0.34)" : ledgerColors.line}`,
+            bgcolor: selected ? ledgerColors.blueSoft : ledgerColors.paper,
+            boxShadow: `0 0 0 4px ${ledgerColors.paper}`,
+          }}
+        />
+      </Box>
+      <Box sx={{ minWidth: 0 }}>{children}</Box>
     </Box>
   );
 }

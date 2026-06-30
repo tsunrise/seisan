@@ -4,7 +4,7 @@ import { Box, IconButton, Stack, Typography } from "@mui/material";
 import type * as api from "../api";
 import { Amount } from "../components/Amount";
 import { BrandLink } from "../components/BrandLink";
-import { ledgerColors } from "../theme";
+import { ledgerColors, ledgerFonts } from "../theme";
 
 export function ProjectHeader({
   project,
@@ -20,14 +20,15 @@ export function ProjectHeader({
 
   return (
     <Stack
+      data-project-header=""
       component="header"
       sx={{
         gap: 1.25,
         position: "sticky",
         top: 0,
         zIndex: 5,
-        px: 2.5,
-        py: 2,
+        px: { xs: 2.25, md: 2.5 },
+        py: { xs: 1.75, md: 2 },
         bgcolor: "background.paper",
         borderBottom: `1px solid ${ledgerColors.line}`,
       }}
@@ -38,7 +39,11 @@ export function ProjectHeader({
           <Typography
             variant="h1"
             sx={{
-              fontSize: { xs: "1.875rem", md: "2rem", lg: "2.25rem" },
+              fontFamily: ledgerFonts.serif,
+              fontSize: { xs: "2rem", md: "2.35rem", lg: "2.55rem" },
+              fontWeight: 500,
+              letterSpacing: "-0.035em",
+              lineHeight: 1,
               overflowWrap: "normal",
               wordBreak: "normal",
             }}
@@ -46,7 +51,7 @@ export function ProjectHeader({
             {project.name}
           </Typography>
           {identityLabel ? (
-            <Typography sx={{ mt: 0.75, fontWeight: 700 }}>
+            <Typography sx={{ mt: 0.9, fontWeight: 760 }}>
               {identityLabel} {balance !== null ? <Amount amount={balance} /> : null}
             </Typography>
           ) : null}

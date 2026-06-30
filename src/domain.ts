@@ -33,7 +33,17 @@ export function formatRelativeTime(timestamp: number, now = Date.now()): string 
   }
 
   const elapsedDays = Math.floor(elapsedHours / 24);
-  return `${elapsedDays} ${elapsedDays === 1 ? "day" : "days"} ago`;
+  if (elapsedDays < 30) {
+    return `${elapsedDays} ${elapsedDays === 1 ? "day" : "days"} ago`;
+  }
+
+  if (elapsedDays < 365) {
+    const elapsedMonths = Math.floor(elapsedDays / 30);
+    return `${elapsedMonths} ${elapsedMonths === 1 ? "month" : "months"} ago`;
+  }
+
+  const elapsedYears = Math.floor(elapsedDays / 365);
+  return `${elapsedYears} ${elapsedYears === 1 ? "year" : "years"} ago`;
 }
 
 export function formatRecordTimestamp(timestamp: number, now = Date.now()): string {
@@ -54,6 +64,11 @@ export function formatRecordTimestamp(timestamp: number, now = Date.now()): stri
   }
 
   return `${date.getFullYear()}/${monthDay}`;
+}
+
+export function formatRecordTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
 
 export function formatRecordDetailTimestamp(timestamp: number): string {
@@ -109,7 +124,7 @@ export function recordTitle(record: ProjectRecord, members: ProjectMember[]): st
   if (description.type === "promise") {
     return promiseCardTitle(description, members);
   }
-  return `Reverted #${description.id}`;
+  return `Reverted record #${description.id}`;
 }
 
 export function recordDetailTitle(record: ProjectRecord, members: ProjectMember[]): string {

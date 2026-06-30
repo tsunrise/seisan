@@ -8,7 +8,7 @@ import { Amount } from "../components/Amount";
 import { BrandLink } from "../components/BrandLink";
 import { MemberBalanceList } from "../components/MemberBalanceList";
 import { formatRelativeTime } from "../domain";
-import { ledgerColors } from "../theme";
+import { ledgerColors, ledgerFonts } from "../theme";
 
 type ProjectSummaryList = Array<api.WithSyncTime<api.ProjectSummary>>;
 const rowHighlightBleedPx = 10;
@@ -96,6 +96,9 @@ export function ProjectRail({
           variant="h2"
           sx={{
             fontSize: 20,
+            fontFamily: ledgerFonts.serif,
+            fontWeight: 500,
+            letterSpacing: "-0.03em",
             lineHeight: 1.15,
             overflowWrap: "anywhere",
           }}
@@ -172,9 +175,10 @@ function ProjectRailRow({ project, active }: { project: RailProjectRow; active: 
         textDecoration: "none",
         "&::before": {
           bgcolor: active ? ledgerColors.blueSoft : "transparent",
-          borderRadius: 2,
+          borderRadius: 1,
           bottom: 0,
-          boxShadow: active ? "0 0 0 1px rgba(17, 103, 216, 0.16)" : "none",
+          borderLeft: active ? `2px solid ${ledgerColors.blue}` : "2px solid transparent",
+          boxShadow: active ? "0 0 0 1px rgba(17, 103, 216, 0.08)" : "none",
           content: '""',
           left: -rowHighlightBleedPx,
           pointerEvents: "none",
@@ -185,10 +189,10 @@ function ProjectRailRow({ project, active }: { project: RailProjectRow; active: 
           zIndex: 0,
         },
         "&:hover::before": {
-          bgcolor: active ? ledgerColors.blueSoft : "rgba(17, 103, 216, 0.06)",
+          bgcolor: active ? ledgerColors.blueSoft : "rgba(24, 23, 19, 0.035)",
           boxShadow: active
-            ? "0 0 0 1px rgba(17, 103, 216, 0.22)"
-            : "0 0 0 1px rgba(17, 103, 216, 0.1)",
+            ? "0 0 0 1px rgba(17, 103, 216, 0.12)"
+            : "0 0 0 1px rgba(24, 23, 19, 0.04)",
         },
         "& > *": {
           position: "relative",

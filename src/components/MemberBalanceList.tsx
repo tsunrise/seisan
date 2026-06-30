@@ -1,6 +1,7 @@
 import { Stack, Typography } from "@mui/material";
 
 import type * as api from "../api";
+import { ledgerColors } from "../theme";
 import { Amount } from "./Amount";
 
 export function MemberBalanceList({
@@ -13,12 +14,23 @@ export function MemberBalanceList({
   const activeMembers = project.members.filter((member) => !member.deleted);
 
   return (
-    <Stack component="section" spacing={1}>
+    <Stack component="section" spacing={0}>
       {activeMembers.map((member) => (
         <Stack
           key={member.id}
           direction="row"
-          sx={{ alignItems: "center", justifyContent: "space-between", gap: 1.5, minWidth: 0 }}
+          sx={{
+            alignItems: "center",
+            borderBottom: `1px solid ${ledgerColors.line}`,
+            gap: 1.5,
+            justifyContent: "space-between",
+            minHeight: 38,
+            minWidth: 0,
+            py: 0.5,
+            "&:last-of-type": {
+              borderBottom: 0,
+            },
+          }}
         >
           <Typography
             sx={{

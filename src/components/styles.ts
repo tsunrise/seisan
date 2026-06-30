@@ -4,14 +4,14 @@ import { ledgerColors } from "../theme";
 
 export const paperFrameSx: SxProps<Theme> = {
   border: `1px solid ${ledgerColors.line}`,
-  borderRadius: 2.5,
+  borderRadius: 1,
   bgcolor: "background.paper",
-  boxShadow: `0 6px 18px ${ledgerColors.shadowInk}`,
+  boxShadow: "none",
 };
 
 export const panelFrameSx: SxProps<Theme> = {
   ...paperFrameSx,
-  p: 2.75,
+  p: { xs: 2.5, md: 3 },
 };
 
 export const pageCenterSx: SxProps<Theme> = {

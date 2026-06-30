@@ -1,5 +1,6 @@
 import UndoIcon from "@mui/icons-material/Undo";
 import {
+  Box,
   Button,
   Dialog,
   DialogActions,
@@ -7,7 +8,6 @@ import {
   DialogContentText,
   DialogTitle,
   Divider,
-  Paper,
   Stack,
   Typography,
 } from "@mui/material";
@@ -18,7 +18,6 @@ import * as api from "../api";
 import { getApiErrorMessage } from "../apiErrorMessages";
 import { MoneyTable } from "../components/MoneyTable";
 import { PanelFrame } from "../components/PanelFrame";
-import { panelFrameSx } from "../components/styles";
 import {
   formatRecordDetailTimestamp,
   memberName,
@@ -27,6 +26,7 @@ import {
   recordSubtitle,
 } from "../domain";
 import { useAppSnackbar } from "../hooks/useAppSnackbar";
+import { ledgerColors, ledgerFonts } from "../theme";
 
 export function RecordDetail({
   project,
@@ -77,15 +77,22 @@ export function RecordDetail({
 
   return (
     <PanelFrame title="Record detail" backTo={`/project/${project.id}`}>
-      <Paper component="article" sx={{ ...panelFrameSx, boxShadow: "none" }}>
-        <Stack spacing={2}>
+      <Box component="article">
+        <Stack spacing={2.25}>
           <Stack spacing={0.5}>
             <Typography color="text.secondary" sx={{ fontWeight: 650 }}>
               #{record.id}
             </Typography>
             <Typography
               component="h2"
-              sx={{ fontSize: "1.5rem", fontWeight: 700, lineHeight: 1.2, ...revertedTextSx }}
+              sx={{
+                fontFamily: ledgerFonts.serif,
+                fontSize: { xs: "2rem", md: "2.25rem" },
+                fontWeight: 500,
+                letterSpacing: "-0.035em",
+                lineHeight: 1.08,
+                ...revertedTextSx,
+              }}
             >
               {record.description.type === "revert" ? (
                 <>
@@ -116,7 +123,7 @@ export function RecordDetail({
           </Stack>
           {record.description.type !== "revert" ? (
             <>
-              <Divider />
+              <Divider sx={{ borderColor: ledgerColors.line }} />
               <MoneyTable
                 title="Balance change"
                 project={project}
@@ -127,13 +134,14 @@ export function RecordDetail({
           ) : null}
           {record.description.type === "expense" ? (
             <>
-              <Divider />
+              <Divider sx={{ borderColor: ledgerColors.line }} />
               <MoneyTable
                 title="Paid"
                 project={project}
                 map={record.description.paid}
                 amountColorMode="plain"
               />
+              <Divider sx={{ borderColor: ledgerColors.line }} />
               <MoneyTable
                 title="Liability"
                 project={project}
@@ -148,12 +156,13 @@ export function RecordDetail({
               startIcon={<UndoIcon />}
               disabled={reverting}
               onClick={() => setConfirmingRevert(true)}
+              fullWidth
             >
               Revert
             </Button>
           ) : null}
         </Stack>
-      </Paper>
+      </Box>
       <Dialog
         open={confirmingRevert}
         onClose={() => {

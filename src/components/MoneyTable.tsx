@@ -2,6 +2,7 @@ import { Stack, Typography } from "@mui/material";
 
 import type * as api from "../api";
 import { memberName } from "../domain";
+import { ledgerColors } from "../theme";
 import { Amount, type AmountColorMode } from "./Amount";
 
 export function MoneyTable({
@@ -23,15 +24,28 @@ export function MoneyTable({
   }
 
   return (
-    <Stack component="section" spacing={1} sx={{ mt: 2 }}>
-      <Typography variant="h3">{title}</Typography>
+    <Stack component="section" spacing={0.25} sx={{ mt: 0.5 }}>
+      <Typography variant="h3" sx={{ mb: 0.75 }}>
+        {title}
+      </Typography>
       {entries.map(([memberId, amount]) => (
         <Stack
           key={memberId}
           direction="row"
-          sx={{ alignItems: "center", justifyContent: "space-between" }}
+          sx={{
+            alignItems: "center",
+            borderBottom: `1px solid ${ledgerColors.line}`,
+            justifyContent: "space-between",
+            minHeight: 38,
+            py: 0.5,
+            "&:last-of-type": {
+              borderBottom: 0,
+            },
+          }}
         >
-          <Typography>{memberName(project.members, Number(memberId))}</Typography>
+          <Typography sx={{ color: "text.secondary", fontWeight: 500 }}>
+            {memberName(project.members, Number(memberId))}
+          </Typography>
           <Amount amount={amount} muted={muted} colorMode={amountColorMode} />
         </Stack>
       ))}

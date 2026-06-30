@@ -9,6 +9,7 @@ export type TimelineScrollRestore = {
 const TIMELINE_SCROLL_RESTORE_TTL_MS = 10 * 60 * 1000;
 export const LOAD_EARLIER_ROOT_MARGIN_PX = 220;
 export const MOBILE_BOTTOM_SCROLL_SPACE = "calc(128px + env(safe-area-inset-bottom))";
+export const TIMELINE_STICKY_TOP_VAR = "--project-timeline-sticky-top";
 
 const MOBILE_ACTION_GAP_PX = 20;
 
@@ -39,6 +40,29 @@ export function keepElementAboveMobileAction(element: HTMLElement): void {
   if (overlap > 0) {
     window.scrollTo({ top: window.scrollY + overlap, behavior: "auto" });
   }
+}
+
+export function observeTimelineStickyTop(root: HTMLElement): () => void {
+  const header = document.querySelector<HTMLElement>("[data-project-header]");
+
+  function setStickyTop() {
+    const headerHeight = header ? Math.ceil(header.getBoundingClientRect().height) : 0;
+    root.style.setProperty(TIMELINE_STICKY_TOP_VAR, `${headerHeight}px`);
+  }
+
+  setStickyTop();
+
+  if (!header || typeof ResizeObserver === "undefined") {
+    return () => root.style.removeProperty(TIMELINE_STICKY_TOP_VAR);
+  }
+
+  const observer = new ResizeObserver(setStickyTop);
+  observer.observe(header);
+
+  return () => {
+    observer.disconnect();
+    root.style.removeProperty(TIMELINE_STICKY_TOP_VAR);
+  };
 }
 
 export function readTimelineScroll(projectId: string): TimelineScrollRestore | null {

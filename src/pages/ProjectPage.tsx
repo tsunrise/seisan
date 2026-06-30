@@ -133,14 +133,14 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
       sx={{
         display: { xs: "block", md: "grid" },
         gridTemplateColumns: {
-          md: "minmax(0, 520px) minmax(300px, 400px)",
-          lg: "minmax(180px, 260px) minmax(0, 520px) minmax(300px, 400px)",
+          md: "minmax(0, 520px) minmax(280px, 340px)",
+          lg: "minmax(160px, 240px) minmax(0, 610px) minmax(280px, 360px)",
           xl: "minmax(220px, 300px) minmax(0, 680px) minmax(320px, 460px)",
         },
-        gap: { md: 2.25, lg: 3 },
+        gap: { md: 2.25, lg: 2 },
         justifyContent: { md: "center" },
         minHeight: "100svh",
-        px: { xs: 0, md: 3 },
+        px: { xs: 0, md: 2, xl: 3 },
         pt: 0,
         pb: 0,
       }}
@@ -177,6 +177,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
           isActive={timelineIsVisible}
           scrollToLatestKey={reloadKey}
           restoreScrollKey={panel === "timeline" ? location.key : ""}
+          selectedRecordId={panel === "recordDetail" ? recordId : null}
         />
         <Box
           data-project-mobile-action=""
@@ -229,9 +230,12 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
           alignSelf: "start",
           position: { xs: "static", md: "sticky" },
           top: { md: 24 },
+          maxHeight: { md: "calc(100svh - 48px)" },
           minHeight: { xs: showPanel ? "100svh" : "auto", md: "auto" },
           display: { xs: showPanel ? "block" : "none", md: "block" },
+          overflowY: { md: "auto" },
           p: { xs: showPanel ? 2.25 : 0, md: 0 },
+          scrollbarGutter: { md: "stable" },
         }}
       >
         {panel === "join" ? (

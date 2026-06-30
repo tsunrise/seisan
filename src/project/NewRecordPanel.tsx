@@ -109,7 +109,7 @@ function RecordTypeButton({
       sx={{
         alignItems: "center",
         border: `1px solid ${ledgerColors.line}`,
-        borderRadius: 2,
+        borderRadius: 1,
         display: "grid",
         gap: 1.5,
         gridTemplateColumns: "44px minmax(0, 1fr) 24px",
@@ -117,9 +117,11 @@ function RecordTypeButton({
         p: 1.5,
         textAlign: "left",
         width: "100%",
+        bgcolor: ledgerColors.paperSoft,
+        transition: "background-color 160ms ease, border-color 160ms ease",
         "&:hover": {
-          bgcolor: "rgba(232, 244, 255, 0.55)",
-          borderColor: "rgba(34, 33, 31, 0.42)",
+          bgcolor: "rgba(24, 23, 19, 0.035)",
+          borderColor: ledgerColors.lineStrong,
         },
         "&:focus-visible": {
           outline: `2px solid ${ledgerColors.blue}`,
@@ -130,9 +132,10 @@ function RecordTypeButton({
       <Stack
         sx={{
           alignItems: "center",
-          bgcolor: ledgerColors.blueSoft,
-          borderRadius: "50%",
-          color: ledgerColors.blue,
+          bgcolor: ledgerColors.paper,
+          border: `1px solid ${ledgerColors.line}`,
+          borderRadius: 1,
+          color: ledgerColors.ink,
           height: 44,
           justifyContent: "center",
           width: 44,

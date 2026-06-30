@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 import { panelFrameSx } from "./styles";
+import { ledgerColors } from "../theme";
 
 export function PanelFrame({
   title,
@@ -26,7 +27,14 @@ export function PanelFrame({
             color="inherit"
             startIcon={<ArrowBackIcon />}
             onClick={onBack}
-            sx={{ alignSelf: "flex-start", px: 0 }}
+            sx={{
+              alignSelf: "flex-start",
+              color: ledgerColors.ink,
+              fontSize: 18,
+              fontWeight: 760,
+              minHeight: 36,
+              px: 0,
+            }}
           >
             {title}
           </Button>
@@ -37,7 +45,14 @@ export function PanelFrame({
             variant="text"
             color="inherit"
             startIcon={<ArrowBackIcon />}
-            sx={{ alignSelf: "flex-start", px: 0 }}
+            sx={{
+              alignSelf: "flex-start",
+              color: ledgerColors.ink,
+              fontSize: 18,
+              fontWeight: 760,
+              minHeight: 36,
+              px: 0,
+            }}
           >
             {title}
           </Button>

@@ -1,5 +1,5 @@
 import AddIcon from "@mui/icons-material/Add";
-import { Box, Button, MenuItem, Stack, TextField } from "@mui/material";
+import { Button, MenuItem, Stack, TextField } from "@mui/material";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
@@ -12,6 +12,7 @@ import { PanelFrame } from "../components/PanelFrame";
 import { activeMembers, deriveDelta, parseCents } from "../domain";
 import { useAppSnackbar } from "../hooks/useAppSnackbar";
 import { RecordFormBridge } from "./RecordFormBridge";
+import { RecordSentenceField, RecordSentenceRow } from "./RecordSentenceRow";
 
 export function PromiseComposer({
   project,
@@ -66,63 +67,55 @@ export function PromiseComposer({
   return (
     <PanelFrame title="New promise" backTo={`/project/${project.id}/records/new`} onBack={onBack}>
       <Stack component="form" spacing={2} onSubmit={submit}>
-        <Box
-          sx={{
-            display: "grid",
-            gap: { xs: 0.75, sm: 1 },
-            gridTemplateColumns: { xs: "1fr", sm: "minmax(0, 1fr) auto minmax(0, 1fr)" },
-            alignItems: "center",
-          }}
-        >
-          <TextField
-            select
-            label="Debtor"
-            value={String(debtorMemberId)}
-            onChange={(event) => setDebtorMemberId(Number(event.target.value))}
-          >
-            {members.map((member) => (
-              <MenuItem key={member.id} value={String(member.id)}>
-                {member.name}
-              </MenuItem>
-            ))}
-          </TextField>
+        <RecordSentenceRow>
+          <RecordSentenceField minWidth={148}>
+            <TextField
+              select
+              label="Debtor"
+              value={String(debtorMemberId)}
+              onChange={(event) => setDebtorMemberId(Number(event.target.value))}
+            >
+              {members.map((member) => (
+                <MenuItem key={member.id} value={String(member.id)}>
+                  {member.name}
+                </MenuItem>
+              ))}
+            </TextField>
+          </RecordSentenceField>
           <RecordFormBridge>should pay</RecordFormBridge>
-          <TextField
-            select
-            label="Creditor"
-            value={String(creditorMemberId)}
-            onChange={(event) => setCreditorMemberId(Number(event.target.value))}
-          >
-            {members.map((member) => (
-              <MenuItem key={member.id} value={String(member.id)}>
-                {member.name}
-              </MenuItem>
-            ))}
-          </TextField>
-        </Box>
-        <TextField
-          label="Amount"
-          inputMode="decimal"
-          value={amount}
-          onChange={(event) => setAmount(event.target.value)}
-          placeholder="12.34"
-          required
-        />
-        <Box
-          sx={{
-            display: "grid",
-            gap: { xs: 0.75, sm: 1 },
-            gridTemplateColumns: { xs: "1fr", sm: "auto minmax(0, 1fr)" },
-            alignItems: "center",
-          }}
-        >
+          <RecordSentenceField minWidth={148}>
+            <TextField
+              select
+              label="Creditor"
+              value={String(creditorMemberId)}
+              onChange={(event) => setCreditorMemberId(Number(event.target.value))}
+            >
+              {members.map((member) => (
+                <MenuItem key={member.id} value={String(member.id)}>
+                  {member.name}
+                </MenuItem>
+              ))}
+            </TextField>
+          </RecordSentenceField>
+          <RecordSentenceField minWidth={120}>
+            <TextField
+              label="Amount"
+              inputMode="decimal"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              placeholder="12.34"
+              required
+            />
+          </RecordSentenceField>
           <RecordFormBridge>for</RecordFormBridge>
-          <TextField
-            label="Reason"
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-          />
-        </Box>
+          <RecordSentenceField grow minWidth={180}>
+            <TextField
+              label="Reason"
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </RecordSentenceField>
+        </RecordSentenceRow>
         <MoneyTable title="Preview" project={project} map={delta} />
         {error ? <InlineAlert>{error}</InlineAlert> : null}
         <Button type="submit" variant="contained" startIcon={<AddIcon />}>
