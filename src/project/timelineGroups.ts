@@ -3,7 +3,13 @@ import type * as api from "../api";
 export type TimelineDayGroup = {
   key: string;
   label: string;
+  labelParts: TimelineDayLabelParts;
   records: api.ProjectRecord[];
+};
+
+export type TimelineDayLabelParts = {
+  dateCode: string;
+  year: string;
 };
 
 const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
@@ -32,6 +38,14 @@ export function formatRecordDayLabel(timestamp: number): string {
   return `${WEEKDAYS[date.getDay()]}, ${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
 }
 
+export function formatRecordDayLabelParts(timestamp: number): TimelineDayLabelParts {
+  const date = new Date(timestamp);
+  return {
+    dateCode: `${pad2(date.getMonth() + 1)}${pad2(date.getDate())}`,
+    year: String(date.getFullYear()),
+  };
+}
+
 export function groupRecordsByDay(records: api.ProjectRecord[]): TimelineDayGroup[] {
   const groups: TimelineDayGroup[] = [];
   for (const record of records) {
@@ -40,7 +54,12 @@ export function groupRecordsByDay(records: api.ProjectRecord[]): TimelineDayGrou
     if (lastGroup?.key === key) {
       lastGroup.records.push(record);
     } else {
-      groups.push({ key, label: formatRecordDayLabel(record.createdAt), records: [record] });
+      groups.push({
+        key,
+        label: formatRecordDayLabel(record.createdAt),
+        labelParts: formatRecordDayLabelParts(record.createdAt),
+        records: [record],
+      });
     }
   }
   return groups;

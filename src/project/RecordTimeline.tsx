@@ -7,6 +7,7 @@ import { panelFrameSx } from "../components/styles";
 import { ledgerColors, ledgerFonts } from "../theme";
 import { RecordCard, RevertRecordMessage } from "./RecordCard";
 import { groupRecordsByDay } from "./timelineGroups";
+import { timelineLayout } from "./timelineLayout";
 import {
   clearTimelineScroll,
   keepElementAboveMobileAction,
@@ -274,49 +275,101 @@ export function RecordTimeline({
           </Stack>
         ) : null}
       </Box>
-      <Box sx={{ display: "grid", gap: 0 }}>
-        {dayGroups.map((group) => (
+      <Box
+        sx={{
+          position: "relative",
+          display: "grid",
+          gap: 0,
+          "&::before": {
+            content: '""',
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: timelineLayout.railLeft,
+            width: "1px",
+            bgcolor: ledgerColors.line,
+            pointerEvents: "none",
+            transform: "translateX(-0.5px)",
+          },
+        }}
+      >
+        {dayGroups.map((group, groupIndex) => (
           <Box
             key={group.key}
             component="section"
             sx={{
               display: "grid",
-              gridTemplateColumns: {
-                xs: "40px minmax(0, 1fr)",
-                md: "50px minmax(0, 1fr)",
-                lg: "62px minmax(0, 1fr)",
-              },
-              columnGap: { xs: 0.75, md: 1.25 },
+              gridTemplateColumns: timelineLayout.dateColumns,
+              columnGap: timelineLayout.dateColumnGap,
               position: "relative",
             }}
           >
-            <Box sx={{ position: "relative", minWidth: 0 }}>
-              <Typography
+            <Box
+              sx={{
+                position: "relative",
+                alignSelf: "stretch",
+                contain: "size",
+                minHeight: 0,
+                minWidth: 0,
+                pointerEvents: "none",
+              }}
+            >
+              <Box
+                aria-label={group.label}
+                data-timeline-day-label={group.key}
                 sx={{
                   position: "sticky",
-                  top: `var(${TIMELINE_STICKY_TOP_VAR}, 0px)`,
+                  top: {
+                    xs: `calc(var(${TIMELINE_STICKY_TOP_VAR}, 0px) + ${timelineLayout.dateLabelStickyGapPx.xs}px)`,
+                    md: `calc(var(${TIMELINE_STICKY_TOP_VAR}, 0px) + ${timelineLayout.dateLabelStickyGapPx.md}px)`,
+                  },
                   zIndex: 2,
-                  pt: { xs: 2, md: 2.75 },
-                  color: "text.secondary",
-                  fontFamily: ledgerFonts.mono,
-                  fontSize: { xs: 10.5, md: 11 },
-                  fontWeight: 700,
-                  letterSpacing: "0.08em",
-                  lineHeight: 1,
-                  textAlign: "center",
-                  textTransform: "uppercase",
-                  transform: "rotate(180deg)",
-                  writingMode: "vertical-rl",
+                  display: "grid",
+                  justifyItems: "center",
+                  alignContent: "center",
+                  rowGap: "3px",
+                  width: { xs: 34, md: 38, lg: 42 },
+                  minHeight: { xs: 30, md: 32 },
                   mx: "auto",
-                  maxHeight: `calc(100svh - var(${TIMELINE_STICKY_TOP_VAR}, 0px) - 24px)`,
-                  overflow: "hidden",
+                  py: { xs: 0.375, md: 0.375 },
+                  color: "text.secondary",
                   bgcolor: ledgerColors.paper,
+                  fontVariantNumeric: "tabular-nums",
+                  textAlign: "center",
                 }}
               >
-                {group.label}
-              </Typography>
+                <Typography
+                  component="span"
+                  sx={{
+                    color: "text.secondary",
+                    fontFamily: ledgerFonts.mono,
+                    fontSize: { xs: 9, md: 9.5 },
+                    fontWeight: 650,
+                    letterSpacing: "0.08em",
+                    lineHeight: 1,
+                    opacity: 0.86,
+                  }}
+                >
+                  {group.labelParts.dateCode}
+                </Typography>
+                <Typography
+                  component="span"
+                  sx={{
+                    color: "text.secondary",
+                    fontFamily: ledgerFonts.mono,
+                    fontSize: { xs: 9, md: 9.5 },
+                    fontWeight: 600,
+                    letterSpacing: "0.06em",
+                    lineHeight: 1,
+                    opacity: 0.58,
+                  }}
+                >
+                  {group.labelParts.year}
+                </Typography>
+              </Box>
             </Box>
-            <Box sx={{ minWidth: 0 }}>
+            <Box sx={{ position: "relative", minWidth: 0 }}>
+              {groupIndex > 0 ? <DateBoundarySeparator /> : null}
               {group.records.map((record) => {
                 const isLastRecord = record.id === lastRecordId;
                 const selected = selectedRecordId === record.id;
@@ -364,6 +417,34 @@ export function RecordTimeline({
           </Box>
         ))}
       </Box>
+    </Box>
+  );
+}
+
+function DateBoundarySeparator() {
+  return (
+    <Box
+      aria-hidden="true"
+      data-timeline-date-separator="true"
+      sx={{
+        position: "absolute",
+        top: 0,
+        right: 0,
+        left: 0,
+        zIndex: 1,
+        display: "grid",
+        gridTemplateColumns: timelineLayout.markerColumns,
+        columnGap: timelineLayout.markerGap,
+        pointerEvents: "none",
+      }}
+    >
+      <Box />
+      <Box
+        sx={{
+          height: "1px",
+          bgcolor: timelineLayout.dateBoundarySeparatorColor,
+        }}
+      />
     </Box>
   );
 }

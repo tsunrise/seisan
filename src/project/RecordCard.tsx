@@ -7,6 +7,7 @@ import { Amount } from "../components/Amount";
 import { formatRelativeTime, memberName, recordTitle } from "../domain";
 import { ledgerColors } from "../theme";
 import { initials } from "../utils";
+import { timelineLayout } from "./timelineLayout";
 import { recordActorMemberId } from "./recordActor";
 
 export function RecordCard({
@@ -22,14 +23,19 @@ export function RecordCard({
   selected?: boolean;
   onOpen?: (recordId: number) => void;
 }) {
-  const actor = project.members.find((member) => member.id === recordActorMemberId(record));
+  const actorMemberId = recordActorMemberId(record);
+  const actor = project.members.find((member) => member.id === actorMemberId);
   const author = project.members.find((member) => member.id === record.authorMemberId);
   const subjectIsCurrentMember = actor?.id === currentMember?.id;
   const viewerDelta = currentMember ? (record.delta[String(currentMember.id)] ?? 0) : null;
   const isReverted = record.reverted !== undefined;
-  const metadataText = `${formatRelativeTime(record.createdAt)}, posted by ${
-    author?.name ?? "Unknown member"
-  }`;
+  const hasViewerAmount = viewerDelta !== null && viewerDelta !== 0;
+  const compact = !isReverted && !hasViewerAmount;
+  const relativeTime = formatRelativeTime(record.createdAt);
+  const metadataText =
+    record.authorMemberId === actorMemberId
+      ? relativeTime
+      : `${relativeTime}, posted by ${author?.name ?? "Unknown member"}`;
   const revertedTextSx = isReverted
     ? {
         color: ledgerColors.muted,
@@ -42,6 +48,7 @@ export function RecordCard({
     <TimelineRecordShell
       marker={initials(actor?.name ?? "?")}
       markerActive={subjectIsCurrentMember || selected}
+      compact={compact}
     >
       <Paper
         component={Link}
@@ -54,19 +61,20 @@ export function RecordCard({
           display: "grid",
           gridTemplateColumns: { xs: "minmax(0, 1fr)", sm: "minmax(0, 1fr) auto" },
           columnGap: 2,
-          rowGap: 1,
-          minHeight: { xs: 126, md: 136 },
-          px: { xs: 1.75, md: 2.25 },
-          py: { xs: 2, md: 2.35 },
+          rowGap: 0.75,
+          minHeight: compact
+            ? timelineLayout.recordCompactMinHeight
+            : timelineLayout.recordMinHeight,
+          px: timelineLayout.recordPaddingX,
+          py: timelineLayout.recordPaddingY,
           border: `1px solid ${selected ? "rgba(17, 103, 216, 0.15)" : "transparent"}`,
           borderLeft: selected ? `3px solid ${ledgerColors.blue}` : "1px solid transparent",
-          borderBottomColor: ledgerColors.line,
           bgcolor: selected ? "rgba(238, 246, 255, 0.72)" : "transparent",
           boxShadow: "none",
           color: "inherit",
           cursor: "pointer",
           textDecoration: "none",
-          transition: "background-color 160ms ease, border-color 160ms ease, transform 160ms ease",
+          transition: timelineLayout.transition,
           "&::before": selected
             ? {
                 content: '""',
@@ -95,7 +103,6 @@ export function RecordCard({
           "&:hover": {
             bgcolor: selected ? "rgba(238, 246, 255, 0.92)" : "rgba(24, 23, 19, 0.025)",
             borderColor: selected ? "rgba(17, 103, 216, 0.22)" : "rgba(24, 23, 19, 0.04)",
-            borderBottomColor: ledgerColors.line,
           },
           "&:focus-visible": {
             outline: `2px solid ${ledgerColors.blue}`,
@@ -103,7 +110,7 @@ export function RecordCard({
           },
         }}
       >
-        <Stack spacing={0.75} sx={{ minWidth: 0 }}>
+        <Stack spacing={0.65} sx={{ minWidth: 0 }}>
           <Stack
             direction="row"
             sx={{
@@ -180,7 +187,7 @@ export function RecordCard({
             alignItems: { xs: "flex-start", sm: "flex-end" },
             justifyContent: "space-between",
             gap: 1,
-            minWidth: { sm: 96 },
+            minWidth: timelineLayout.rightMetaWidth,
           }}
         >
           <Typography
@@ -193,9 +200,7 @@ export function RecordCard({
           >
             #{record.id}
           </Typography>
-          {viewerDelta !== null && viewerDelta !== 0 ? (
-            <Amount amount={viewerDelta} muted={isReverted} />
-          ) : null}
+          {hasViewerAmount ? <Amount amount={viewerDelta} muted={isReverted} /> : null}
         </Stack>
       </Paper>
     </TimelineRecordShell>
@@ -238,19 +243,18 @@ export function RevertRecordMessage({
           alignItems: "center",
           columnGap: { xs: 1.25, sm: 1.6 },
           rowGap: 0.35,
-          minHeight: { xs: 48, md: 50 },
-          my: { xs: 0.8, md: 1 },
-          px: { xs: 1.75, md: 2.25 },
-          py: 0.75,
+          minHeight: timelineLayout.systemCardMinHeight,
+          my: timelineLayout.systemCardMarginY,
+          px: timelineLayout.recordPaddingX,
+          py: 0.55,
           border: `1px solid ${selected ? "rgba(17, 103, 216, 0.15)" : "transparent"}`,
           borderLeft: selected ? `2px solid ${ledgerColors.blue}` : "1px solid transparent",
-          borderBottomColor: ledgerColors.line,
           bgcolor: selected ? "rgba(238, 246, 255, 0.72)" : "transparent",
           color: "inherit",
           boxShadow: "none",
           cursor: "pointer",
           textDecoration: "none",
-          transition: "background-color 160ms ease, border-color 160ms ease, transform 160ms ease",
+          transition: timelineLayout.transition,
           "&::before": selected
             ? {
                 content: '""',
@@ -279,7 +283,6 @@ export function RevertRecordMessage({
           "&:hover": {
             bgcolor: selected ? "rgba(238, 246, 255, 0.92)" : "rgba(24, 23, 19, 0.025)",
             borderColor: selected ? "rgba(17, 103, 216, 0.22)" : "rgba(24, 23, 19, 0.04)",
-            borderBottomColor: ledgerColors.line,
           },
           "&:focus-visible": {
             outline: `2px solid ${ledgerColors.blue}`,
@@ -331,7 +334,7 @@ export function RevertRecordMessage({
             color: "text.secondary",
             fontSize: 13,
             fontWeight: 500,
-            minWidth: { sm: 96 },
+            minWidth: timelineLayout.rightMetaWidth,
             textAlign: "right",
           }}
         >
@@ -345,10 +348,12 @@ export function RevertRecordMessage({
 function TimelineRecordShell({
   marker,
   markerActive,
+  compact,
   children,
 }: {
   marker: string;
   markerActive: boolean;
+  compact: boolean;
   children: ReactNode;
 }) {
   return (
@@ -356,13 +361,9 @@ function TimelineRecordShell({
       sx={{
         position: "relative",
         display: "grid",
-        gridTemplateColumns: {
-          xs: "40px minmax(0, 1fr)",
-          md: "46px minmax(0, 1fr)",
-          lg: "52px minmax(0, 1fr)",
-        },
-        columnGap: { xs: 1.25, md: 1.6 },
-        minHeight: { xs: 126, md: 136 },
+        gridTemplateColumns: timelineLayout.markerColumns,
+        columnGap: timelineLayout.markerGap,
+        minHeight: compact ? timelineLayout.recordCompactMinHeight : timelineLayout.recordMinHeight,
       }}
     >
       <Box
@@ -371,23 +372,14 @@ function TimelineRecordShell({
           position: "relative",
           display: "flex",
           justifyContent: "center",
-          "&::before": {
-            content: '""',
-            position: "absolute",
-            top: 0,
-            bottom: 0,
-            left: "50%",
-            borderLeft: `1px solid ${ledgerColors.line}`,
-            transform: "translateX(-0.5px)",
-          },
         }}
       >
         <Avatar
           sx={{
             zIndex: 1,
-            mt: { xs: 2, md: 2.75 },
-            width: { xs: 36, lg: 42 },
-            height: { xs: 36, lg: 42 },
+            mt: timelineLayout.recordMarkerOffset,
+            width: timelineLayout.recordMarkerSize,
+            height: timelineLayout.recordMarkerSize,
             border: `1px solid ${markerActive ? "rgba(17, 103, 216, 0.22)" : ledgerColors.line}`,
             bgcolor: markerActive ? ledgerColors.blueSoft : ledgerColors.paperSoft,
             color: ledgerColors.ink,
@@ -398,7 +390,7 @@ function TimelineRecordShell({
           {marker}
         </Avatar>
       </Box>
-      <Box sx={{ minWidth: 0 }}>{children}</Box>
+      <Box sx={{ position: "relative", minWidth: 0 }}>{children}</Box>
     </Box>
   );
 }
@@ -415,13 +407,9 @@ function TimelineSystemEventShell({
       sx={{
         position: "relative",
         display: "grid",
-        gridTemplateColumns: {
-          xs: "40px minmax(0, 1fr)",
-          md: "46px minmax(0, 1fr)",
-          lg: "52px minmax(0, 1fr)",
-        },
-        columnGap: { xs: 1.25, md: 1.6 },
-        minHeight: { xs: 62, md: 66 },
+        gridTemplateColumns: timelineLayout.markerColumns,
+        columnGap: timelineLayout.markerGap,
+        minHeight: timelineLayout.systemMinHeight,
       }}
     >
       <Box
@@ -430,23 +418,14 @@ function TimelineSystemEventShell({
           position: "relative",
           display: "flex",
           justifyContent: "center",
-          "&::before": {
-            content: '""',
-            position: "absolute",
-            top: 0,
-            bottom: 0,
-            left: "50%",
-            borderLeft: `1px solid ${ledgerColors.line}`,
-            transform: "translateX(-0.5px)",
-          },
         }}
       >
         <Box
           sx={{
             zIndex: 1,
-            mt: { xs: 2.35, md: 2.6 },
-            width: { xs: 14, md: 15 },
-            height: { xs: 14, md: 15 },
+            mt: timelineLayout.systemMarkerOffset,
+            width: timelineLayout.systemMarkerSize,
+            height: timelineLayout.systemMarkerSize,
             borderRadius: "50%",
             border: `1px solid ${selected ? "rgba(17, 103, 216, 0.34)" : ledgerColors.line}`,
             bgcolor: selected ? ledgerColors.blueSoft : ledgerColors.paper,

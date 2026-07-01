@@ -31,7 +31,7 @@ Use a warm monochrome base:
 
 - Backgrounds should read as paper, not app chrome. Prefer `ledgerColors.paper`, `ledgerColors.paperSoft`, and white-adjacent surfaces.
 - Dividers should be thin and low contrast. Prefer `ledgerColors.line`; use stronger borders only for selected or focused states.
-- Use dividers to separate sections and major rows, not individual members inside balance/member lists.
+- Use dividers to separate sections, panels, and day boundaries in the timeline, not every minor event or individual members inside balance/member lists.
 - Blue is reserved for selection, focus, current-member emphasis, and active navigation. Do not introduce new accent colors for ordinary decoration.
 - Shadows should be absent or extremely soft. Prefer dividers and spacing over elevation.
 - Corners stay restrained: generally 4-8px. Avoid large rounded cards and pill-like primary surfaces.
@@ -70,22 +70,32 @@ The project timeline is the primary visual language.
 Records render oldest-to-newest. Each loaded day is a group:
 
 - Left column: sticky vertical day label.
-- Middle rail: thin vertical rule and avatar or system node.
+- Middle rail: one continuous thin vertical rule with avatars or system nodes overlaid.
 - Content column: clickable record content only.
 
 Date timeline rules:
 
 - Group by browser-local calendar day.
 - Place the day label at the first loaded record of that day.
+- Render date labels as compact numeric metadata: `MMDD` over `YYYY`. Do not use long rotated date strings or display-style day numbers on the rail.
+- Keep the date rail horizontally compact on desktop; it should be just wide enough for the numeric label and a small buffer before the marker rail.
 - Make the day label sticky below the project header while any part of that day remains visible.
+- Leave a small breathing gap between a stuck date label and the upper sticky/header line.
 - Let the label release at the day-group boundary.
+- Date labels should push one another at day boundaries. A later day label should move the previous sticky label upward rather than overlaying its lower text.
+- Keep the date column size-contained so a tall vertical label does not create extra blank space before the next day.
 - Keep sticky top measurement in `src/project/timelineScroll.ts`; do not add scroll listeners in render components.
 
 Full record rows:
 
-- Flat ledger rows with thin bottom dividers, not chat bubbles.
+- Flat ledger rows separated by rail rhythm, whitespace, and date-boundary separators, not chat bubbles or dense per-item dividers.
 - Actor name, title, relative metadata, record number, and viewer amount should align predictably.
+- Avatar centers should align optically with the first title line, not the actor label or full row center.
+- Keep minimum row height compact enough that whitespace feels intentional: roughly 112px on mobile/tablet and 120px on desktop for ordinary one-line records, with mobile rows allowed to grow when amount metadata stacks.
+- Records without a visible viewer amount can use a tighter minimum height, because there is no lower-right amount anchoring the row.
+- Use a faint separator only at day boundaries, aligned to the content column between adjacent records from different dates. Do not draw same-day row dividers.
 - Only the row content link is clickable. The empty rail/lane must not be clickable.
+- Render the gray timeline rail as one continuous parent line, not separate row-level line segments.
 - Selected rows use pale blue background, a subtle blue left border, and the desktop connector toward the detail panel.
 - Reverted source records remain visible with struck-through title, metadata, and amount, plus a small reverted note.
 
@@ -94,14 +104,16 @@ Minor system events:
 - Use for revert records and similar low-weight history events.
 - Keep them compact, but align their right-side record number with full record rows.
 - Use a small hollow timeline node rather than a full avatar.
-- Use one quiet row with a thin divider, not a chip, toast, or full record card.
+- Center the hollow node on the system message baseline and keep the row visually lighter than a full record.
+- Use one quiet row aligned to the rail, not a chip, toast, full record card, or divider-bearing row.
+- Do not draw separator lines between consecutive minor system events.
 - Keep them keyboard-focusable and accessible through the same record link behavior.
 
 ## Dates, Money, And Copy
 
 Use shared domain helpers from `src/domain.ts`.
 
-- Timeline and list surfaces use relative time such as `8 minutes ago`, `3 hours ago`, `27 days ago`, `2 months ago`.
+- Timeline and list surfaces use relative time such as `8 minutes ago`, `3 hours ago`, `27 days ago`, `2 months ago`; day, month, and year counts are based on local calendar boundaries.
 - Detail panels use exact timestamps for auditability.
 - Money formatting must go through `formatCents` and existing amount components.
 - Member balance lists and money tables should use compact row spacing, whitespace, and alignment instead of divider lines between members.
@@ -155,6 +167,7 @@ Avoid these unless explicitly approved:
 - New color accents that compete with the selection blue.
 - Rounded pill cards for primary surfaces.
 - Cards inside cards.
+- Dense dividers on every timeline item, especially inside runs of minor system events.
 - Hand-rolled formatting for money, dates, record titles, or member names.
 - Making the empty timeline lane clickable.
 - Duplicating scroll restoration or mobile CTA clearance logic outside `timelineScroll.ts`.

@@ -1,5 +1,7 @@
 import type { MoneyByMemberId, ProjectMember, ProjectRecord, RecordDescription } from "./api";
 
+export { formatRelativeTime } from "./relativeTime";
+
 export type AmountTone = "owe" | "owed" | "settled";
 
 export function formatCents(amount: number): string {
@@ -11,39 +13,6 @@ export function formatCents(amount: number): string {
     return `(${formatted})`;
   }
   return formatted;
-}
-
-export function formatRelativeTime(timestamp: number, now = Date.now()): string {
-  const elapsedSeconds = Math.max(0, Math.floor((now - timestamp) / 1000));
-  if (elapsedSeconds < 5) {
-    return "just now";
-  }
-  if (elapsedSeconds < 60) {
-    return `${elapsedSeconds} seconds ago`;
-  }
-
-  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
-  if (elapsedMinutes < 60) {
-    return `${elapsedMinutes} ${elapsedMinutes === 1 ? "minute" : "minutes"} ago`;
-  }
-
-  const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) {
-    return `${elapsedHours} ${elapsedHours === 1 ? "hour" : "hours"} ago`;
-  }
-
-  const elapsedDays = Math.floor(elapsedHours / 24);
-  if (elapsedDays < 30) {
-    return `${elapsedDays} ${elapsedDays === 1 ? "day" : "days"} ago`;
-  }
-
-  if (elapsedDays < 365) {
-    const elapsedMonths = Math.floor(elapsedDays / 30);
-    return `${elapsedMonths} ${elapsedMonths === 1 ? "month" : "months"} ago`;
-  }
-
-  const elapsedYears = Math.floor(elapsedDays / 365);
-  return `${elapsedYears} ${elapsedYears === 1 ? "year" : "years"} ago`;
 }
 
 export function formatRecordTimestamp(timestamp: number, now = Date.now()): string {
