@@ -9,6 +9,7 @@ import { BrandLink } from "../components/BrandLink";
 import { InlineAlert } from "../components/InlineAlert";
 import { pageCenterSx, panelFrameSx } from "../components/styles";
 import { useAppSnackbar } from "../hooks/useAppSnackbar";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { Turnstile } from "../components/Turnstile";
 import { getLoginTurnstileSiteKey, shouldUseLoginTurnstile } from "../turnstile";
 
@@ -28,6 +29,8 @@ export function LoginPage() {
   const returnTo = searchParams.get("returnTo") ?? "/projects";
   const requiresTurnstile = shouldUseLoginTurnstile();
   const turnstileSiteKey = getLoginTurnstileSiteKey();
+
+  useDocumentTitle("Login - Seisan");
 
   useEffect(() => {
     if (step === "code") {
@@ -94,7 +97,7 @@ export function LoginPage() {
             <Typography color="text.secondary">
               {step === "email"
                 ? "Sign in or create your account."
-                : `We sent a six digit code to ${email}.`}
+                : `We sent a six-digit code to ${email}.`}
             </Typography>
             {step === "email" ? (
               <>
@@ -151,9 +154,12 @@ export function LoginPage() {
           </Stack>
         </Paper>
         <Paper square sx={{ ...panelFrameSx, p: 2 }}>
-          <Typography sx={{ fontWeight: 700 }}>Split expenses with anyone.</Typography>
+          <Typography sx={{ fontWeight: 700 }}>An expense calculator that just works.</Typography>
           <Typography color="text.secondary" sx={{ mt: 0.5, fontSize: 14 }}>
-            Seisan is a free tool for shared trips, meals, and everyday group spending.
+            Seisan tracks group expenses and balances so everyone knows who paid and who owes.
+          </Typography>
+          <Typography color="text.secondary" sx={{ mt: 1, fontSize: 13, fontStyle: "italic" }}>
+            No paid upgrade. No daily posting cap. All free.
           </Typography>
         </Paper>
       </Stack>

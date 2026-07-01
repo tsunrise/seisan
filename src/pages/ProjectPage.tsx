@@ -209,7 +209,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
               fullWidth
               sx={{ minHeight: 56 }}
             >
-              Join to post
+              Join Project 
             </Button>
           ) : (
             <Button
@@ -219,7 +219,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
               fullWidth
               sx={{ minHeight: 56 }}
             >
-              Join to post
+              Join Project
             </Button>
           )}
         </Box>
