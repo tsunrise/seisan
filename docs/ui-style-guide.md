@@ -22,6 +22,7 @@ Use these implementation files as the design source of truth:
 - `src/project/RecordTimeline.tsx`: day-group timeline composition.
 - `src/project/RecordCard.tsx`: full record rows and minor system events.
 - `src/project/RecordSentenceRow.tsx`: sentence-style composer layout.
+- `src/project/timelineLayout.ts`: date/marker column widths, rail position, row heights, marker offsets, and transition constants.
 - `src/project/timelineScroll.ts`: scroll restoration, sticky header offset, fixed mobile CTA clearance.
 - `src/project/timelineGroups.ts`: local-day grouping and day labels.
 

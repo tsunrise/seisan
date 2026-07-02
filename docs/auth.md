@@ -26,13 +26,36 @@ Flow:
 
 Session tokens are signed with `AUTH_SECRET`. Session revocation uses KV and is eventually consistent in the same way as other KV-backed checks.
 
-Cookie-only operations:
+Routes that do not authenticate with API keys:
 
 - `/api/login/*`
 - `/api/logout`
 - `/api/api-keys*`
 
-These routes must not accept API keys. API-key management is intentionally session-only so an API key cannot create, list, revoke, or roll API keys.
+These routes must not accept API keys. Login routes are public auth-creation routes; logout and API-key management require session cookies. API-key management is intentionally session-only so an API key cannot create, list, revoke, or roll API keys.
+
+## Login Attempts And Turnstile
+
+Public auth endpoints live under `/api/login/*`.
+
+Login attempt rules:
+
+- Login attempt validation uses zod in `worker/auth.ts`.
+- Login attempts return an opaque attempt ID.
+- Verification must include the attempt ID, email, and code.
+- Keep login cooldown and failed-attempt state in `LoginAttemptStore`.
+- Do not delete attempts on failed verification in a way that bypasses cooldowns.
+- Login registration is not email-allowlisted. Any syntactically valid email may request a code.
+
+Turnstile rules:
+
+- In deployed or otherwise non-local login attempts, the server must verify Turnstile before sending or storing a login code.
+- In local dev, fixed-code login may bypass Turnstile only when `isLocalDevLogin()` accepts the localhost-style request.
+- The frontend decides whether to render Turnstile with `import.meta.env.DEV`; do not use hostname checks in frontend code for that behavior.
+
+Local fixed-code login is controlled by `LOCAL_DEV_LOGIN_CODE` and must only work for localhost-style requests.
+
+For local fixed-code login, `/api/login/attempt` returns an attempt ID without storing an attempt or sending email. Local `/api/login/verify` accepts the configured fixed code without consulting `LoginAttemptStore`.
 
 ## API Keys
 
@@ -90,12 +113,17 @@ Normal application API routes accept either bearer API-key auth or browser sessi
 
 API-key revocation updates the source-of-truth row and republishes the KV verifier value with `revokedAt`. Revocation is eventually consistent globally because verifier reads are served from KV cache, but should converge within the configured KV cache window.
 
+Keep auth identity in Hono context as `identity`. `requireAuth` requires a valid authenticated identity; `optionalAuth` permits unauthenticated public project reads when no bearer credential is supplied. See `docs/api-serving.md` for route middleware behavior.
+
+Admin routes under `/api/admin/*` use Cloudflare Access in deployed environments and a localhost bypass in local development. They do not use browser session or API-key auth.
+
 ## OpenAPI
 
 `public/openapi.json` is API-key-client oriented:
 
 - It documents only bearer auth via `apiKeyBearer`.
 - It must not mention the session cookie or `__Host-seisan_session`.
-- Cookie-only identity and API-key-management routes are excluded from the generated spec.
+- `/api/whoami` is included as a bearer-auth endpoint even though the implementation also accepts session cookies.
+- Admin routes, login/logout routes, and API-key-management routes are excluded from the generated spec.
 
 When auth route behavior, auth schemas, auth bindings, or generated OpenAPI security schemes change, update this document and regenerate `public/openapi.json`.
