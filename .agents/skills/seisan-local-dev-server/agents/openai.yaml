@@ -1,4 +1,0 @@
-interface:
-  display_name: "Seisan Local Dev Server"
-  short_description: "Run Seisan with clean Wrangler state"
-  default_prompt: "Use $seisan-local-dev-server to run a clean local Seisan dev server and restore Wrangler state afterward."

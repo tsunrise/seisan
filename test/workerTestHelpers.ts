@@ -7,6 +7,7 @@ import {
 } from "cloudflare:test";
 import { expect, vi } from "vitest";
 
+import { CATEGORY_POC_STORE_NAME } from "../worker/categoryPoc";
 import { SESSION_COOKIE_NAME } from "../worker/constants";
 import { signSessionToken } from "../worker/crypto";
 import { LIMITS_STORE_NAME, LimitsKvStore, type LimitsDocument } from "../worker/limits";
@@ -95,6 +96,12 @@ export async function cleanupWorkerTestState(): Promise<void> {
     env.LIMITS_STORE.getByName(LIMITS_STORE_NAME),
     async (_instance, state) => {
       state.storage.sql.exec("DELETE FROM limits");
+    },
+  );
+  await runInDurableObject(
+    env.CATEGORY_POC_STORE.getByName(CATEGORY_POC_STORE_NAME),
+    async (_instance, state) => {
+      state.storage.sql.exec("DELETE FROM categories");
     },
   );
 }

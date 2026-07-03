@@ -15,6 +15,7 @@ Use this before changing Durable Object classes, storage schemas, migrations, or
 
 - `ProjectStore` owns project state, members, ACL data, records, and balances.
 - `ProjectsRegistry` owns public project ID to ProjectStore Durable Object ID mapping, project membership index rows, and cached project summaries for `/api/registry`.
+- Feature-specific Durable Object ownership for the category classification POC is documented in `docs/category-poc.md`.
 - `PROJECT_REGISTRY_CACHE` stores public project ID to `ProjectStore` Durable Object ID references. Project routes treat a KV hit as the fast path and a KV miss as a terminal 404; they only consult `ProjectsRegistry.lookupProject()` when the KV read is unavailable or the cached value is malformed. `ProjectsRegistry` writes and repairs those references.
 
 ## Project Summary Sync

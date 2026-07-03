@@ -12,6 +12,7 @@ import {
   type LimitsTarget,
 } from "../limits";
 import { PROJECTS_REGISTRY_NAME } from "../project";
+import { categoryPocApp } from "./categoryPoc";
 import type { AdminProjectSort } from "../do/ProjectsRegistry";
 
 type AdminAccessEnv = Env & {
@@ -25,6 +26,8 @@ const MAX_ADMIN_PAGE_LIMIT = 100;
 export const adminApp = new Hono<EnvWithIdentity>();
 
 adminApp.use("*", requireAdminAccess);
+
+adminApp.route("/category-poc", categoryPocApp);
 
 adminApp.get("/whoami", (context) => {
   return context.json({

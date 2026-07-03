@@ -3,19 +3,32 @@ import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
 import {
+  type ApiTargetEnv,
   ApiError,
+  type CategoryPocClassifyResponse,
+  CloudflareAccessTokenError,
   DEFAULT_API_BASE_URL,
+  DEV_API_BASE_URL,
   MissingSessionError,
+  PRODUCTION_API_BASE_URL,
   SeisanClient,
   UnauthorizedError,
 } from "./client.ts";
 
-type CommandName = "ping" | "whoami" | "logout";
+type CommandName =
+  | "ping"
+  | "whoami"
+  | "logout"
+  | "category-poc-list"
+  | "category-poc-add"
+  | "category-poc-remove"
+  | "category-poc-classify";
 
 interface Command {
   description: string;
   requiresAuth: boolean;
-  run(client: SeisanClient): Promise<void>;
+  usage?: string;
+  run(client: SeisanClient, args: string[]): Promise<void>;
 }
 
 const commands: Record<CommandName, Command> = {
@@ -42,10 +55,50 @@ const commands: Record<CommandName, Command> = {
       console.log("Logged out.");
     },
   },
+  "category-poc-add": {
+    description: "Admin: add a category classification category.",
+    requiresAuth: false,
+    usage: 'category-poc-add <name> [--description="..."]',
+    async run(client, args) {
+      const input = parseCategoryPocAddArgs(args);
+      printJson(await client.categoryPocAddCategory(input));
+    },
+  },
+  "category-poc-list": {
+    description: "Admin: list category classification categories.",
+    requiresAuth: false,
+    usage: "category-poc-list",
+    async run(client, args) {
+      if (args.length > 0) {
+        throw new CliError(`Unexpected argument: ${args[0]}`);
+      }
+      printJson(await client.categoryPocListCategories());
+    },
+  },
+  "category-poc-remove": {
+    description: "Admin: remove a category classification category by ID.",
+    requiresAuth: false,
+    usage: "category-poc-remove <category-id>",
+    async run(client, args) {
+      const id = parseSinglePositional(args, "category ID");
+      await client.categoryPocRemoveCategory(id);
+      console.log(`Removed category ${id}.`);
+    },
+  },
+  "category-poc-classify": {
+    description: "Admin: classify a transaction name against stored categories.",
+    requiresAuth: false,
+    usage: "category-poc-classify <transaction-name> [--top-k=5] [--verbose]",
+    async run(client, args) {
+      const { input, verbose } = parseCategoryPocClassifyArgs(args);
+      const result = await client.categoryPocClassify(input);
+      printJson(verbose ? result : formatCategoryPocClassifySummary(result));
+    },
+  },
 };
 
 async function main(argv: string[]): Promise<void> {
-  const { commandName, baseUrl, help } = parseArgs(argv);
+  const { commandName, commandArgs, targetEnv, help } = parseArgs(argv);
   if (help || !commandName) {
     printHelp();
     return;
@@ -56,46 +109,176 @@ async function main(argv: string[]): Promise<void> {
     throw new CliError(`Unknown command: ${commandName}`);
   }
 
-  const client = new SeisanClient({ baseUrl });
+  const client = new SeisanClient({ targetEnv });
   if (!command.requiresAuth) {
-    await command.run(client);
+    await command.run(client, commandArgs);
     return;
   }
 
   try {
-    await command.run(client);
+    await command.run(client, commandArgs);
   } catch (error) {
     if (!(error instanceof MissingSessionError) && !(error instanceof UnauthorizedError)) {
       throw error;
     }
 
     await loginInteractively(client);
-    await command.run(client);
+    await command.run(client, commandArgs);
   }
 }
 
 function parseArgs(argv: string[]): {
   commandName?: CommandName;
-  baseUrl: string;
+  commandArgs: string[];
+  targetEnv: ApiTargetEnv;
   help: boolean;
 } {
   let commandName: CommandName | undefined;
-  let baseUrl = process.env.SEISAN_API_URL ?? DEFAULT_API_BASE_URL;
+  const commandArgs: string[] = [];
+  let targetEnv: ApiTargetEnv = "local";
   let help = false;
 
-  for (const arg of argv) {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index] ?? "";
     if (arg === "-h" || arg === "--help") {
       help = true;
-    } else if (arg.startsWith("--base-url=")) {
-      baseUrl = arg.slice("--base-url=".length);
+    } else if (arg.startsWith("--env=")) {
+      targetEnv = parseTargetEnv(arg.slice("--env=".length));
+    } else if (arg === "--env") {
+      targetEnv = parseTargetEnv(readOptionValue(argv, index, "--env"));
+      index += 1;
+    } else if (
+      arg === "--base-url" ||
+      arg.startsWith("--base-url=") ||
+      arg === "--access-app-url" ||
+      arg.startsWith("--access-app-url=") ||
+      arg === "--access-token" ||
+      arg.startsWith("--access-token=")
+    ) {
+      throw new CliError(`${arg.split("=", 1)[0]} is no longer supported. Use --env instead.`);
     } else if (!commandName) {
       commandName = arg as CommandName;
+    } else {
+      commandArgs.push(arg);
+    }
+  }
+
+  return { commandName, commandArgs, targetEnv, help };
+}
+
+function parseTargetEnv(value: string): ApiTargetEnv {
+  if (value === "local" || value === "dev" || value === "production") {
+    return value;
+  }
+  throw new CliError("--env must be one of: local, dev, production.");
+}
+
+function parseCategoryPocAddArgs(args: string[]): { name: string; description?: string } {
+  let name: string | undefined;
+  let description: string | undefined;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index] ?? "";
+    if (arg.startsWith("--name=")) {
+      name = arg.slice("--name=".length);
+    } else if (arg === "--name") {
+      name = readOptionValue(args, index, "--name");
+      index += 1;
+    } else if (arg.startsWith("--description=")) {
+      description = arg.slice("--description=".length);
+    } else if (arg === "--description") {
+      description = readOptionValue(args, index, "--description");
+      index += 1;
+    } else if (!name) {
+      name = arg;
     } else {
       throw new CliError(`Unexpected argument: ${arg}`);
     }
   }
 
-  return { commandName, baseUrl, help };
+  return { name: requireNonEmpty(name, "category name"), description };
+}
+
+function parseCategoryPocClassifyArgs(args: string[]): {
+  input: { name: string; topK?: number };
+  verbose: boolean;
+} {
+  let name: string | undefined;
+  let topK: number | undefined;
+  let verbose = false;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index] ?? "";
+    if (arg.startsWith("--name=")) {
+      name = arg.slice("--name=".length);
+    } else if (arg === "--name") {
+      name = readOptionValue(args, index, "--name");
+      index += 1;
+    } else if (arg.startsWith("--top-k=")) {
+      topK = parseTopK(arg.slice("--top-k=".length));
+    } else if (arg === "--top-k") {
+      topK = parseTopK(readOptionValue(args, index, "--top-k"));
+      index += 1;
+    } else if (arg === "--verbose") {
+      verbose = true;
+    } else if (!name) {
+      name = arg;
+    } else {
+      throw new CliError(`Unexpected argument: ${arg}`);
+    }
+  }
+
+  return { input: { name: requireNonEmpty(name, "transaction name"), topK }, verbose };
+}
+
+function parseSinglePositional(args: string[], label: string): string {
+  if (args.length !== 1) {
+    throw new CliError(`Expected exactly one ${label}.`);
+  }
+  return requireNonEmpty(args[0], label);
+}
+
+function parseTopK(value: string): number {
+  const topK = Number(value);
+  if (!Number.isInteger(topK) || topK < 1 || topK > 20) {
+    throw new CliError("--top-k must be an integer between 1 and 20.");
+  }
+  return topK;
+}
+
+function readOptionValue(args: string[], index: number, optionName: string): string {
+  const value = args[index + 1];
+  if (!value) {
+    throw new CliError(`${optionName} requires a value.`);
+  }
+  return value;
+}
+
+function requireNonEmpty(value: string | undefined, label: string): string {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    throw new CliError(`${label} is required.`);
+  }
+  return trimmed;
+}
+
+function printJson(value: unknown): void {
+  console.log(JSON.stringify(value, null, 2));
+}
+
+function formatCategoryPocClassifySummary(result: CategoryPocClassifyResponse): {
+  category: string;
+  score: number;
+  candidates: Array<{ category: string; score: number }>;
+} {
+  return {
+    category: result.category.name,
+    score: result.score,
+    candidates: result.candidates.map((candidate) => ({
+      category: candidate.category.name,
+      score: candidate.score,
+    })),
+  };
 }
 
 async function loginInteractively(client: SeisanClient): Promise<void> {
@@ -122,16 +305,23 @@ async function loginInteractively(client: SeisanClient): Promise<void> {
 }
 
 function printHelp(): void {
-  console.log(`Usage: pnpm api <command> [--base-url=${DEFAULT_API_BASE_URL}]
+  const commandNameWidth = Math.max(...Object.keys(commands).map((name) => name.length));
+  console.log(`Usage: pnpm api [--env=local|dev|production] <command>
 
 Commands:
 ${Object.entries(commands)
-  .map(([name, command]) => `  ${name.padEnd(10)} ${command.description}`)
+  .map(([name, command]) => `  ${name.padEnd(commandNameWidth)} ${command.description}`)
   .join("\n")}
 
 Options:
-  --base-url=<url>  API base URL. Defaults to SEISAN_API_URL or ${DEFAULT_API_BASE_URL}.
-  -h, --help        Show this help message.
+  --env=<env>  Target environment: local (${DEFAULT_API_BASE_URL}), dev (${DEV_API_BASE_URL}), or production (${PRODUCTION_API_BASE_URL}). Defaults to local. Remote admin calls run cloudflared access token automatically.
+  -h, --help   Show this help message.
+
+Admin command usage:
+${Object.entries(commands)
+  .filter((entry): entry is [string, Command & { usage: string }] => Boolean(entry[1].usage))
+  .map(([, command]) => `  pnpm api ${command.usage}`)
+  .join("\n")}
 `);
 }
 
@@ -148,6 +338,8 @@ main(process.argv.slice(2)).catch((error: unknown) => {
     if (error.responseBody) {
       console.error(error.responseBody);
     }
+  } else if (error instanceof CloudflareAccessTokenError) {
+    console.error(error.message);
   } else if (error instanceof Error) {
     console.error(error.message);
   } else {

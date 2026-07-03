@@ -16,6 +16,17 @@
   },
   "upload_source_maps": false,
   "compatibility_flags": ["nodejs_compat"],
+  "ai": {
+    "binding": "AI",
+    "remote": true,
+  },
+  "vectorize": [
+    {
+      "binding": "CATEGORY_POC_INDEX",
+      "index_name": "seisan-category-poc",
+      "remote": true,
+    },
+  ],
   "vars": {
     "LOGIN_EMAIL_FROM": "no-reply@dev.seisan.waga.me",
     "LOCAL_DEV_LOGIN_CODE": "123456",
@@ -42,7 +53,6 @@
     {
       "binding": "API_KEY_VERIFICATION",
       "id": "f7f75969976d45d1b5438cb974fd8ed0",
-
     },
   ],
   "durable_objects": {
@@ -50,6 +60,10 @@
       {
         "name": "LOGIN_ATTEMPT_STORE",
         "class_name": "LoginAttemptStore",
+      },
+      {
+        "name": "CATEGORY_POC_STORE",
+        "class_name": "CategoryPocStore",
       },
       {
         "name": "PROJECTS_REGISTRY",
@@ -86,6 +100,10 @@
       "tag": "v4",
       "new_sqlite_classes": ["UserAPIKeysStore"],
     },
+    {
+      "tag": "v5",
+      "new_sqlite_classes": ["CategoryPocStore"],
+    },
   ],
   "send_email": [
     {
@@ -121,6 +139,15 @@
       "secrets": {
         "required": ["AUTH_SECRET", "TURNSTILE_SECRET_KEY"],
       },
+      "ai": {
+        "binding": "AI",
+      },
+      "vectorize": [
+        {
+          "binding": "CATEGORY_POC_INDEX",
+          "index_name": "seisan-category-poc-test",
+        },
+      ],
       "kv_namespaces": [
         {
           "binding": "REVOKED_TOKENS",
@@ -140,6 +167,10 @@
           {
             "name": "LOGIN_ATTEMPT_STORE",
             "class_name": "LoginAttemptStore",
+          },
+          {
+            "name": "CATEGORY_POC_STORE",
+            "class_name": "CategoryPocStore",
           },
           {
             "name": "PROJECTS_REGISTRY",
@@ -175,6 +206,10 @@
         {
           "tag": "v4",
           "new_sqlite_classes": ["UserAPIKeysStore"],
+        },
+        {
+          "tag": "v5",
+          "new_sqlite_classes": ["CategoryPocStore"],
         },
       ],
       "send_email": [
@@ -219,6 +254,15 @@
       "secrets": {
         "required": ["AUTH_SECRET", "TURNSTILE_SECRET_KEY"],
       },
+      "ai": {
+        "binding": "AI",
+      },
+      "vectorize": [
+        {
+          "binding": "CATEGORY_POC_INDEX",
+          "index_name": "seisan-category-poc-dev",
+        },
+      ],
       "kv_namespaces": [
         {
           "binding": "REVOKED_TOKENS",
@@ -236,7 +280,7 @@
         {
           "binding": "API_KEY_VERIFICATION",
           // TODO: replace with the created dev KV namespace ID before deployment.
-          "id": "f7f75969976d45d1b5438cb974fd8ed0"
+          "id": "f7f75969976d45d1b5438cb974fd8ed0",
         },
       ],
       "durable_objects": {
@@ -244,6 +288,10 @@
           {
             "name": "LOGIN_ATTEMPT_STORE",
             "class_name": "LoginAttemptStore",
+          },
+          {
+            "name": "CATEGORY_POC_STORE",
+            "class_name": "CategoryPocStore",
           },
           {
             "name": "PROJECTS_REGISTRY",
@@ -279,6 +327,10 @@
         {
           "tag": "v4",
           "new_sqlite_classes": ["UserAPIKeysStore"],
+        },
+        {
+          "tag": "v5",
+          "new_sqlite_classes": ["CategoryPocStore"],
         },
       ],
       "send_email": [
@@ -322,6 +374,15 @@
       "secrets": {
         "required": ["AUTH_SECRET", "TURNSTILE_SECRET_KEY"],
       },
+      "ai": {
+        "binding": "AI",
+      },
+      "vectorize": [
+        {
+          "binding": "CATEGORY_POC_INDEX",
+          "index_name": "seisan-category-poc-production",
+        },
+      ],
       "kv_namespaces": [
         {
           "binding": "REVOKED_TOKENS",
@@ -338,7 +399,7 @@
         },
         {
           "binding": "API_KEY_VERIFICATION",
-          "id": "689f3d0eaae149b2969824e7c86c3c4e"
+          "id": "689f3d0eaae149b2969824e7c86c3c4e",
         },
       ],
       "durable_objects": {
@@ -346,6 +407,10 @@
           {
             "name": "LOGIN_ATTEMPT_STORE",
             "class_name": "LoginAttemptStore",
+          },
+          {
+            "name": "CATEGORY_POC_STORE",
+            "class_name": "CategoryPocStore",
           },
           {
             "name": "PROJECTS_REGISTRY",
@@ -381,6 +446,10 @@
         {
           "tag": "v4",
           "new_sqlite_classes": ["UserAPIKeysStore"],
+        },
+        {
+          "tag": "v5",
+          "new_sqlite_classes": ["CategoryPocStore"],
         },
       ],
       "send_email": [

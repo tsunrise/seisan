@@ -99,6 +99,7 @@ Routes should treat bindings as edges to owned state:
 - `PROJECT_REGISTRY_CACHE` caches public project ID to ProjectStore Durable Object ID lookups.
 - `LIMITS_STORE` is the admin-facing Durable Object for validating and writing limits documents to `CONFIGS`.
 - `CONFIGS` stores limits policy documents consumed through `LimitsKvStore` on normal request paths.
+- Feature-specific admin classification bindings are documented in `docs/category-poc.md`.
 - Rate-limit bindings protect record posting by account and project.
 - `SEND_EMAIL` sends login-code email after an attempt is stored.
 

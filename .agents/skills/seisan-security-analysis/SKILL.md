@@ -46,7 +46,7 @@ Agents may edit markdown report bodies manually, but must run `sync` afterward. 
 
 ## Scan Agent: Local Dev Server Lifecycle
 
-Before live local API probes, read and follow `$seisan-local-dev-server` at `.agents/skills/seisan-local-dev-server/SKILL.md`. Always control the local dev server and local Worker state yourself, and restore the user's original Wrangler state before finishing.
+Before live local API probes, read and follow `docs/development.md`, especially `## Local Dev Server For Live API Probes`. Always control the local dev server and local Worker state yourself, and restore the user's original Wrangler state before finishing.
 
 ## Scan Agent: Assessment Workflow
 
@@ -150,7 +150,7 @@ When asked to resolve a red-team issue:
 4. Add or update focused tests proving the issue is fixed or no longer valid.
 5. Run the narrowest relevant verification commands.
 6. If the resolution is `Fixed`, run a live local replay before moving the report:
-   - Follow `$seisan-local-dev-server` for the clean Wrangler state, dev-server start, `/api/ping` readiness check, local API calls, exact server stop, cleanup, state restore, and final status verification.
+   - Follow `docs/development.md` for the clean Wrangler state, dev-server start, `/api/ping` readiness check, local API calls, exact server stop, cleanup, state restore, final status verification, and remote-binding caveats.
    - Recreate the report's `## Reproduce Steps` against `http://localhost:5173` or `http://127.0.0.1:5173` using the clean local state. Seed accounts, projects, admin limits, or other prerequisites through the API as needed.
    - Verify that the abusive path no longer works. Prefer the same request sequence that previously demonstrated the issue, and capture the new statuses/responses in the resolved report's `## Resolution` section.
    - If the original reproduction cannot be replayed exactly, document the gap and run the closest live API proof plus focused tests. Do not mark `Fixed` if there is no live evidence that the reported path is blocked.

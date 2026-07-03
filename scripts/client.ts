@@ -7,8 +7,12 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-export const DEFAULT_API_BASE_URL = "https://dev.seisan.waga.me";
+export const DEFAULT_API_BASE_URL = "http://localhost:5173";
+export const DEV_API_BASE_URL = "https://dev.seisan.waga.me";
+export const PRODUCTION_API_BASE_URL = "https://seisan.waga.me";
 export const SESSION_COOKIE_NAME = "__Host-seisan_session";
+
+export type ApiTargetEnv = "local" | "dev" | "production";
 
 export interface SessionStore {
   load(): Promise<string | null>;
@@ -16,10 +20,56 @@ export interface SessionStore {
   clear(): Promise<void>;
 }
 
+export interface CloudflareAccessTokenProvider {
+  load(appUrl: string): Promise<string>;
+}
+
 export interface SeisanClientOptions {
-  baseUrl?: string;
+  targetEnv?: ApiTargetEnv;
   fetchFn?: typeof fetch;
   sessionStore?: SessionStore;
+  cloudflareAccessTokenProvider?: CloudflareAccessTokenProvider;
+}
+
+export interface CategoryPocCategory {
+  id: string;
+  name: string;
+  normalizedName: string;
+  description: string;
+  documentText: string;
+  vectorId: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CategoryPocCandidate {
+  category: CategoryPocCategory;
+  score: number;
+}
+
+export interface CategoryPocAddCategoryInput {
+  name: string;
+  description?: string;
+}
+
+export interface CategoryPocAddCategoryResponse {
+  category: CategoryPocCategory;
+  vectorizeMutation: Record<string, unknown>;
+}
+
+export interface CategoryPocListCategoriesResponse {
+  categories: CategoryPocCategory[];
+}
+
+export interface CategoryPocClassifyInput {
+  name: string;
+  topK?: number;
+}
+
+export interface CategoryPocClassifyResponse {
+  category: CategoryPocCategory;
+  score: number;
+  candidates: CategoryPocCandidate[];
 }
 
 export class ApiError extends Error {
@@ -48,16 +98,46 @@ export class UnauthorizedError extends Error {
   }
 }
 
+export class CloudflareAccessTokenError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CloudflareAccessTokenError";
+  }
+}
+
+class CloudflaredAccessTokenProvider implements CloudflareAccessTokenProvider {
+  async load(appUrl: string): Promise<string> {
+    try {
+      const { stdout } = await execFileAsync("cloudflared", ["access", "token", `-app=${appUrl}`]);
+      const token = stdout.trim();
+      if (!token) {
+        throw new CloudflareAccessTokenError("cloudflared returned an empty Access token.");
+      }
+      return token;
+    } catch (error) {
+      if (error instanceof CloudflareAccessTokenError) {
+        throw error;
+      }
+      throw new CloudflareAccessTokenError(
+        `Unable to get a Cloudflare Access token for ${appUrl}. Run "cloudflared access login ${appUrl}" first. ${formatExecError(error)}`,
+      );
+    }
+  }
+}
+
 export class SeisanClient {
   readonly baseUrl: string;
 
   private readonly fetchFn: typeof fetch;
   private readonly sessionStore: SessionStore;
+  private readonly cloudflareAccessTokenProvider: CloudflareAccessTokenProvider;
 
   constructor(options: SeisanClientOptions = {}) {
-    this.baseUrl = normalizeBaseUrl(options.baseUrl ?? DEFAULT_API_BASE_URL);
+    this.baseUrl = normalizeBaseUrl(apiBaseUrlForEnv(options.targetEnv ?? "local"));
     this.fetchFn = options.fetchFn ?? fetch;
     this.sessionStore = options.sessionStore ?? createDefaultSessionStore(this.baseUrl);
+    this.cloudflareAccessTokenProvider =
+      options.cloudflareAccessTokenProvider ?? new CloudflaredAccessTokenProvider();
   }
 
   ping(): Promise<string> {
@@ -105,6 +185,52 @@ export class SeisanClient {
     await this.sessionStore.clear();
   }
 
+  async categoryPocListCategories(): Promise<CategoryPocListCategoriesResponse> {
+    return this.requestJson<CategoryPocListCategoriesResponse>(
+      "GET",
+      "/api/admin/category-poc/categories",
+      {
+        auth: false,
+        cloudflareAccess: true,
+      },
+    );
+  }
+
+  async categoryPocAddCategory(
+    input: CategoryPocAddCategoryInput,
+  ): Promise<CategoryPocAddCategoryResponse> {
+    return this.requestJson<CategoryPocAddCategoryResponse>(
+      "POST",
+      "/api/admin/category-poc/categories",
+      {
+        auth: false,
+        cloudflareAccess: true,
+        body: input,
+        expectedStatus: 201,
+      },
+    );
+  }
+
+  async categoryPocRemoveCategory(id: string): Promise<void> {
+    await this.request("DELETE", `/api/admin/category-poc/categories/${encodeURIComponent(id)}`, {
+      auth: false,
+      cloudflareAccess: true,
+      expectedStatus: 204,
+    });
+  }
+
+  async categoryPocClassify(input: CategoryPocClassifyInput): Promise<CategoryPocClassifyResponse> {
+    return this.requestJson<CategoryPocClassifyResponse>(
+      "POST",
+      "/api/admin/category-poc/classify",
+      {
+        auth: false,
+        cloudflareAccess: true,
+        body: input,
+      },
+    );
+  }
+
   private async requestJson<T = unknown>(
     method: string,
     path: string,
@@ -141,10 +267,20 @@ export class SeisanClient {
       headers.set("Cookie", sessionCookie);
     }
 
-    const response = await this.fetchFn(new URL(path, this.baseUrl), {
+    const url = new URL(path, this.baseUrl);
+
+    if (options.cloudflareAccess) {
+      const accessToken = await this.loadCloudflareAccessToken(url);
+      if (accessToken) {
+        headers.set("cf-access-token", accessToken);
+      }
+    }
+
+    const response = await this.fetchFn(url, {
       method,
       headers,
       body,
+      redirect: "manual",
     });
 
     if (options.auth && response.status === 401) {
@@ -163,12 +299,20 @@ export class SeisanClient {
 
     return response;
   }
+
+  private async loadCloudflareAccessToken(url: URL): Promise<string | null> {
+    if (isLocalBaseUrl(this.baseUrl)) {
+      return null;
+    }
+    return this.cloudflareAccessTokenProvider.load(url.toString());
+  }
 }
 
 interface RequestOptions {
   auth: boolean;
   accept?: string;
   body?: unknown;
+  cloudflareAccess?: boolean;
   expectedStatus?: number;
   headers?: RequestInit["headers"];
 }
@@ -179,6 +323,17 @@ export function createDefaultSessionStore(baseUrl: string): SessionStore {
     return new KeychainSessionStore(account, new FileSessionStore(account));
   }
   return new FileSessionStore(account);
+}
+
+export function apiBaseUrlForEnv(targetEnv: ApiTargetEnv): string {
+  switch (targetEnv) {
+    case "local":
+      return DEFAULT_API_BASE_URL;
+    case "dev":
+      return DEV_API_BASE_URL;
+    case "production":
+      return PRODUCTION_API_BASE_URL;
+  }
 }
 
 class KeychainSessionStore implements SessionStore {
@@ -288,6 +443,32 @@ function normalizeBaseUrl(baseUrl: string): string {
   url.search = "";
   url.hash = "";
   return url.toString();
+}
+
+function isLocalBaseUrl(baseUrl: string): boolean {
+  const hostname = new URL(baseUrl).hostname;
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+}
+
+function formatExecError(error: unknown): string {
+  const stderr = readStringProperty(error, "stderr")?.trim();
+  if (stderr) {
+    return stderr;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
+
+function readStringProperty(value: unknown, property: string): string | undefined {
+  if (!value || typeof value !== "object" || !(property in value)) {
+    return undefined;
+  }
+  const result = value[property as keyof typeof value];
+  return typeof result === "string" ? result : undefined;
 }
 
 function sessionFilePath(account: string): string {
