@@ -18,6 +18,9 @@ const MemberName = z.string().min(1).max(ABSOLUTE_TEXT_LIMIT);
 const ProjectName = z.string().min(1).max(ABSOLUTE_TEXT_LIMIT);
 const MoneyByMemberId = z.record(z.string().regex(/^[1-9]\d*$/u), SafeInteger);
 const NonNegativeMoneyByMemberId = z.record(z.string().regex(/^[1-9]\d*$/u), SafeInteger.min(0));
+const CategoryId = z
+  .string()
+  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu);
 
 const ProjectAcl = z.discriminatedUnion("type", [
   z.object({ type: z.literal("public") }).strict(),
@@ -39,6 +42,7 @@ const ExpenseDescription = z
     name: z.string(),
     paid: NonNegativeMoneyByMemberId,
     liability: NonNegativeMoneyByMemberId,
+    categoryId: CategoryId.optional(),
   })
   .strict();
 
@@ -129,6 +133,36 @@ const RecordCreatedBody = z.object({ id: PositiveSafeInteger }).strict();
 const ErrorBody = z.object({ error: z.string(), reason: z.string().optional() }).strict();
 const PingBody = z.string();
 
+const Category = z
+  .object({
+    id: CategoryId,
+    name: z.string(),
+    normalizedName: z.string(),
+    description: z.string(),
+    documentText: z.string(),
+    vectorId: z.string(),
+    createdAt: NonNegativeSafeInteger,
+    updatedAt: NonNegativeSafeInteger,
+  })
+  .strict();
+
+const CategoryCandidate = z
+  .object({
+    category: Category,
+    score: z.number(),
+  })
+  .strict();
+
+const CategoryClassificationBody = z
+  .object({
+    category: Category,
+    score: z.number(),
+    candidates: z.array(CategoryCandidate),
+  })
+  .strict();
+
+const CategoryListBody = z.object({ categories: z.array(Category) }).strict();
+
 const LoginAttemptRequest = z
   .object({
     email: Email,
@@ -173,6 +207,12 @@ const ProjectAppendRecordRequest = z
     description: RecordDescription,
   })
   .strict();
+const CategoryClassifyRequest = z
+  .object({
+    name: z.string().min(1).max(200),
+    topK: z.number().int().min(1).max(20).optional(),
+  })
+  .strict();
 
 export const OpenApiSpecOptions = {
   documentation: {
@@ -195,6 +235,7 @@ export const OpenApiSpecOptions = {
       { name: "System" },
       { name: "Auth" },
       { name: "Registry" },
+      { name: "Categories" },
       { name: "Projects" },
       { name: "Project ACL" },
       { name: "Project Members" },
@@ -262,6 +303,7 @@ export const OpenApiRequests = {
   ProjectMemberPatch: jsonRequest(ProjectMemberPatchRequest),
   ProjectJoin: jsonRequest(ProjectJoinRequest),
   ProjectAppendRecord: jsonRequest(ProjectAppendRecordRequest),
+  CategoryClassify: jsonRequest(CategoryClassifyRequest),
 } satisfies Record<string, OpenAPIV3_1.RequestBodyObject>;
 
 export const OpenApiResponses = {
@@ -270,6 +312,11 @@ export const OpenApiResponses = {
   LoginAttemptAccepted: jsonResponse("Login attempt accepted.", LoginAttemptBody),
   Identity: jsonResponse("Authenticated identity.", IdentityBody),
   Registry: jsonResponse("Projects visible to the authenticated caller.", RegistryBody),
+  CategoryClassification: jsonResponse(
+    "Category classification result.",
+    CategoryClassificationBody,
+  ),
+  CategoryList: jsonResponse("Configured spending categories.", CategoryListBody),
   ProjectCreated: jsonResponse("Created project.", ProjectCreated),
   Project: jsonResponse("Project details and records.", Project),
   ProjectName: jsonResponse("Updated project name.", ProjectNameBody),

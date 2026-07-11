@@ -23,6 +23,7 @@ Keep `worker/index.ts` thin. It should export Durable Object classes and delegat
 - `app.route("/api", loginApp)` mounts `/api/login/*`, `/api/logout`, and `/api/whoami`.
 - `app.route("/api", apiKeysApp)` mounts cookie-only API-key management routes under `/api/api-keys*`.
 - `app.route("/api", registryApp)` mounts `/api/registry`.
+- `app.route("/api", categoryApp)` mounts authenticated `/api/categories` reads and classification.
 - `app.route("/api", projectApp)` mounts `/api/project*`.
 - `app.get("/api/ping", ...)` provides the plain-text health check.
 
@@ -99,7 +100,10 @@ Routes should treat bindings as edges to owned state:
 - `PROJECT_REGISTRY_CACHE` caches public project ID to ProjectStore Durable Object ID lookups.
 - `LIMITS_STORE` is the admin-facing Durable Object for validating and writing limits documents to `CONFIGS`.
 - `CONFIGS` stores limits policy documents consumed through `LimitsKvStore` on normal request paths.
-- Feature-specific admin classification bindings are documented in `docs/category-poc.md`.
+- `GLOBAL_CONFIG` is the generic strongly consistent Durable Object for global key/value configuration and feature-specific read/modify/write methods.
+- `PUBLISHED_GLOBAL_CONFIG` is the eventually consistent KV projection for hot-path global config reads.
+- Known GlobalConfig keys and published value codecs are documented in `docs/global-config.md`.
+- Category classification owns the `categories` global config key and is documented in `docs/category-classification.md`.
 - Rate-limit bindings protect record posting by account and project.
 - `SEND_EMAIL` sends login-code email after an attempt is stored.
 

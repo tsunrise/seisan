@@ -31,7 +31,7 @@ export interface SeisanClientOptions {
   cloudflareAccessTokenProvider?: CloudflareAccessTokenProvider;
 }
 
-export interface CategoryPocCategory {
+export interface Category {
   id: string;
   name: string;
   normalizedName: string;
@@ -42,34 +42,34 @@ export interface CategoryPocCategory {
   updatedAt: number;
 }
 
-export interface CategoryPocCandidate {
-  category: CategoryPocCategory;
+export interface CategoryCandidate {
+  category: Category;
   score: number;
 }
 
-export interface CategoryPocAddCategoryInput {
+export interface CategoryWriteInput {
   name: string;
   description?: string;
 }
 
-export interface CategoryPocAddCategoryResponse {
-  category: CategoryPocCategory;
+export interface CategoryWriteResponse {
+  category: Category;
   vectorizeMutation: Record<string, unknown>;
 }
 
-export interface CategoryPocListCategoriesResponse {
-  categories: CategoryPocCategory[];
+export interface CategoryListResponse {
+  categories: Category[];
 }
 
-export interface CategoryPocClassifyInput {
+export interface CategoryClassifyInput {
   name: string;
   topK?: number;
 }
 
-export interface CategoryPocClassifyResponse {
-  category: CategoryPocCategory;
+export interface CategoryClassifyResponse {
+  category: Category;
   score: number;
-  candidates: CategoryPocCandidate[];
+  candidates: CategoryCandidate[];
 }
 
 export class ApiError extends Error {
@@ -131,13 +131,16 @@ export class SeisanClient {
   private readonly fetchFn: typeof fetch;
   private readonly sessionStore: SessionStore;
   private readonly cloudflareAccessTokenProvider: CloudflareAccessTokenProvider;
+  private readonly cloudflareAccessRequired: boolean;
 
   constructor(options: SeisanClientOptions = {}) {
-    this.baseUrl = normalizeBaseUrl(apiBaseUrlForEnv(options.targetEnv ?? "local"));
+    const targetEnv = options.targetEnv ?? "local";
+    this.baseUrl = normalizeBaseUrl(apiBaseUrlForEnv(targetEnv));
     this.fetchFn = options.fetchFn ?? fetch;
     this.sessionStore = options.sessionStore ?? createDefaultSessionStore(this.baseUrl);
     this.cloudflareAccessTokenProvider =
       options.cloudflareAccessTokenProvider ?? new CloudflaredAccessTokenProvider();
+    this.cloudflareAccessRequired = targetEnv === "dev";
   }
 
   ping(): Promise<string> {
@@ -185,50 +188,53 @@ export class SeisanClient {
     await this.sessionStore.clear();
   }
 
-  async categoryPocListCategories(): Promise<CategoryPocListCategoriesResponse> {
-    return this.requestJson<CategoryPocListCategoriesResponse>(
-      "GET",
-      "/api/admin/category-poc/categories",
-      {
-        auth: false,
-        cloudflareAccess: true,
-      },
-    );
+  async categoryList(): Promise<CategoryListResponse> {
+    return this.requestJson<CategoryListResponse>("GET", "/api/categories", {
+      auth: true,
+    });
   }
 
-  async categoryPocAddCategory(
-    input: CategoryPocAddCategoryInput,
-  ): Promise<CategoryPocAddCategoryResponse> {
-    return this.requestJson<CategoryPocAddCategoryResponse>(
-      "POST",
-      "/api/admin/category-poc/categories",
+  async adminCategoryList(): Promise<CategoryListResponse> {
+    return this.requestJson<CategoryListResponse>("GET", "/api/admin/categories", {
+      auth: false,
+      cloudflareAccess: true,
+    });
+  }
+
+  async categoryAdd(input: CategoryWriteInput): Promise<CategoryWriteResponse> {
+    return this.requestJson<CategoryWriteResponse>("POST", "/api/admin/categories", {
+      auth: false,
+      cloudflareAccess: true,
+      body: input,
+      expectedStatus: 201,
+    });
+  }
+
+  async categoryUpdate(id: string, input: CategoryWriteInput): Promise<CategoryWriteResponse> {
+    return this.requestJson<CategoryWriteResponse>(
+      "PUT",
+      `/api/admin/categories/${encodeURIComponent(id)}`,
       {
         auth: false,
         cloudflareAccess: true,
         body: input,
-        expectedStatus: 201,
       },
     );
   }
 
-  async categoryPocRemoveCategory(id: string): Promise<void> {
-    await this.request("DELETE", `/api/admin/category-poc/categories/${encodeURIComponent(id)}`, {
+  async categoryRemove(id: string): Promise<void> {
+    await this.request("DELETE", `/api/admin/categories/${encodeURIComponent(id)}`, {
       auth: false,
       cloudflareAccess: true,
       expectedStatus: 204,
     });
   }
 
-  async categoryPocClassify(input: CategoryPocClassifyInput): Promise<CategoryPocClassifyResponse> {
-    return this.requestJson<CategoryPocClassifyResponse>(
-      "POST",
-      "/api/admin/category-poc/classify",
-      {
-        auth: false,
-        cloudflareAccess: true,
-        body: input,
-      },
-    );
+  async classifyCategory(input: CategoryClassifyInput): Promise<CategoryClassifyResponse> {
+    return this.requestJson<CategoryClassifyResponse>("POST", "/api/categories/classify", {
+      auth: true,
+      body: input,
+    });
   }
 
   private async requestJson<T = unknown>(
@@ -269,7 +275,7 @@ export class SeisanClient {
 
     const url = new URL(path, this.baseUrl);
 
-    if (options.cloudflareAccess) {
+    if (options.cloudflareAccess || this.cloudflareAccessRequired) {
       const accessToken = await this.loadCloudflareAccessToken(url);
       if (accessToken) {
         headers.set("cf-access-token", accessToken);

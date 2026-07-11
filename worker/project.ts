@@ -106,6 +106,7 @@ export type ExpenseDescription = {
   name: string;
   paid: MoneyByMemberId;
   liability: MoneyByMemberId;
+  categoryId?: string;
 };
 
 export type TransferDescription = {

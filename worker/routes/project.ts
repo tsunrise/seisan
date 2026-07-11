@@ -11,10 +11,12 @@ import {
   requireAuth,
   requireSameOriginWhenPresent,
 } from "../auth";
+import { CATEGORY_CONFIG_KEY, CategoryId } from "../category";
 import { sha256Hex } from "../crypto";
 import type { ProjectStore } from "../do/ProjectStore";
 import { normalizeEmail, normalizedEmailSchema } from "../email";
 import { ErrorResponse } from "../error";
+import { PublishedGlobalConfigKvStore } from "../globalConfig";
 import { ABSOLUTE_LIST_LIMIT, ABSOLUTE_TEXT_LIMIT, LimitsKvStore, LimitsPolicy } from "../limits";
 import {
   errorResponses,
@@ -102,6 +104,7 @@ const ExpenseDescription = z
     name: z.string().trim().min(1).max(ABSOLUTE_TEXT_LIMIT),
     paid: NonNegativeMoneyMap,
     liability: NonNegativeMoneyMap,
+    categoryId: CategoryId.optional(),
   })
   .superRefine((description, context) => {
     const totalPaid = MoneyByMemberIdUtils.sum(description.paid);
@@ -168,6 +171,7 @@ const RecordDescription = z.discriminatedUnion("type", [
   PromiseDescription,
   RevertDescription,
 ]);
+type ParsedRecordDescription = z.infer<typeof RecordDescription>;
 
 const ProjectAcl = z.discriminatedUnion("type", [
   z.object({ type: z.literal("public") }),
@@ -866,7 +870,7 @@ projectApp.post(
     requestBody: OpenApiRequests.ProjectAppendRecord,
     responses: {
       201: OpenApiResponses.RecordCreated,
-      ...errorResponses(400, 401, 403, 404, 409, 429),
+      ...errorResponses(400, 401, 403, 404, 409, 429, 500),
     },
   }),
   requireSameOriginWhenPresent,
@@ -891,6 +895,11 @@ projectApp.post(
     const productLimits = await new LimitsKvStore(context.env.CONFIGS).load(callerEmail);
     if (!new LimitsPolicy(productLimits).allowsRecordPost()) {
       return ErrorResponse.postingBlocked();
+    }
+
+    const categoryValidation = await validateExpenseCategory(context, parsed.data.description);
+    if (!categoryValidation.ok) {
+      return categoryValidation.response;
     }
 
     const accountRateLimit = await rateLimiter.limitAccount(callerEmail);
@@ -1004,6 +1013,27 @@ class AppendRecordRateLimiter {
   private static projectKey(projectId: string): string {
     return `${AppendRecordRateLimiter.projectKeyPrefix}${projectId}`;
   }
+}
+
+async function validateExpenseCategory(
+  context: AppContext,
+  description: ParsedRecordDescription,
+): Promise<{ ok: true } | { ok: false; response: Response }> {
+  if (description.type !== "expense" || description.categoryId === undefined) {
+    return { ok: true };
+  }
+
+  const categories = await new PublishedGlobalConfigKvStore(
+    context.env.PUBLISHED_GLOBAL_CONFIG,
+  ).getValue(CATEGORY_CONFIG_KEY);
+  if (!categories.ok) {
+    return { ok: false, response: ErrorResponse.internalServerError() };
+  }
+  if (!categories.value.categories.some((category) => category.id === description.categoryId)) {
+    return { ok: false, response: ErrorResponse.invalidRequest() };
+  }
+
+  return { ok: true };
 }
 
 class ProjectRefFetcher {

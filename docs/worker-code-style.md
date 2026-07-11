@@ -32,7 +32,7 @@ Use this for Worker production code in `worker/`, especially route modules and s
 
 ## Domain Results And Errors
 
-- Use explicit `{ ok: true, ... } | { ok: false, error: "..." }` unions for expected domain results.
+- Use `Result<Success, ErrorCode>` from `worker/result.ts` for expected domain results. Define the concrete result inline on the operation signature unless the exact contract is genuinely shared independently of that operation.
 - Do not throw for normal user/domain errors such as forbidden, invalid input, not found, already linked, or conflict.
 - Keep error strings stable and narrow.
 - When adding a new Durable Object error string, update the relevant HTTP mapper and tests in the same change.

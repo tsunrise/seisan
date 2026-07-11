@@ -5,7 +5,7 @@ import { stdin as input, stdout as output } from "node:process";
 import {
   type ApiTargetEnv,
   ApiError,
-  type CategoryPocClassifyResponse,
+  type CategoryClassifyResponse,
   CloudflareAccessTokenError,
   DEFAULT_API_BASE_URL,
   DEV_API_BASE_URL,
@@ -19,10 +19,11 @@ type CommandName =
   | "ping"
   | "whoami"
   | "logout"
-  | "category-poc-list"
-  | "category-poc-add"
-  | "category-poc-remove"
-  | "category-poc-classify";
+  | "category-list"
+  | "category-add"
+  | "category-update"
+  | "category-remove"
+  | "classify-category";
 
 interface Command {
   description: string;
@@ -55,44 +56,53 @@ const commands: Record<CommandName, Command> = {
       console.log("Logged out.");
     },
   },
-  "category-poc-add": {
+  "category-add": {
     description: "Admin: add a category classification category.",
     requiresAuth: false,
-    usage: 'category-poc-add <name> [--description="..."]',
+    usage: 'category-add <name> [--description="..."]',
     async run(client, args) {
-      const input = parseCategoryPocAddArgs(args);
-      printJson(await client.categoryPocAddCategory(input));
+      const input = parseCategoryWriteArgs(args, { requireNameFlag: false });
+      printJson(await client.categoryAdd(input));
     },
   },
-  "category-poc-list": {
+  "category-list": {
     description: "Admin: list category classification categories.",
     requiresAuth: false,
-    usage: "category-poc-list",
+    usage: "category-list",
     async run(client, args) {
       if (args.length > 0) {
         throw new CliError(`Unexpected argument: ${args[0]}`);
       }
-      printJson(await client.categoryPocListCategories());
+      printJson(await client.adminCategoryList());
     },
   },
-  "category-poc-remove": {
+  "category-update": {
+    description: "Admin: update a category classification category by ID.",
+    requiresAuth: false,
+    usage: 'category-update <category-id> --name="..." [--description="..."]',
+    async run(client, args) {
+      const { id, input } = parseCategoryUpdateArgs(args);
+      printJson(await client.categoryUpdate(id, input));
+    },
+  },
+  "category-remove": {
     description: "Admin: remove a category classification category by ID.",
     requiresAuth: false,
-    usage: "category-poc-remove <category-id>",
+    usage: "category-remove <category-id>",
     async run(client, args) {
       const id = parseSinglePositional(args, "category ID");
-      await client.categoryPocRemoveCategory(id);
+      await client.categoryRemove(id);
       console.log(`Removed category ${id}.`);
     },
   },
-  "category-poc-classify": {
-    description: "Admin: classify a transaction name against stored categories.",
-    requiresAuth: false,
-    usage: "category-poc-classify <transaction-name> [--top-k=5] [--verbose]",
+  "classify-category": {
+    description: "Classify a post name against configured categories.",
+    requiresAuth: true,
+    usage: "classify-category <post-name> [--top-k=5] [--verbose]",
     async run(client, args) {
-      const { input, verbose } = parseCategoryPocClassifyArgs(args);
-      const result = await client.categoryPocClassify(input);
-      printJson(verbose ? result : formatCategoryPocClassifySummary(result));
+      const { input, verbose } = parseCategoryClassifyArgs(args);
+      const result = await client.classifyCategory(input);
+      printJson(verbose ? result : formatCategoryClassifySummary(result));
     },
   },
 };
@@ -173,7 +183,10 @@ function parseTargetEnv(value: string): ApiTargetEnv {
   throw new CliError("--env must be one of: local, dev, production.");
 }
 
-function parseCategoryPocAddArgs(args: string[]): { name: string; description?: string } {
+function parseCategoryWriteArgs(
+  args: string[],
+  options: { requireNameFlag: boolean },
+): { name: string; description?: string } {
   let name: string | undefined;
   let description: string | undefined;
 
@@ -189,7 +202,7 @@ function parseCategoryPocAddArgs(args: string[]): { name: string; description?: 
     } else if (arg === "--description") {
       description = readOptionValue(args, index, "--description");
       index += 1;
-    } else if (!name) {
+    } else if (!options.requireNameFlag && !name) {
       name = arg;
     } else {
       throw new CliError(`Unexpected argument: ${arg}`);
@@ -199,7 +212,21 @@ function parseCategoryPocAddArgs(args: string[]): { name: string; description?: 
   return { name: requireNonEmpty(name, "category name"), description };
 }
 
-function parseCategoryPocClassifyArgs(args: string[]): {
+function parseCategoryUpdateArgs(args: string[]): {
+  id: string;
+  input: { name: string; description?: string };
+} {
+  const id = args[0];
+  if (!id) {
+    throw new CliError("category ID is required.");
+  }
+  return {
+    id: requireNonEmpty(id, "category ID"),
+    input: parseCategoryWriteArgs(args.slice(1), { requireNameFlag: true }),
+  };
+}
+
+function parseCategoryClassifyArgs(args: string[]): {
   input: { name: string; topK?: number };
   verbose: boolean;
 } {
@@ -228,7 +255,7 @@ function parseCategoryPocClassifyArgs(args: string[]): {
     }
   }
 
-  return { input: { name: requireNonEmpty(name, "transaction name"), topK }, verbose };
+  return { input: { name: requireNonEmpty(name, "post name"), topK }, verbose };
 }
 
 function parseSinglePositional(args: string[], label: string): string {
@@ -266,7 +293,7 @@ function printJson(value: unknown): void {
   console.log(JSON.stringify(value, null, 2));
 }
 
-function formatCategoryPocClassifySummary(result: CategoryPocClassifyResponse): {
+function formatCategoryClassifySummary(result: CategoryClassifyResponse): {
   category: string;
   score: number;
   candidates: Array<{ category: string; score: number }>;
@@ -314,7 +341,7 @@ ${Object.entries(commands)
   .join("\n")}
 
 Options:
-  --env=<env>  Target environment: local (${DEFAULT_API_BASE_URL}), dev (${DEV_API_BASE_URL}), or production (${PRODUCTION_API_BASE_URL}). Defaults to local. Remote admin calls run cloudflared access token automatically.
+  --env=<env>  Target environment: local (${DEFAULT_API_BASE_URL}), dev (${DEV_API_BASE_URL}), or production (${PRODUCTION_API_BASE_URL}). Defaults to local. Dev and remote admin calls run cloudflared access token automatically.
   -h, --help   Show this help message.
 
 Admin command usage:

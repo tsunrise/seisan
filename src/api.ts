@@ -14,6 +14,7 @@ export type RecordDescription =
       name: string;
       paid: MoneyByMemberId;
       liability: MoneyByMemberId;
+      categoryId?: string;
     }
   | {
       type: "transfer";
@@ -70,6 +71,28 @@ export interface ProjectSummary {
 }
 
 export type WithSyncTime<T> = T & { lastSyncAt: number };
+
+export interface Category {
+  id: string;
+  name: string;
+  normalizedName: string;
+  description: string;
+  documentText: string;
+  vectorId: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CategoryCandidate {
+  category: Category;
+  score: number;
+}
+
+export interface CategoryClassification {
+  category: Category;
+  score: number;
+  candidates: CategoryCandidate[];
+}
 
 export interface Limits {
   "projects.maxLinkedProjects": number;
@@ -259,6 +282,21 @@ export async function listProjects(): Promise<Array<WithSyncTime<ProjectSummary>
     "/api/registry",
   );
   return response.projects;
+}
+
+export async function classifyCategory(input: {
+  name: string;
+  topK?: number;
+}): Promise<CategoryClassification> {
+  return requestJson("/api/categories/classify", {
+    method: "POST",
+    body: input,
+  });
+}
+
+export async function listCategories(): Promise<Category[]> {
+  const response = await requestJson<{ categories: Category[] }>("/api/categories");
+  return response.categories;
 }
 
 export async function createProject(input: {
