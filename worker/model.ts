@@ -123,7 +123,12 @@ const Project = ProjectCreated.extend({
   updatedAt: NonNegativeSafeInteger,
 }).strict();
 
-const IdentityBody = z.object({ email: Email }).strict();
+const IdentityBody = z
+  .object({
+    email: Email,
+    sessionExpiresAt: NonNegativeSafeInteger.optional(),
+  })
+  .strict();
 const OkBody = z.object({ ok: z.literal(true) }).strict();
 const LoginAttemptBody = OkBody.extend({ id: z.string().optional() }).strict();
 const RegistryBody = z.object({ projects: z.array(ProjectSummaryWithSyncTime) }).strict();

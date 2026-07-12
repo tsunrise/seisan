@@ -10,6 +10,7 @@ import { ProjectsPage } from "./pages/ProjectsPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
 
 const AdminApp = lazy(() => import("./admin/AdminApp"));
+const AccountApp = lazy(() => import("./account/AccountApp"));
 
 export default function App() {
   return (
@@ -23,6 +24,14 @@ export default function App() {
           element={
             <Suspense fallback={null}>
               <AdminApp />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/account/*"
+          element={
+            <Suspense fallback={null}>
+              <AccountApp />
             </Suspense>
           }
         />

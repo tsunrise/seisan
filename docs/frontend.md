@@ -10,7 +10,7 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 
 ## Module Boundaries
 
-- Keep app pages in `src/pages`, project-specific UI in `src/project`, shared UI in `src/components`, hooks in `src/hooks`, and admin-only UI in `src/admin`.
+- Keep app pages in `src/pages`, account dashboard UI in `src/account`, project-specific UI in `src/project`, shared UI in `src/components`, hooks in `src/hooks`, and admin-only UI in `src/admin`.
 - API calls from the browser go through `src/api.ts` and use relative `/api/*` URLs.
 - Shared record text, money, timestamp, and title formatting belongs in `src/domain.ts`.
 - Components should call helpers such as `recordTitle`, `recordDetailTitle`, `formatCents`, and timestamp formatters instead of duplicating formatting rules.
@@ -42,6 +42,14 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 - Use `BrandLink` for the logo plus `SEISAN` brand mark.
 - The logo asset is `public/seisan-logo.svg`, and `index.html` uses it as the favicon.
 - Set page titles with `useDocumentTitle` for routes that should own `document.title`.
-- Existing title-setting routes include `/projects`, project routes, `/login`, `/privacy`, and `/admin/*`; root redirects to `/projects`.
+- Existing title-setting routes include `/projects`, `/account`, `/account/api-keys`, project routes, `/login`, `/privacy`, and `/admin/*`; root redirects to `/projects`.
 - Avoid in-app explanatory text about how the UI works unless it is actual product copy.
 - For SEO-facing shell content, update `index.html` metadata rather than adding marketing-only UI to app routes.
+
+## Account Dashboard
+
+- Account routes live under `/account` and require browser session authentication.
+- `/account` uses the existing lightweight `/api/whoami` identity response, including the browser session expiration timestamp. Do not load project or API-key metadata on the account home page.
+- `/account/api-keys` uses the session-only `/api/api-keys` routes. The complete secret returned at creation is one-time UI state and must be discarded when its dialog closes.
+- Keep the account shell visually aligned with the warm ledger system: a desktop navigation rail, compact mobile tabs, thin dividers, and restrained blue active states.
+- Authenticated project-list and project-detail surfaces should keep a visible Account entry point. Public project views must not show an account action without a resolved session identity.

@@ -7,6 +7,7 @@ import {
   type AppContext,
   type EnvWithIdentity,
   getRequiredIdentity,
+  getSessionExpiresAt,
   getSessionToken,
   parseJson,
   requireAuth,
@@ -199,7 +200,12 @@ loginApp.get(
   }),
   requireAuth,
   (context) => {
-    return context.json(getRequiredIdentity(context));
+    const identity = getRequiredIdentity(context);
+    const sessionExpiresAt = getSessionExpiresAt(context);
+    return context.json({
+      ...identity,
+      ...(sessionExpiresAt === undefined ? {} : { sessionExpiresAt }),
+    });
   },
 );
 

@@ -14,6 +14,7 @@ const defaultApiErrorMessages: Record<string, string> = {
   already_deleted: "That member has already been deleted.",
   nonzero_balance: "Only zero-balance members can be deleted.",
   project_limit_exceeded: "Project limit reached.",
+  api_key_limit_exceeded: "This account has reached its API key count or expiration limit.",
   member_limit_exceeded: "Member limit reached. ",
   record_limit_exceeded: "This project has reached the record limit.",
   acl_limit_exceeded: "This project has reached the allowed-email limit.",

@@ -1,5 +1,7 @@
+import AccountCircleOutlinedIcon from "@mui/icons-material/AccountCircleOutlined";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import { Box, IconButton, Stack, Typography } from "@mui/material";
+import { Link } from "react-router";
 
 import type * as api from "../api";
 import { Amount } from "../components/Amount";
@@ -9,10 +11,12 @@ import { ledgerColors, ledgerFonts } from "../theme";
 export function ProjectHeader({
   project,
   currentMember,
+  showAccount,
   onSettings,
 }: {
   project: api.Project;
   currentMember: api.ProjectMember | null;
+  showAccount: boolean;
   onSettings: () => void;
 }) {
   const balance = currentMember ? (project.balance[String(currentMember.id)] ?? 0) : null;
@@ -56,9 +60,21 @@ export function ProjectHeader({
             </Typography>
           ) : null}
         </Box>
-        <IconButton onClick={onSettings} aria-label="Project settings">
-          <MoreHorizIcon />
-        </IconButton>
+        <Stack direction="row" spacing={1}>
+          {showAccount ? (
+            <IconButton
+              component={Link}
+              to="/account"
+              aria-label="Account"
+              sx={{ display: { xs: "inline-flex", lg: "none" } }}
+            >
+              <AccountCircleOutlinedIcon />
+            </IconButton>
+          ) : null}
+          <IconButton onClick={onSettings} aria-label="Project settings">
+            <MoreHorizIcon />
+          </IconButton>
+        </Stack>
       </Stack>
     </Stack>
   );

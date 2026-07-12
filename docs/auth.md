@@ -109,7 +109,7 @@ Normal application API routes accept either bearer API-key auth or browser sessi
 - If no bearer auth is present, use the browser session cookie path.
 - `optionalAuth` permits unauthenticated access only when no bearer credential was supplied.
 
-`/api/whoami` supports both auth models and returns the same identity response.
+`/api/whoami` supports both auth models. API-key authentication returns `{ email }`. Browser-session authentication also returns `sessionExpiresAt`, the session JWT expiration time in Unix seconds.
 
 API-key revocation updates the source-of-truth row and republishes the KV verifier value with `revokedAt`. Revocation is eventually consistent globally because verifier reads are served from KV cache, but should converge within the configured KV cache window.
 
@@ -123,7 +123,7 @@ Admin routes under `/api/admin/*` use Cloudflare Access in deployed environments
 
 - It documents only bearer auth via `apiKeyBearer`.
 - It must not mention the session cookie or `__Host-seisan_session`.
-- `/api/whoami` is included as a bearer-auth endpoint even though the implementation also accepts session cookies.
+- `/api/whoami` is included as a bearer-auth endpoint even though the implementation also accepts session cookies. Its response schema keeps `sessionExpiresAt` optional because API-key-authenticated requests do not receive it.
 - Admin routes, login/logout routes, and API-key-management routes are excluded from the generated spec.
 
 When auth route behavior, auth schemas, auth bindings, or generated OpenAPI security schemes change, update this document and regenerate `public/openapi.json`.

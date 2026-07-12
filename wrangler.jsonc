@@ -23,7 +23,7 @@
   "vectorize": [
     {
       "binding": "CATEGORY_INDEX",
-      "index_name": "seisan-category",
+      "index_name": "seisan-category-dev",
       "remote": true,
     },
   ],

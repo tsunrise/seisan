@@ -17,6 +17,7 @@ import {
   hashLoginCode,
   sha256Hex,
   signSessionToken,
+  verifySessionToken,
 } from "../worker/crypto";
 import worker from "../worker/index";
 
@@ -127,6 +128,12 @@ function getSessionToken(response: Response): string {
   const match = new RegExp(`${SESSION_COOKIE_NAME}=([^;]+)`).exec(setCookie);
   expect(match).not.toBeNull();
   return match?.[1] ?? "";
+}
+
+async function sessionIdentityResponse(email: string, token: string) {
+  const payload = await verifySessionToken(token, AUTH_SECRET);
+  expect(payload).not.toBeNull();
+  return { email, sessionExpiresAt: payload?.exp };
 }
 
 async function createVerifiedSession(testEnv: Env, email: string): Promise<string> {
@@ -566,7 +573,7 @@ describe("auth worker", () => {
       headers: { Cookie: `${SESSION_COOKIE_NAME}=${token}` },
     });
     expect(whoami.status).toBe(200);
-    expect(await whoami.json()).toEqual({ email });
+    expect(await whoami.json()).toEqual(await sessionIdentityResponse(email, token));
   });
 
   it("whoami accepts valid tokens unless KV-revoked and rejects expired tokens", async () => {
@@ -578,7 +585,7 @@ describe("auth worker", () => {
       headers: { Cookie: `${SESSION_COOKIE_NAME}=${validToken}` },
     });
     expect(valid.status).toBe(200);
-    expect(await valid.json()).toEqual({ email });
+    expect(await valid.json()).toEqual(await sessionIdentityResponse(email, validToken));
 
     const expiredToken = await signSessionToken(
       email,
@@ -646,7 +653,7 @@ describe("auth worker", () => {
       headers: { Cookie: `${SESSION_COOKIE_NAME}=${token}` },
     });
     expect(whoami.status).toBe(200);
-    expect(await whoami.json()).toEqual({ email });
+    expect(await whoami.json()).toEqual(await sessionIdentityResponse(email, token));
   });
 
   it("accepts same-origin logout requests", async () => {

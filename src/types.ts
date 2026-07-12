@@ -7,6 +7,7 @@ export type Loadable<T> =
 
 export interface User {
   email: string;
+  sessionExpiresAt?: number;
 }
 
 export type ProjectPanel = "timeline" | "join" | "newRecord" | "recordDetail" | "settings";
