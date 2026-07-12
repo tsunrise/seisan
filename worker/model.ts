@@ -10,176 +10,502 @@ type OpenApiResponse = OpenApiResponses[string];
 const JsonMediaType = "application/json";
 const TextMediaType = "text/plain";
 
+const exampleProjectId = "8d46d6c6-b970-4b2b-8d3e-47f57058f951";
+const exampleCategoryId = "4a6cc79a-51da-4e94-9d62-45ba3d853b1c";
+const exampleGroceriesCategoryId = "e92ad75b-4513-40e7-8d98-eaf102dcf8b0";
+const exampleCreatedAt = 1_767_225_600_000;
+const exampleUpdatedAt = 1_767_312_000_000;
+const exampleSessionExpiresAt = 1_767_312_000;
+
+const exampleMember = {
+  id: 1,
+  name: "Mika",
+  deleted: false,
+  linkedEmail: "mika@example.com",
+};
+const exampleSecondMember = {
+  id: 2,
+  name: "Ren",
+  deleted: false,
+  linkedEmail: "ren@example.com",
+};
+const exampleAcl = {
+  type: "restricted",
+  emails: ["mika@example.com", "ren@example.com"],
+};
+const exampleExpenseDescription = {
+  type: "expense",
+  name: "Ramen dinner",
+  paid: { "1": 12_400 },
+  liability: { "1": 6_200, "2": 6_200 },
+  categoryId: exampleCategoryId,
+};
+const exampleTransferDescription = {
+  type: "transfer",
+  from: 2,
+  to: 1,
+  amount: 6_200,
+};
+const examplePromiseDescription = {
+  type: "promise",
+  debtorMemberId: 2,
+  creditorMemberId: 1,
+  amount: 3_100,
+  reason: "Museum tickets",
+};
+const exampleRevertDescription = { type: "revert", id: 1 };
+const exampleRecords = [
+  {
+    id: 1,
+    authorMemberId: 1,
+    delta: { "1": -6_200, "2": 6_200 },
+    description: exampleExpenseDescription,
+    createdAt: exampleCreatedAt,
+    reverted: {
+      recordId: 4,
+      authorMemberId: 1,
+      createdAt: exampleCreatedAt + 3_600_000,
+    },
+  },
+  {
+    id: 2,
+    authorMemberId: 2,
+    delta: { "1": 6_200, "2": -6_200 },
+    description: exampleTransferDescription,
+    createdAt: exampleCreatedAt + 1_200_000,
+  },
+  {
+    id: 3,
+    authorMemberId: 1,
+    delta: { "1": -3_100, "2": 3_100 },
+    description: examplePromiseDescription,
+    createdAt: exampleCreatedAt + 2_400_000,
+  },
+  {
+    id: 4,
+    authorMemberId: 1,
+    delta: { "1": 6_200, "2": -6_200 },
+    description: exampleRevertDescription,
+    createdAt: exampleCreatedAt + 3_600_000,
+  },
+];
+const exampleProjectCreated = {
+  id: exampleProjectId,
+  name: "Japan trip",
+  owner: "mika@example.com",
+  acl: exampleAcl,
+  members: [exampleMember, exampleSecondMember],
+};
+const exampleProject = {
+  ...exampleProjectCreated,
+  records: exampleRecords,
+  balance: { "1": 3_100, "2": -3_100 },
+  updatedAt: exampleUpdatedAt,
+};
+const exampleCategory = {
+  id: exampleCategoryId,
+  name: "Dining",
+  normalizedName: "dining",
+  description: "Restaurants, cafes, and prepared meals.",
+  documentText: "Dining: restaurants, cafes, and prepared meals.",
+  vectorId: "category:dining",
+  createdAt: exampleCreatedAt,
+  updatedAt: exampleUpdatedAt,
+};
+const exampleGroceriesCategory = {
+  id: exampleGroceriesCategoryId,
+  name: "Groceries",
+  normalizedName: "groceries",
+  description: "Food and household supplies bought from stores.",
+  documentText: "Groceries: food and household supplies bought from stores.",
+  vectorId: "category:groceries",
+  createdAt: exampleCreatedAt,
+  updatedAt: exampleUpdatedAt,
+};
+const exampleError = {
+  error: "invalid_request",
+  reason: "The request body did not match the documented schema.",
+};
+
 const SafeInteger = z.number().int().min(-Number.MAX_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER);
 const PositiveSafeInteger = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const NonNegativeSafeInteger = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
-const Email = z.email();
-const MemberName = z.string().min(1).max(ABSOLUTE_TEXT_LIMIT);
-const ProjectName = z.string().min(1).max(ABSOLUTE_TEXT_LIMIT);
-const MoneyByMemberId = z.record(z.string().regex(/^[1-9]\d*$/u), SafeInteger);
-const NonNegativeMoneyByMemberId = z.record(z.string().regex(/^[1-9]\d*$/u), SafeInteger.min(0));
+const Email = z
+  .email()
+  .meta({ description: "Normalized account email address.", examples: ["mika@example.com"] });
+const MemberName = z
+  .string()
+  .min(1)
+  .max(ABSOLUTE_TEXT_LIMIT)
+  .meta({ description: "Display name for a project member.", examples: ["Mika"] });
+const ProjectName = z
+  .string()
+  .min(1)
+  .max(ABSOLUTE_TEXT_LIMIT)
+  .meta({ description: "Human-readable project name.", examples: ["Japan trip"] });
+const MoneyByMemberId = z.record(z.string().regex(/^[1-9]\d*$/u), SafeInteger).meta({
+  description: "Signed integer-cent amounts keyed by project-local member ID.",
+  examples: [{ "1": -6_200, "2": 6_200 }],
+});
+const NonNegativeMoneyByMemberId = z
+  .record(z.string().regex(/^[1-9]\d*$/u), SafeInteger.min(0))
+  .meta({
+    description: "Non-negative integer-cent amounts keyed by project-local member ID.",
+    examples: [{ "1": 6_200, "2": 6_200 }],
+  });
 const CategoryId = z
   .string()
-  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu);
+  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu)
+  .meta({ description: "Stable UUID for a spending category.", examples: [exampleCategoryId] });
 
-const ProjectAcl = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("public") }).strict(),
-  z.object({ type: z.literal("restricted"), emails: z.array(Email).max(ABSOLUTE_LIST_LIMIT) }),
-]);
+const ProjectAcl = z
+  .discriminatedUnion("type", [
+    z
+      .object({
+        type: z
+          .literal("public")
+          .meta({ description: "Allow anyone with the link to read the project." }),
+      })
+      .strict(),
+    z
+      .object({
+        type: z
+          .literal("restricted")
+          .meta({ description: "Limit project access to approved accounts." }),
+        emails: z
+          .array(Email)
+          .max(ABSOLUTE_LIST_LIMIT)
+          .meta({ description: "Accounts allowed to access the restricted project." }),
+      })
+      .strict(),
+  ])
+  .meta({ description: "Project access policy.", examples: [exampleAcl, { type: "public" }] });
 
 const ProjectMember = z
   .object({
-    id: PositiveSafeInteger,
-    name: z.string(),
-    deleted: z.boolean(),
-    linkedEmail: Email.optional(),
+    id: PositiveSafeInteger.meta({ description: "Project-local member ID.", examples: [1] }),
+    name: z.string().meta({ description: "Member display name.", examples: ["Mika"] }),
+    deleted: z
+      .boolean()
+      .meta({ description: "Whether the member has been soft-deleted.", examples: [false] }),
+    linkedEmail: Email.optional().meta({
+      description: "Account currently linked to this member, when present.",
+    }),
   })
-  .strict();
+  .strict()
+  .meta({ description: "A person participating in a project.", examples: [exampleMember] });
 
 const ExpenseDescription = z
   .object({
-    type: z.literal("expense"),
-    name: z.string(),
+    type: z.literal("expense").meta({ description: "Expense record discriminator." }),
+    name: z
+      .string()
+      .meta({ description: "Short description of the expense.", examples: ["Ramen dinner"] }),
     paid: NonNegativeMoneyByMemberId,
     liability: NonNegativeMoneyByMemberId,
-    categoryId: CategoryId.optional(),
+    categoryId: CategoryId.optional().meta({
+      description: "Classified spending category, when known.",
+    }),
   })
-  .strict();
+  .strict()
+  .meta({
+    description: "A shared expense and its payment/liability split.",
+    examples: [exampleExpenseDescription],
+  });
 
 const TransferDescription = z
   .object({
-    type: z.literal("transfer"),
-    from: PositiveSafeInteger,
-    to: PositiveSafeInteger,
-    amount: PositiveSafeInteger,
+    type: z.literal("transfer").meta({ description: "Transfer record discriminator." }),
+    from: PositiveSafeInteger.meta({ description: "Member ID sending the money.", examples: [2] }),
+    to: PositiveSafeInteger.meta({ description: "Member ID receiving the money.", examples: [1] }),
+    amount: PositiveSafeInteger.meta({
+      description: "Transferred amount in integer cents.",
+      examples: [6_200],
+    }),
   })
-  .strict();
+  .strict()
+  .meta({
+    description: "A payment from one project member to another.",
+    examples: [exampleTransferDescription],
+  });
 
 const PromiseDescription = z
   .object({
-    type: z.literal("promise"),
-    debtorMemberId: PositiveSafeInteger,
-    creditorMemberId: PositiveSafeInteger,
-    amount: PositiveSafeInteger,
-    reason: z.string().optional(),
+    type: z.literal("promise").meta({ description: "Promise record discriminator." }),
+    debtorMemberId: PositiveSafeInteger.meta({
+      description: "Member ID that owes the money.",
+      examples: [2],
+    }),
+    creditorMemberId: PositiveSafeInteger.meta({
+      description: "Member ID that is owed the money.",
+      examples: [1],
+    }),
+    amount: PositiveSafeInteger.meta({
+      description: "Promised amount in integer cents.",
+      examples: [3_100],
+    }),
+    reason: z
+      .string()
+      .optional()
+      .meta({ description: "Optional explanation for the promise.", examples: ["Museum tickets"] }),
   })
-  .strict();
+  .strict()
+  .meta({
+    description: "A debt acknowledged between two project members.",
+    examples: [examplePromiseDescription],
+  });
 
-const RevertDescription = z.object({ type: z.literal("revert"), id: PositiveSafeInteger }).strict();
+const RevertDescription = z
+  .object({
+    type: z.literal("revert").meta({ description: "Revert record discriminator." }),
+    id: PositiveSafeInteger.meta({
+      description: "Record ID whose effect is reversed.",
+      examples: [1],
+    }),
+  })
+  .strict()
+  .meta({
+    description: "A record that reverses an earlier project record.",
+    examples: [exampleRevertDescription],
+  });
 
-const RecordDescription = z.discriminatedUnion("type", [
-  ExpenseDescription,
-  TransferDescription,
-  PromiseDescription,
-  RevertDescription,
-]);
+const RecordDescription = z
+  .discriminatedUnion("type", [
+    ExpenseDescription,
+    TransferDescription,
+    PromiseDescription,
+    RevertDescription,
+  ])
+  .meta({
+    description: "Typed details for an expense, transfer, promise, or revert record.",
+    examples: [
+      exampleExpenseDescription,
+      exampleTransferDescription,
+      examplePromiseDescription,
+      exampleRevertDescription,
+    ],
+  });
 
 const ProjectRecord = z
   .object({
-    id: PositiveSafeInteger,
-    authorMemberId: PositiveSafeInteger,
+    id: PositiveSafeInteger.meta({ description: "Project-local record ID.", examples: [1] }),
+    authorMemberId: PositiveSafeInteger.meta({
+      description: "Member ID that created the record.",
+      examples: [1],
+    }),
     delta: MoneyByMemberId,
     description: RecordDescription,
-    createdAt: NonNegativeSafeInteger,
+    createdAt: NonNegativeSafeInteger.meta({
+      description: "Creation time as Unix milliseconds.",
+      examples: [exampleCreatedAt],
+    }),
     reverted: z
       .object({
-        recordId: PositiveSafeInteger,
-        authorMemberId: PositiveSafeInteger,
-        createdAt: NonNegativeSafeInteger,
+        recordId: PositiveSafeInteger.meta({
+          description: "Record ID of the reverting record.",
+          examples: [4],
+        }),
+        authorMemberId: PositiveSafeInteger.meta({
+          description: "Member ID that created the reverting record.",
+          examples: [1],
+        }),
+        createdAt: NonNegativeSafeInteger.meta({
+          description: "Revert creation time as Unix milliseconds.",
+          examples: [exampleCreatedAt + 3_600_000],
+        }),
       })
       .strict()
-      .optional(),
+      .optional()
+      .meta({ description: "Information about the later record that reverted this one." }),
   })
-  .strict();
+  .strict()
+  .meta({ description: "An immutable ledger entry in a project.", examples: [exampleRecords[0]] });
 
 const ProjectSummary = z
   .object({
-    id: z.string(),
-    name: z.string(),
+    id: z.string().meta({ description: "Public project UUID.", examples: [exampleProjectId] }),
+    name: z.string().meta({ description: "Project name.", examples: ["Japan trip"] }),
     owner: Email,
-    member: ProjectMember.nullable(),
-    balance: SafeInteger.nullable(),
-    updatedAt: NonNegativeSafeInteger,
+    member: ProjectMember.nullable().meta({
+      description: "Member linked to the caller, or null before joining.",
+    }),
+    balance: SafeInteger.nullable().meta({
+      description: "Caller's current balance in integer cents, or null before joining.",
+      examples: [3_100],
+    }),
+    updatedAt: NonNegativeSafeInteger.meta({
+      description: "Latest project change as Unix milliseconds.",
+      examples: [exampleUpdatedAt],
+    }),
   })
-  .strict();
+  .strict()
+  .meta({ description: "Project information used in account listings." });
 
 const ProjectSummaryWithSyncTime = ProjectSummary.extend({
-  lastSyncAt: NonNegativeSafeInteger,
-}).strict();
+  lastSyncAt: NonNegativeSafeInteger.meta({
+    description: "Registry synchronization time as Unix milliseconds.",
+    examples: [exampleUpdatedAt + 500],
+  }),
+})
+  .strict()
+  .meta({ description: "Project summary plus registry synchronization time." });
 
 const ProjectCreated = z
   .object({
-    id: z.string(),
-    name: z.string(),
+    id: z.string().meta({ description: "Public project UUID.", examples: [exampleProjectId] }),
+    name: z.string().meta({ description: "Project name.", examples: ["Japan trip"] }),
     owner: Email,
     acl: ProjectAcl,
-    members: z.array(ProjectMember),
+    members: z.array(ProjectMember).meta({ description: "Current project members." }),
   })
-  .strict();
+  .strict()
+  .meta({ description: "Newly created project metadata.", examples: [exampleProjectCreated] });
 
 const Project = ProjectCreated.extend({
-  records: z.array(ProjectRecord),
+  records: z
+    .array(ProjectRecord)
+    .meta({ description: "Requested page of project ledger records, newest first." }),
   balance: MoneyByMemberId,
-  updatedAt: NonNegativeSafeInteger,
-}).strict();
+  updatedAt: NonNegativeSafeInteger.meta({
+    description: "Latest project change as Unix milliseconds.",
+    examples: [exampleUpdatedAt],
+  }),
+})
+  .strict()
+  .meta({
+    description: "Complete project metadata, balances, and a page of records.",
+    examples: [exampleProject],
+  });
 
 const IdentityBody = z
   .object({
     email: Email,
-    sessionExpiresAt: NonNegativeSafeInteger.optional(),
+    sessionExpiresAt: NonNegativeSafeInteger.optional().meta({
+      description: "Browser-session expiry as Unix seconds; omitted for API-key authentication.",
+      examples: [exampleSessionExpiresAt],
+    }),
+  })
+  .strict()
+  .meta({
+    description: "Authenticated account identity.",
+    examples: [{ email: "mika@example.com" }],
+  });
+const OkBody = z
+  .object({ ok: z.literal(true).meta({ description: "Whether the operation succeeded." }) })
+  .strict();
+const LoginAttemptBody = OkBody.extend({
+  id: z.string().optional().meta({ description: "Login-attempt identifier, when returned." }),
+}).strict();
+const RegistryBody = z
+  .object({
+    projects: z
+      .array(ProjectSummaryWithSyncTime)
+      .meta({ description: "Projects visible to the authenticated caller." }),
   })
   .strict();
-const OkBody = z.object({ ok: z.literal(true) }).strict();
-const LoginAttemptBody = OkBody.extend({ id: z.string().optional() }).strict();
-const RegistryBody = z.object({ projects: z.array(ProjectSummaryWithSyncTime) }).strict();
-const ProjectNameBody = z.object({ name: z.string() }).strict();
+const ProjectNameBody = z.object({ name: ProjectName }).strict();
 const MemberBody = z.object({ member: ProjectMember }).strict();
-const RecordCreatedBody = z.object({ id: PositiveSafeInteger }).strict();
-const ErrorBody = z.object({ error: z.string(), reason: z.string().optional() }).strict();
-const PingBody = z.string();
+const RecordCreatedBody = z
+  .object({
+    id: PositiveSafeInteger.meta({
+      description: "Project-local ID of the created record.",
+      examples: [5],
+    }),
+  })
+  .strict();
+const ErrorBody = z
+  .object({
+    error: z
+      .string()
+      .meta({ description: "Stable machine-readable error code.", examples: ["invalid_request"] }),
+    reason: z
+      .string()
+      .optional()
+      .meta({ description: "Additional human-readable context, when available." }),
+  })
+  .strict()
+  .meta({ description: "API error response.", examples: [exampleError] });
+const PingBody = z
+  .string()
+  .meta({ description: "Worker health-check message.", examples: ["Hello World"] });
 
 const Category = z
   .object({
     id: CategoryId,
-    name: z.string(),
-    normalizedName: z.string(),
-    description: z.string(),
-    documentText: z.string(),
-    vectorId: z.string(),
-    createdAt: NonNegativeSafeInteger,
-    updatedAt: NonNegativeSafeInteger,
+    name: z.string().meta({ description: "Display name for the category.", examples: ["Dining"] }),
+    normalizedName: z
+      .string()
+      .meta({ description: "Normalized name used for matching.", examples: ["dining"] }),
+    description: z.string().meta({ description: "Human-readable category definition." }),
+    documentText: z.string().meta({ description: "Text used to produce the category embedding." }),
+    vectorId: z.string().meta({
+      description: "Identifier of the published category vector.",
+      examples: ["category:dining"],
+    }),
+    createdAt: NonNegativeSafeInteger.meta({
+      description: "Creation time as Unix milliseconds.",
+      examples: [exampleCreatedAt],
+    }),
+    updatedAt: NonNegativeSafeInteger.meta({
+      description: "Latest update time as Unix milliseconds.",
+      examples: [exampleUpdatedAt],
+    }),
   })
-  .strict();
+  .strict()
+  .meta({ description: "Published spending category.", examples: [exampleCategory] });
 
 const CategoryCandidate = z
   .object({
     category: Category,
-    score: z.number(),
+    score: z.number().meta({
+      description: "Semantic similarity score; larger values are better matches.",
+      examples: [0.91],
+    }),
   })
-  .strict();
+  .strict()
+  .meta({ description: "A ranked category match." });
 
 const CategoryClassificationBody = z
   .object({
-    category: Category,
-    score: z.number(),
-    candidates: z.array(CategoryCandidate),
+    category: Category.meta({ description: "Highest-scoring category." }),
+    score: z
+      .number()
+      .meta({ description: "Similarity score for the selected category.", examples: [0.91] }),
+    candidates: z
+      .array(CategoryCandidate)
+      .meta({ description: "Ranked category candidates considered by the classifier." }),
   })
   .strict();
 
-const CategoryListBody = z.object({ categories: z.array(Category) }).strict();
+const CategoryListBody = z
+  .object({
+    categories: z.array(Category).meta({ description: "Currently published spending categories." }),
+  })
+  .strict();
 
 const LoginAttemptRequest = z
   .object({
     email: Email,
-    turnstileToken: z.string().min(1).max(2048).optional(),
+    turnstileToken: z
+      .string()
+      .min(1)
+      .max(2048)
+      .optional()
+      .meta({ description: "Cloudflare Turnstile response token, when required." }),
   })
   .strict();
 
 const LoginVerifyRequest = z
   .object({
-    id: z.string().regex(/^[0-9A-Za-z]{32}$/u),
+    id: z
+      .string()
+      .regex(/^[0-9A-Za-z]{32}$/u)
+      .meta({ description: "Login-attempt identifier." }),
     email: Email,
-    code: z.string().regex(/^\d{6}$/u),
+    code: z
+      .string()
+      .regex(/^\d{6}$/u)
+      .meta({ description: "Six-digit email verification code." }),
   })
   .strict();
 
@@ -187,35 +513,89 @@ const ProjectCreateRequest = z
   .object({
     name: ProjectName,
     acl: ProjectAcl,
-    ownerMemberName: MemberName.optional(),
+    ownerMemberName: MemberName.optional().meta({
+      description: "Optional initial member name linked to the project owner.",
+    }),
   })
-  .strict();
+  .strict()
+  .meta({ examples: [{ name: "Japan trip", acl: exampleAcl, ownerMemberName: "Mika" }] });
 
 const ProjectRenameRequest = z.object({ name: ProjectName }).strict();
 const ProjectAclEmailsRequest = z
-  .object({ emails: z.array(Email).min(1).max(ABSOLUTE_LIST_LIMIT) })
+  .object({
+    emails: z
+      .array(Email)
+      .min(1)
+      .max(ABSOLUTE_LIST_LIMIT)
+      .meta({ description: "Accounts to add to or remove from the restricted ACL." }),
+  })
   .strict();
-const ProjectAclTypeRequest = z.object({ type: z.enum(["public", "restricted"]) }).strict();
+const ProjectAclTypeRequest = z
+  .object({
+    type: z.enum(["public", "restricted"]).meta({ description: "New project access policy type." }),
+  })
+  .strict();
 const ProjectMemberCreateRequest = z.object({ name: MemberName }).strict();
 const ProjectMemberEmailUnlinkRequest = z.object({ email: Email }).strict();
-const ProjectMemberPatchRequest = z.union([
-  z.object({ name: MemberName }).strict(),
-  z.object({ email: z.literal("") }).strict(),
-]);
-const ProjectJoinRequest = z.union([
-  z.object({ memberId: PositiveSafeInteger }).strict(),
-  z.object({ name: MemberName }).strict(),
-]);
+const ProjectMemberPatchRequest = z
+  .union([
+    z.object({ name: MemberName }).strict(),
+    z
+      .object({
+        email: z
+          .literal("")
+          .meta({ description: "Empty string unlinks the member's current account." }),
+      })
+      .strict(),
+  ])
+  .meta({
+    description: "Rename a member or unlink its account.",
+    examples: [{ name: "Ren Ito" }, { email: "" }],
+  });
+const ProjectJoinRequest = z
+  .union([
+    z
+      .object({
+        memberId: PositiveSafeInteger.meta({
+          description: "Existing unlinked member to claim.",
+          examples: [2],
+        }),
+      })
+      .strict(),
+    z.object({ name: MemberName }).strict(),
+  ])
+  .meta({
+    description: "Claim an existing member or create a new linked member.",
+    examples: [{ memberId: 2 }, { name: "Kai" }],
+  });
 const ProjectAppendRecordRequest = z
   .object({
     delta: MoneyByMemberId,
     description: RecordDescription,
   })
-  .strict();
+  .strict()
+  .meta({
+    examples: [
+      { delta: { "1": -6_200, "2": 6_200 }, description: exampleExpenseDescription },
+      { delta: { "1": 6_200, "2": -6_200 }, description: exampleTransferDescription },
+      { delta: { "1": -3_100, "2": 3_100 }, description: examplePromiseDescription },
+      { delta: { "1": 6_200, "2": -6_200 }, description: exampleRevertDescription },
+    ],
+  });
 const CategoryClassifyRequest = z
   .object({
-    name: z.string().min(1).max(200),
-    topK: z.number().int().min(1).max(20).optional(),
+    name: z
+      .string()
+      .min(1)
+      .max(200)
+      .meta({ description: "Expense text to classify.", examples: ["Ramen dinner"] }),
+    topK: z
+      .number()
+      .int()
+      .min(1)
+      .max(20)
+      .optional()
+      .meta({ description: "Maximum number of ranked candidates to return.", examples: [3] }),
   })
   .strict();
 
@@ -224,7 +604,8 @@ export const OpenApiSpecOptions = {
     info: {
       title: "Seisan API",
       version: "0.0.0",
-      description: "API for Seisan.",
+      description:
+        "Build integrations for Seisan projects, members, balances, records, and spending categories. Authenticate API requests with `Authorization: Bearer seisan_v1_YOUR_API_KEY`.",
     },
     servers: [{ url: "/", description: "Current origin" }],
     components: {
@@ -237,14 +618,20 @@ export const OpenApiSpecOptions = {
       },
     },
     tags: [
-      { name: "System" },
-      { name: "Auth" },
-      { name: "Registry" },
-      { name: "Categories" },
-      { name: "Projects" },
-      { name: "Project ACL" },
-      { name: "Project Members" },
-      { name: "Project Records" },
+      { name: "System", description: "Worker availability and diagnostics." },
+      { name: "Auth", description: "Resolve the account represented by an API key." },
+      { name: "Registry", description: "List projects visible to the authenticated account." },
+      { name: "Categories", description: "Read and classify published spending categories." },
+      { name: "Projects", description: "Create, read, and rename shared-expense projects." },
+      { name: "Project ACL", description: "Control public or account-restricted project access." },
+      {
+        name: "Project Members",
+        description: "Create, link, rename, leave, and delete project members.",
+      },
+      {
+        name: "Project Records",
+        description: "Append immutable expense, transfer, promise, and revert records.",
+      },
     ],
   },
   exclude: [
@@ -271,72 +658,124 @@ export const OpenApiParameters = {
     in: "path",
     required: true,
     description: "Public project ID.",
-    schema: { type: "string", format: "uuid" },
+    schema: { type: "string", format: "uuid", example: exampleProjectId },
   },
   MemberId: {
     name: "memberId",
     in: "path",
     required: true,
     description: "Project-local member ID.",
-    schema: { type: "integer", minimum: 1 },
+    schema: { type: "integer", minimum: 1, example: 2 },
   },
   RecordLimit: {
     name: "limit",
     in: "query",
     required: false,
-    description: "Maximum number of records to return.",
-    schema: { type: "integer", minimum: 1 },
+    description: "Maximum number of project records to return in this page.",
+    schema: { type: "integer", minimum: 1, example: 50 },
   },
   RecordOffset: {
     name: "offset",
     in: "query",
     required: false,
     description: "Fetch records older than this project-local record ID.",
-    schema: { type: "integer", minimum: 1 },
+    schema: { type: "integer", minimum: 1, example: 4 },
   },
 } satisfies Record<string, OpenAPIV3_1.ParameterObject>;
 
 export const OpenApiRequests = {
-  LoginAttempt: jsonRequest(LoginAttemptRequest),
-  LoginVerify: jsonRequest(LoginVerifyRequest),
-  ProjectCreate: jsonRequest(ProjectCreateRequest),
-  ProjectRename: jsonRequest(ProjectRenameRequest),
-  ProjectAclEmails: jsonRequest(ProjectAclEmailsRequest),
-  ProjectAclType: jsonRequest(ProjectAclTypeRequest),
-  ProjectMemberCreate: jsonRequest(ProjectMemberCreateRequest),
-  ProjectMemberEmailUnlink: jsonRequest(ProjectMemberEmailUnlinkRequest),
-  ProjectMemberPatch: jsonRequest(ProjectMemberPatchRequest),
-  ProjectJoin: jsonRequest(ProjectJoinRequest),
-  ProjectAppendRecord: jsonRequest(ProjectAppendRecordRequest),
-  CategoryClassify: jsonRequest(CategoryClassifyRequest),
+  LoginAttempt: jsonRequest(LoginAttemptRequest, { email: "mika@example.com" }),
+  LoginVerify: jsonRequest(LoginVerifyRequest, {
+    id: "aB3dE5gH7jK9mN2pQ4sT6vW8yZ1cF0hL",
+    email: "mika@example.com",
+    code: "482193",
+  }),
+  ProjectCreate: jsonRequest(ProjectCreateRequest, {
+    name: "Japan trip",
+    acl: exampleAcl,
+    ownerMemberName: "Mika",
+  }),
+  ProjectRename: jsonRequest(ProjectRenameRequest, { name: "Japan trip 2026" }),
+  ProjectAclEmails: jsonRequest(ProjectAclEmailsRequest, { emails: ["kai@example.com"] }),
+  ProjectAclType: jsonRequest(ProjectAclTypeRequest, { type: "restricted" }),
+  ProjectMemberCreate: jsonRequest(ProjectMemberCreateRequest, { name: "Kai" }),
+  ProjectMemberEmailUnlink: jsonRequest(ProjectMemberEmailUnlinkRequest, {
+    email: "ren@example.com",
+  }),
+  ProjectMemberPatch: jsonRequest(ProjectMemberPatchRequest, { name: "Ren Ito" }),
+  ProjectJoin: jsonRequest(ProjectJoinRequest, { memberId: 2 }),
+  ProjectAppendRecord: jsonRequest(ProjectAppendRecordRequest, {
+    delta: { "1": -6_200, "2": 6_200 },
+    description: exampleExpenseDescription,
+  }),
+  CategoryClassify: jsonRequest(CategoryClassifyRequest, { name: "Ramen dinner", topK: 3 }),
 } satisfies Record<string, OpenAPIV3_1.RequestBodyObject>;
 
 export const OpenApiResponses = {
-  Ping: textResponse("Plain-text health check response.", PingBody),
-  Ok: jsonResponse("Successful response.", OkBody),
-  LoginAttemptAccepted: jsonResponse("Login attempt accepted.", LoginAttemptBody),
-  Identity: jsonResponse("Authenticated identity.", IdentityBody),
-  Registry: jsonResponse("Projects visible to the authenticated caller.", RegistryBody),
+  Ping: textResponse("Plain-text health check response.", PingBody, "Hello World"),
+  Ok: jsonResponse("Successful response.", OkBody, { ok: true }),
+  LoginAttemptAccepted: jsonResponse("Login attempt accepted.", LoginAttemptBody, {
+    ok: true,
+  }),
+  Identity: jsonResponse("Authenticated identity.", IdentityBody, {
+    email: "mika@example.com",
+  }),
+  Registry: jsonResponse("Projects visible to the authenticated caller.", RegistryBody, {
+    projects: [
+      {
+        id: exampleProjectId,
+        name: "Japan trip",
+        owner: "mika@example.com",
+        member: exampleMember,
+        balance: 3_100,
+        updatedAt: exampleUpdatedAt,
+        lastSyncAt: exampleUpdatedAt + 500,
+      },
+    ],
+  }),
   CategoryClassification: jsonResponse(
     "Category classification result.",
     CategoryClassificationBody,
+    {
+      category: exampleCategory,
+      score: 0.91,
+      candidates: [
+        { category: exampleCategory, score: 0.91 },
+        { category: exampleGroceriesCategory, score: 0.63 },
+      ],
+    },
   ),
-  CategoryList: jsonResponse("Configured spending categories.", CategoryListBody),
-  ProjectCreated: jsonResponse("Created project.", ProjectCreated),
-  Project: jsonResponse("Project details and records.", Project),
-  ProjectName: jsonResponse("Updated project name.", ProjectNameBody),
-  Member: jsonResponse("Project member.", MemberBody),
-  RecordCreated: jsonResponse("Created project record.", RecordCreatedBody),
-  InvalidRequest: jsonResponse("Malformed or invalid request.", ErrorBody),
-  Unauthorized: jsonResponse("Authentication is required or invalid.", ErrorBody),
-  Forbidden: jsonResponse("The caller is not allowed to perform this action.", ErrorBody),
-  NotFound: jsonResponse("The requested resource was not found.", ErrorBody),
+  CategoryList: jsonResponse("Configured spending categories.", CategoryListBody, {
+    categories: [exampleCategory, exampleGroceriesCategory],
+  }),
+  ProjectCreated: jsonResponse("Created project.", ProjectCreated, exampleProjectCreated),
+  Project: jsonResponse("Project details and records.", Project, exampleProject),
+  ProjectName: jsonResponse("Updated project name.", ProjectNameBody, {
+    name: "Japan trip 2026",
+  }),
+  Member: jsonResponse("Project member.", MemberBody, { member: exampleMember }),
+  RecordCreated: jsonResponse("Created project record.", RecordCreatedBody, { id: 5 }),
+  InvalidRequest: jsonResponse("Malformed or invalid request.", ErrorBody, exampleError),
+  Unauthorized: jsonResponse("Authentication is required or invalid.", ErrorBody, {
+    error: "unauthorized",
+  }),
+  Forbidden: jsonResponse("The caller is not allowed to perform this action.", ErrorBody, {
+    error: "forbidden",
+  }),
+  NotFound: jsonResponse("The requested resource was not found.", ErrorBody, {
+    error: "not_found",
+  }),
   Conflict: jsonResponse(
     "The request conflicts with project state or configured limits.",
     ErrorBody,
+    { error: "conflict", reason: "The requested change conflicts with project state." },
   ),
-  RateLimited: jsonResponse("The request was rate limited.", ErrorBody),
-  InternalServerError: jsonResponse("Unexpected server error.", ErrorBody),
+  RateLimited: jsonResponse("The request was rate limited.", ErrorBody, {
+    error: "rate_limited",
+  }),
+  InternalServerError: jsonResponse("Unexpected server error.", ErrorBody, {
+    error: "internal_server_error",
+  }),
   NoContent: { description: "Successful no-content response." },
 } satisfies Record<string, OpenApiResponse>;
 
@@ -367,34 +806,37 @@ function errorResponseByStatus(status: 400 | 401 | 403 | 404 | 409 | 429 | 500):
   }
 }
 
-function jsonRequest(schema: z.ZodType): OpenAPIV3_1.RequestBodyObject {
+function jsonRequest(schema: z.ZodType, example: unknown): OpenAPIV3_1.RequestBodyObject {
   return {
     required: true,
     content: {
       [JsonMediaType]: {
         schema: openApiSchema(schema),
+        example,
       },
     },
   };
 }
 
-function jsonResponse(description: string, schema: z.ZodType): OpenApiResponse {
+function jsonResponse(description: string, schema: z.ZodType, example: unknown): OpenApiResponse {
   return {
     description,
     content: {
       [JsonMediaType]: {
         schema: resolver(schema),
+        example,
       },
     },
   };
 }
 
-function textResponse(description: string, schema: z.ZodType): OpenApiResponse {
+function textResponse(description: string, schema: z.ZodType, example: string): OpenApiResponse {
   return {
     description,
     content: {
       [TextMediaType]: {
         schema: resolver(schema),
+        example,
       },
     },
   };

@@ -42,7 +42,7 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 - Use `BrandLink` for the logo plus `SEISAN` brand mark.
 - The logo asset is `public/seisan-logo.svg`, and `index.html` uses it as the favicon.
 - Set page titles with `useDocumentTitle` for routes that should own `document.title`.
-- Existing title-setting routes include `/projects`, `/account`, `/account/api-keys`, project routes, `/login`, `/privacy`, and `/admin/*`; root redirects to `/projects`.
+- Existing title-setting routes include `/projects`, `/account`, `/account/api-keys`, `/api-docs`, project routes, `/login`, `/privacy`, and `/admin/*`; root redirects to `/projects`.
 - Avoid in-app explanatory text about how the UI works unless it is actual product copy.
 - For SEO-facing shell content, update `index.html` metadata rather than adding marketing-only UI to app routes.
 
@@ -51,5 +51,8 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 - Account routes live under `/account` and require browser session authentication.
 - `/account` uses the existing lightweight `/api/whoami` identity response, including the browser session expiration timestamp. Do not load project or API-key metadata on the account home page.
 - `/account/api-keys` uses the session-only `/api/api-keys` routes. The complete secret returned at creation is one-time UI state and must be discarded when its dialog closes.
+- `/api-docs` is a public, lazy-loaded Scalar reference backed by `/openapi.json`; `/account/api-docs` redirects there for compatibility.
+- Keep the API reference outside the authenticated account shell so its endpoint navigation, structured schemas, cURL samples, and response examples have the full viewport. The API Keys page is the authenticated entry point.
+- The reference is documentation-only: keep Scalar's test-request, credential persistence, API-client, Agent, developer-tool, and telemetry features disabled.
 - Keep the account shell visually aligned with the warm ledger system: a desktop navigation rail, compact mobile tabs, thin dividers, and restrained blue active states.
 - Authenticated project-list and project-detail surfaces should keep a visible Account entry point. Public project views must not show an account action without a resolved session identity.

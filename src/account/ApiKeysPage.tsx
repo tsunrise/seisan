@@ -2,6 +2,7 @@ import AddIcon from "@mui/icons-material/Add";
 import ContentCopyOutlinedIcon from "@mui/icons-material/ContentCopyOutlined";
 import DeleteOutlinedIcon from "@mui/icons-material/DeleteOutlined";
 import KeyOutlinedIcon from "@mui/icons-material/KeyOutlined";
+import MenuBookOutlinedIcon from "@mui/icons-material/MenuBookOutlined";
 import {
   Alert,
   Box,
@@ -30,6 +31,7 @@ import {
 } from "@mui/material";
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 
 import * as api from "../api";
 import { InlineAlert } from "../components/InlineAlert";
@@ -198,9 +200,25 @@ export function ApiKeysPage() {
             Create credentials for scripts and clients that call the Seisan API.
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
-          Create key
-        </Button>
+        <Stack direction="row" sx={{ flexWrap: "wrap", gap: 1 }}>
+          <Button
+            component={Link}
+            to="/api-docs"
+            variant="outlined"
+            startIcon={<MenuBookOutlinedIcon />}
+            sx={{ flex: { xs: "1 1 100%", sm: "0 0 auto" } }}
+          >
+            API docs
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={openCreate}
+            sx={{ flex: { xs: "1 1 100%", sm: "0 0 auto" } }}
+          >
+            Create key
+          </Button>
+        </Stack>
       </Stack>
 
       <Box component="section" aria-label="API keys">

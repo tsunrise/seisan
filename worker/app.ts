@@ -23,7 +23,8 @@ app.get(
   "/api/ping",
   describeRoute({
     tags: ["System"],
-    summary: "Ping the Worker API.",
+    summary: "Ping the Worker API",
+    description: "Returns a plain-text response that confirms the Seisan Worker is reachable.",
     responses: {
       200: OpenApiResponses.Ping,
     },

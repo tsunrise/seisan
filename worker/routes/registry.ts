@@ -21,7 +21,9 @@ registryApp.get(
   "/registry",
   describeRoute({
     tags: ["Registry"],
-    summary: "List projects visible to the authenticated caller.",
+    summary: "List projects visible to the authenticated caller",
+    description:
+      "Lists projects linked to the authenticated account, including its project-local member and current cent-denominated balance.",
     security: OpenApiSecurity.ApiKeyBearer,
     responses: {
       200: OpenApiResponses.Registry,

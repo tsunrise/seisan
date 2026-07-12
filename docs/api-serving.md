@@ -130,6 +130,9 @@ API documentation is generated from Hono route metadata:
 - Shared request, response, parameter, tag, and security definitions live in `worker/model.ts`.
 - `scripts/generate-openapi.ts` calls `generateSpecs(app, OpenApiSpecOptions)`.
 - `scripts/prebuild.mjs` regenerates `public/openapi.json` before builds.
+- Every public operation needs a useful description. Documented parameters and body properties need descriptions and realistic examples, and each non-empty successful response needs an example.
+- Keep examples internally consistent and use the correct units: project money is integer cents, project/category timestamps are Unix milliseconds, and browser-session expiry is Unix seconds.
+- The generator rejects missing operation descriptions, parameter examples, request examples, successful-response examples, and undocumented request/response object properties.
 
 `OpenApiSpecOptions.exclude` intentionally excludes admin routes, cookie-only login/logout routes, and cookie-only API-key management routes. Public OpenAPI is API-key-client oriented and documents bearer API key auth only. Keep this aligned with `docs/auth.md`.
 

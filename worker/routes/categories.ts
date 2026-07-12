@@ -46,7 +46,9 @@ categoryApp.get(
   "/categories",
   describeRoute({
     tags: ["Categories"],
-    summary: "List configured spending categories.",
+    summary: "List configured spending categories",
+    description:
+      "Returns the currently published category definitions used by Seisan's expense classifier.",
     security: OpenApiSecurity.ApiKeyBearer,
     responses: {
       200: OpenApiResponses.CategoryList,
@@ -61,7 +63,9 @@ categoryApp.post(
   "/categories/classify",
   describeRoute({
     tags: ["Categories"],
-    summary: "Classify a post name into configured spending categories.",
+    summary: "Classify a post name into configured spending categories",
+    description:
+      "Ranks published spending categories for the supplied expense text and returns the strongest match plus candidate scores.",
     security: OpenApiSecurity.ApiKeyBearer,
     requestBody: OpenApiRequests.CategoryClassify,
     responses: {

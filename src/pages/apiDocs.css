@@ -1,0 +1,219 @@
+.api-docs-page {
+  display: grid;
+  height: 100svh;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  background: #f7f6f1;
+}
+
+.api-docs-header {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 10px 20px;
+  border-bottom: 1px solid #ded8cc;
+  background: rgba(255, 253, 250, 0.96);
+  backdrop-filter: blur(12px);
+}
+
+.api-docs-skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 30;
+  padding: 10px 14px;
+  border: 1px solid #1167d8;
+  background: #fffdfa;
+  color: #0c4da3;
+  font-weight: 700;
+  text-decoration: none;
+  transform: translateY(-150%);
+}
+
+.api-docs-skip-link:focus {
+  transform: translateY(0);
+}
+
+.api-docs-reference {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.api-docs-reference .scalar-app,
+.api-docs-reference .scalar-app.light-mode {
+  --scalar-background-1: #fffdfa;
+  --scalar-background-2: #faf8f2;
+  --scalar-background-3: #f1eee6;
+  --scalar-background-accent: #eef6ff;
+  --scalar-color-1: #181713;
+  --scalar-color-2: #68645b;
+  --scalar-color-3: #817c72;
+  --scalar-color-accent: #1167d8;
+  --scalar-border-color: #ded8cc;
+  --scalar-sidebar-background-1: #f7f6f1;
+  --scalar-sidebar-border-color: #ded8cc;
+  --scalar-sidebar-item-active-background: #eef6ff;
+  --scalar-sidebar-item-hover-background: #f1eee6;
+  --scalar-sidebar-item-hover-color: #181713;
+  --scalar-sidebar-color-active: #0c4da3;
+  --scalar-sidebar-indent-border-active: #1167d8;
+  --scalar-sidebar-indent-border-hover: #c9c1b4;
+  --scalar-sidebar-search-background: #fffdfa;
+  --scalar-sidebar-search-border-color: #c9c1b4;
+  --scalar-button-1: #181713;
+  --scalar-button-1-hover: #343128;
+  --scalar-button-1-color: #fffdfa;
+  --scalar-link-color: #0c4da3;
+  --scalar-link-color-hover: #1167d8;
+  --scalar-font:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Geist Sans", "Aptos",
+    sans-serif;
+  --scalar-font-code: "SF Mono", "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
+  --scalar-radius: 3px;
+  --scalar-radius-lg: 4px;
+  --scalar-radius-xl: 6px;
+  --scalar-shadow-1: 0 1px 2px rgba(24, 23, 19, 0.04);
+  --scalar-shadow-2: 0 0 0 1px #ded8cc, 0 12px 30px rgba(24, 23, 19, 0.06);
+  --scalar-content-max-width: 1540px;
+  height: 100%;
+  min-height: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.api-docs-reference > div,
+.api-docs-reference > div > div,
+.api-docs-reference .scalar-api-reference,
+.api-docs-reference .references-layout {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+.api-docs-reference > div,
+.api-docs-reference > div > div {
+  overflow: hidden !important;
+}
+
+.api-docs-reference .references-layout {
+  grid-template-rows: var(--scalar-header-height, 0px) minmax(0, 1fr) 0 !important;
+}
+
+.api-docs-reference .references-rendered,
+.api-docs-reference .t-doc__sidebar {
+  min-height: 0;
+  max-height: 100%;
+  overscroll-behavior: contain;
+}
+
+.api-docs-reference .references-rendered {
+  height: 100%;
+  overflow-y: auto !important;
+  scrollbar-gutter: stable;
+}
+
+.api-docs-reference .t-doc__sidebar {
+  height: 100% !important;
+}
+
+.api-docs-reference .t-doc__sidebar a[href*="scalar.com"] {
+  display: none !important;
+}
+
+.api-docs-reference .t-doc__sidebar button:has(.sidebar-heading-type) .scalar-sidebar-indent {
+  order: -2;
+}
+
+.api-docs-reference .sidebar-heading-type {
+  order: -1;
+  display: inline-flex;
+  width: 22px;
+  height: 22px !important;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  align-self: center !important;
+  margin-right: 8px;
+  margin-left: 0 !important;
+  border: 1px solid color-mix(in srgb, var(--method-color) 24%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--method-color) 8%, var(--scalar-sidebar-background-1));
+  color: var(--method-color);
+  font-size: 0;
+  line-height: 1;
+}
+
+.api-docs-reference .sidebar-heading-type::after {
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.api-docs-reference .sidebar-heading-type--get::after {
+  content: "↙" / "";
+}
+
+.api-docs-reference
+  :is(
+    .sidebar-heading-type--post,
+    .sidebar-heading-type--put,
+    .sidebar-heading-type--patch
+  )::after {
+  content: "↗" / "";
+}
+
+.api-docs-reference .sidebar-heading-type--delete::after {
+  content: "×" / "";
+  font-size: 19px;
+  font-weight: 400;
+}
+
+.api-docs-reference
+  :is(
+    .sidebar-heading-type--head,
+    .sidebar-heading-type--options,
+    .sidebar-heading-type--trace
+  )::after {
+  content: "→" / "";
+}
+
+.api-docs-reference .sidebar-heading-type-active {
+  border-color: var(--method-color);
+  background: var(--method-color);
+  color: #fffdfa;
+}
+
+.api-docs-reference .scalar-app :focus-visible {
+  outline: 2px solid #1167d8;
+  outline-offset: 2px;
+}
+
+.api-docs-reference .scalar-app :is(button, [role="button"]):active {
+  transform: translateY(1px);
+}
+
+/* Scalar mounts its disabled API client in a transparent overlay root. */
+.api-docs-reference .scalar.scalar-app.z-overlay {
+  display: none !important;
+}
+
+@media (max-width: 760px) {
+  .api-docs-header {
+    min-height: 56px;
+    gap: 12px;
+    padding: 8px 12px;
+  }
+
+  .api-docs-header-secondary {
+    display: none !important;
+  }
+}
+
+@media (width < 1000px) {
+  .api-docs-reference .references-layout {
+    grid-template-rows: var(--scalar-header-height, 0px) 0 minmax(0, 1fr) 0 !important;
+  }
+}

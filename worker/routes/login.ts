@@ -54,7 +54,7 @@ loginApp.post(
   "/login/attempt",
   describeRoute({
     tags: ["Auth"],
-    summary: "Request an email login code.",
+    summary: "Request an email login code",
     requestBody: OpenApiRequests.LoginAttempt,
     responses: {
       202: OpenApiResponses.LoginAttemptAccepted,
@@ -119,7 +119,7 @@ loginApp.post(
   "/login/verify",
   describeRoute({
     tags: ["Auth"],
-    summary: "Verify an email login code and create a session.",
+    summary: "Verify an email login code and create a session",
     requestBody: OpenApiRequests.LoginVerify,
     responses: {
       200: OpenApiResponses.Ok,
@@ -163,7 +163,7 @@ loginApp.post(
   "/logout",
   describeRoute({
     tags: ["Auth"],
-    summary: "Clear the current session.",
+    summary: "Clear the current session",
     responses: {
       204: OpenApiResponses.NoContent,
       ...errorResponses(401, 403),
@@ -191,7 +191,9 @@ loginApp.get(
   "/whoami",
   describeRoute({
     tags: ["Auth"],
-    summary: "Get the current authenticated identity.",
+    summary: "Get the current authenticated identity",
+    description:
+      "Returns the account email represented by the bearer API key. Browser sessions additionally receive an expiry timestamp, but browser-session authentication is not part of this public API contract.",
     security: OpenApiSecurity.ApiKeyBearer,
     responses: {
       200: OpenApiResponses.Identity,
