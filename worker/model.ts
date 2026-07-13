@@ -603,9 +603,9 @@ export const OpenApiSpecOptions = {
   documentation: {
     info: {
       title: "Seisan API",
-      version: "0.0.0",
+      version: "0.1.0",
       description:
-        "Build integrations for Seisan projects, members, balances, records, and spending categories. Authenticate API requests with `Authorization: Bearer seisan_v1_YOUR_API_KEY`.",
+        "Seisan is a free shared-expense tracker for groups. It keeps project members, expenses, transfers, and settlements in a shared ledger so everyone can see the current balance.\n\nUse the API to build integrations for Seisan projects, members, balances, records, and spending categories. Authenticate requests with `Authorization: Bearer $SEISAN_API_KEY`.",
     },
     servers: [{ url: "/", description: "Current origin" }],
     components: {

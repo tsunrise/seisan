@@ -1,5 +1,4 @@
 import CodeOutlinedIcon from "@mui/icons-material/CodeOutlined";
-import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import KeyOutlinedIcon from "@mui/icons-material/KeyOutlined";
 import { ApiReferenceReact, type AnyApiReferenceConfiguration } from "@scalar/api-reference-react";
 import { Box, Button, Stack } from "@mui/material";
@@ -26,7 +25,7 @@ const scalarConfiguration = {
   withDefaultFonts: false,
   showSidebar: true,
   defaultHttpClient: { targetKey: "shell", clientKey: "curl" },
-  documentDownloadType: "direct",
+  documentDownloadType: "none",
   modelsSectionLabel: "Schemas",
   operationTitleSource: "summary",
   orderRequiredPropertiesFirst: true,
@@ -36,7 +35,7 @@ const scalarConfiguration = {
   authentication: {
     preferredSecurityScheme: "apiKeyBearer",
     securitySchemes: {
-      apiKeyBearer: { token: "seisan_v1_YOUR_API_KEY" },
+      apiKeyBearer: { token: "$SEISAN_API_KEY" },
     },
   },
   metaData: {
@@ -56,15 +55,6 @@ export default function ApiDocsPage() {
       <Box component="header" className="api-docs-header">
         <BrandLink />
         <Stack component="nav" aria-label="API documentation" direction="row" spacing={1}>
-          <Button
-            component={Link}
-            to="/projects"
-            variant="text"
-            startIcon={<FolderOutlinedIcon />}
-            className="api-docs-header-secondary"
-          >
-            Projects
-          </Button>
           <Button
             component="a"
             href="/openapi.json"
