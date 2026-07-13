@@ -14,6 +14,7 @@ export type RecordDescription =
       name: string;
       paid: MoneyByMemberId;
       liability: MoneyByMemberId;
+      categoryId?: string;
     }
   | {
       type: "transfer";
@@ -71,6 +72,28 @@ export interface ProjectSummary {
 
 export type WithSyncTime<T> = T & { lastSyncAt: number };
 
+export interface Category {
+  id: string;
+  name: string;
+  normalizedName: string;
+  description: string;
+  documentText: string;
+  vectorId: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CategoryCandidate {
+  category: Category;
+  score: number;
+}
+
+export interface CategoryClassification {
+  category: Category;
+  score: number;
+  candidates: CategoryCandidate[];
+}
+
 export interface Limits {
   "projects.maxLinkedProjects": number;
   "projects.maxOwnedProjects": number;
@@ -124,6 +147,19 @@ export interface AdminOwnerSummary {
   updatedAt: number;
 }
 
+export interface ApiKeyMetadata {
+  id: string;
+  label: string;
+  createdAt: number;
+  expiresAt: number;
+  revokedAt: number | null;
+}
+
+export interface CreatedApiKey {
+  apiKey: string;
+  key: ApiKeyMetadata;
+}
+
 interface ParsedApiErrorBody {
   code: string;
   reason: string | null;
@@ -146,7 +182,7 @@ export class ApiError extends Error {
   }
 }
 
-export async function whoami(): Promise<{ email: string }> {
+export async function whoami(): Promise<{ email: string; sessionExpiresAt?: number }> {
   return requestJson("/api/whoami");
 }
 
@@ -254,11 +290,49 @@ export async function logout(): Promise<void> {
   await requestEmpty("/api/logout", { method: "POST", expectedStatus: 204 });
 }
 
+export async function listApiKeys(): Promise<ApiKeyMetadata[]> {
+  const response = await requestJson<{ keys: ApiKeyMetadata[] }>("/api/api-keys");
+  return response.keys;
+}
+
+export async function createApiKey(input: {
+  label: string;
+  expiresAt: number;
+}): Promise<CreatedApiKey> {
+  return requestJson("/api/api-keys", {
+    method: "POST",
+    body: input,
+    expectedStatus: 201,
+  });
+}
+
+export async function revokeApiKey(id: string): Promise<void> {
+  await requestEmpty(`/api/api-keys/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    expectedStatus: 204,
+  });
+}
+
 export async function listProjects(): Promise<Array<WithSyncTime<ProjectSummary>>> {
   const response = await requestJson<{ projects: Array<WithSyncTime<ProjectSummary>> }>(
     "/api/registry",
   );
   return response.projects;
+}
+
+export async function classifyCategory(input: {
+  name: string;
+  topK?: number;
+}): Promise<CategoryClassification> {
+  return requestJson("/api/categories/classify", {
+    method: "POST",
+    body: input,
+  });
+}
+
+export async function listCategories(): Promise<Category[]> {
+  const response = await requestJson<{ categories: Category[] }>("/api/categories");
+  return response.categories;
 }
 
 export async function createProject(input: {

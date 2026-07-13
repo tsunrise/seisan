@@ -149,6 +149,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
         <ProjectRail
           project={project.data}
           currentMember={currentMember}
+          currentEmail={currentEmail}
           projects={projectSummaries}
           registryEnabled={registryEnabled}
         />
@@ -166,6 +167,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
         <ProjectHeader
           project={project.data}
           currentMember={currentMember}
+          showAccount={currentEmail !== null}
           onSettings={() => navigate(`/project/${projectId}/settings`)}
         />
         <RecordTimeline
@@ -209,7 +211,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
               fullWidth
               sx={{ minHeight: 56 }}
             >
-              Join Project 
+              Join Project
             </Button>
           ) : (
             <Button

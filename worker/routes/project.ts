@@ -11,10 +11,12 @@ import {
   requireAuth,
   requireSameOriginWhenPresent,
 } from "../auth";
+import { CATEGORY_CONFIG_KEY, CategoryId } from "../category";
 import { sha256Hex } from "../crypto";
 import type { ProjectStore } from "../do/ProjectStore";
 import { normalizeEmail, normalizedEmailSchema } from "../email";
 import { ErrorResponse } from "../error";
+import { PublishedGlobalConfigKvStore } from "../globalConfig";
 import { ABSOLUTE_LIST_LIMIT, ABSOLUTE_TEXT_LIMIT, LimitsKvStore, LimitsPolicy } from "../limits";
 import {
   errorResponses,
@@ -102,6 +104,7 @@ const ExpenseDescription = z
     name: z.string().trim().min(1).max(ABSOLUTE_TEXT_LIMIT),
     paid: NonNegativeMoneyMap,
     liability: NonNegativeMoneyMap,
+    categoryId: CategoryId.optional(),
   })
   .superRefine((description, context) => {
     const totalPaid = MoneyByMemberIdUtils.sum(description.paid);
@@ -168,6 +171,7 @@ const RecordDescription = z.discriminatedUnion("type", [
   PromiseDescription,
   RevertDescription,
 ]);
+type ParsedRecordDescription = z.infer<typeof RecordDescription>;
 
 const ProjectAcl = z.discriminatedUnion("type", [
   z.object({ type: z.literal("public") }),
@@ -207,7 +211,9 @@ projectApp.put(
   "/project",
   describeRoute({
     tags: ["Projects"],
-    summary: "Create a project.",
+    summary: "Create a project",
+    description:
+      "Creates a shared-expense project owned by the authenticated account, with a public or restricted access policy and an optional owner-linked member.",
     security: OpenApiSecurity.ApiKeyBearer,
     requestBody: OpenApiRequests.ProjectCreate,
     responses: {
@@ -290,7 +296,9 @@ projectApp.get(
   "/project/:id",
   describeRoute({
     tags: ["Projects"],
-    summary: "Get project details and a page of records.",
+    summary: "Get project details and a page of records",
+    description:
+      "Returns project metadata, members, cent-denominated balances, and a page of ledger records. Public projects may be read without authentication.",
     security: OpenApiSecurity.OptionalApiKeyBearer,
     parameters: [
       OpenApiParameters.ProjectId,
@@ -356,7 +364,9 @@ projectApp.patch(
   "/project/:id",
   describeRoute({
     tags: ["Projects"],
-    summary: "Rename a project.",
+    summary: "Rename a project",
+    description:
+      "Updates the display name of a project the authenticated caller is allowed to manage.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectRename,
@@ -406,7 +416,8 @@ projectApp.post(
   "/project/:id/acl/emails",
   describeRoute({
     tags: ["Project ACL"],
-    summary: "Add emails to a restricted project ACL.",
+    summary: "Add emails to a restricted project ACL",
+    description: "Adds one or more account emails to the allowlist for a restricted project.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectAclEmails,
@@ -444,7 +455,8 @@ projectApp.delete(
   "/project/:id/acl/emails",
   describeRoute({
     tags: ["Project ACL"],
-    summary: "Remove emails from a restricted project ACL.",
+    summary: "Remove emails from a restricted project ACL",
+    description: "Removes one or more account emails from the allowlist for a restricted project.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectAclEmails,
@@ -486,7 +498,9 @@ projectApp.put(
   "/project/:id/acl/type",
   describeRoute({
     tags: ["Project ACL"],
-    summary: "Set a project's ACL type.",
+    summary: "Set a project's ACL type",
+    description:
+      "Switches a project between public link access and an account-restricted allowlist.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectAclType,
@@ -528,7 +542,9 @@ projectApp.post(
   "/project/:id/members",
   describeRoute({
     tags: ["Project Members"],
-    summary: "Create a project member.",
+    summary: "Create a project member",
+    description:
+      "Creates an unlinked participant in a project without requiring that person to have a Seisan account.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectMemberCreate,
@@ -574,7 +590,9 @@ projectApp.post(
   "/project/:id/join",
   describeRoute({
     tags: ["Project Members"],
-    summary: "Join a project as an existing or new member.",
+    summary: "Join a project as an existing or new member",
+    description:
+      "Links the authenticated account to an existing unlinked member, or creates and links a new member in one operation.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectJoin,
@@ -637,7 +655,9 @@ projectApp.post(
   "/project/:id/leave",
   describeRoute({
     tags: ["Project Members"],
-    summary: "Leave a project and unlink the current account from its member.",
+    summary: "Leave a project and unlink the current account from its member",
+    description:
+      "Unlinks the authenticated account from its current project member while preserving ledger history.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     responses: {
@@ -687,7 +707,9 @@ projectApp.delete(
   "/project/:id/member-links",
   describeRoute({
     tags: ["Project Members"],
-    summary: "Unlink an email from a project member.",
+    summary: "Unlink an email from a project member",
+    description:
+      "Removes an account link from a project member while retaining the member and historical records.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectMemberEmailUnlink,
@@ -745,7 +767,8 @@ projectApp.patch(
   "/project/:id/members/:memberId",
   describeRoute({
     tags: ["Project Members"],
-    summary: "Patch a project member.",
+    summary: "Patch a project member",
+    description: "Renames a project member or unlinks the member's currently linked account.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId, OpenApiParameters.MemberId],
     requestBody: OpenApiRequests.ProjectMemberPatch,
@@ -804,7 +827,9 @@ projectApp.delete(
   "/project/:id/members/:memberId",
   describeRoute({
     tags: ["Project Members"],
-    summary: "Soft-delete a project member.",
+    summary: "Soft-delete a project member",
+    description:
+      "Marks an unused project member as deleted while preserving any historical references.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId, OpenApiParameters.MemberId],
     responses: {
@@ -860,13 +885,15 @@ projectApp.post(
   "/project/:id",
   describeRoute({
     tags: ["Project Records"],
-    summary: "Append a record to a project.",
+    summary: "Append a record to a project",
+    description:
+      "Appends an immutable expense, transfer, promise, or revert entry. The supplied cent-denominated delta must match the server-derived effect and sum to zero.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectAppendRecord,
     responses: {
       201: OpenApiResponses.RecordCreated,
-      ...errorResponses(400, 401, 403, 404, 409, 429),
+      ...errorResponses(400, 401, 403, 404, 409, 429, 500),
     },
   }),
   requireSameOriginWhenPresent,
@@ -891,6 +918,11 @@ projectApp.post(
     const productLimits = await new LimitsKvStore(context.env.CONFIGS).load(callerEmail);
     if (!new LimitsPolicy(productLimits).allowsRecordPost()) {
       return ErrorResponse.postingBlocked();
+    }
+
+    const categoryValidation = await validateExpenseCategory(context, parsed.data.description);
+    if (!categoryValidation.ok) {
+      return categoryValidation.response;
     }
 
     const accountRateLimit = await rateLimiter.limitAccount(callerEmail);
@@ -1004,6 +1036,27 @@ class AppendRecordRateLimiter {
   private static projectKey(projectId: string): string {
     return `${AppendRecordRateLimiter.projectKeyPrefix}${projectId}`;
   }
+}
+
+async function validateExpenseCategory(
+  context: AppContext,
+  description: ParsedRecordDescription,
+): Promise<{ ok: true } | { ok: false; response: Response }> {
+  if (description.type !== "expense" || description.categoryId === undefined) {
+    return { ok: true };
+  }
+
+  const categories = await new PublishedGlobalConfigKvStore(
+    context.env.PUBLISHED_GLOBAL_CONFIG,
+  ).getValue(CATEGORY_CONFIG_KEY);
+  if (!categories.ok) {
+    return { ok: false, response: ErrorResponse.internalServerError() };
+  }
+  if (!categories.value.categories.some((category) => category.id === description.categoryId)) {
+    return { ok: false, response: ErrorResponse.invalidRequest() };
+  }
+
+  return { ok: true };
 }
 
 class ProjectRefFetcher {

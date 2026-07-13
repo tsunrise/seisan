@@ -1,15 +1,14 @@
 import AddIcon from "@mui/icons-material/Add";
+import AccountCircleOutlinedIcon from "@mui/icons-material/AccountCircleOutlined";
 import LogoutIcon from "@mui/icons-material/Logout";
 import {
   Box,
   Button,
-  Chip,
   CircularProgress,
   Fab,
   IconButton,
   Paper,
   Stack,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import { Link, Navigate, useLocation, useNavigate } from "react-router";
@@ -66,18 +65,22 @@ export function ProjectsPage() {
           }}
         >
           {user.status === "ready" && user.data ? (
-            <Tooltip title={user.data.email}>
-              <Box
-                component="span"
-                sx={{
-                  display: "inline-flex",
-                  maxWidth: { xs: "calc(100% - 58px)", sm: "clamp(260px, 38vw, 440px)" },
-                  minWidth: 0,
-                }}
-              >
-                <Chip label={user.data.email} sx={{ maxWidth: "100%" }} />
-              </Box>
-            </Tooltip>
+            <Button
+              component={Link}
+              to="/account"
+              variant="outlined"
+              startIcon={<AccountCircleOutlinedIcon />}
+              aria-label={`Account for ${user.data.email}`}
+              sx={{
+                maxWidth: { xs: "calc(100% - 58px)", sm: "clamp(260px, 38vw, 440px)" },
+                minWidth: 0,
+                justifyContent: "flex-start",
+              }}
+            >
+              <Typography component="span" noWrap sx={{ minWidth: 0, fontSize: 14 }}>
+                {user.data.email}
+              </Typography>
+            </Button>
           ) : null}
           <IconButton
             aria-label="Log out"

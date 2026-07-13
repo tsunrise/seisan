@@ -11,16 +11,24 @@ export interface Identity {
   email: string;
 }
 
+export interface AuthenticatedSession {
+  identity: Identity;
+  expiresAt: number;
+}
+
 export type EnvWithIdentity = {
   Bindings: Env;
   Variables: {
     identity: Identity | undefined;
+    sessionExpiresAt: number | undefined;
   };
 };
 
 export type AppContext = Context<EnvWithIdentity>;
 
-type AuthenticationResult = { ok: true; identity: Identity | null } | { ok: false };
+type AuthenticationResult =
+  | { ok: true; identity: Identity | null; sessionExpiresAt?: number }
+  | { ok: false };
 type BearerAuthorization =
   | { status: "absent" }
   | { status: "present"; token: string }
@@ -51,7 +59,9 @@ export async function authenticate(context: AppContext): Promise<Identity | null
   return result.ok ? result.identity : null;
 }
 
-export async function authenticateSession(context: AppContext): Promise<Identity | null> {
+export async function authenticateSession(
+  context: AppContext,
+): Promise<AuthenticatedSession | null> {
   const token = getSessionToken(context);
   if (!token) {
     return null;
@@ -70,7 +80,10 @@ export async function authenticateSession(context: AppContext): Promise<Identity
     return null;
   }
 
-  return { email: payload.email };
+  return {
+    identity: { email: payload.email },
+    expiresAt: payload.exp,
+  };
 }
 
 async function authenticateRequest(context: AppContext): Promise<AuthenticationResult> {
@@ -85,7 +98,12 @@ async function authenticateRequest(context: AppContext): Promise<AuthenticationR
     return verification.ok ? { ok: true, identity: { email: verification.email } } : { ok: false };
   }
 
-  return { ok: true, identity: await authenticateSession(context) };
+  const session = await authenticateSession(context);
+  return {
+    ok: true,
+    identity: session?.identity ?? null,
+    sessionExpiresAt: session?.expiresAt,
+  };
 }
 
 export function getRequiredIdentity(context: AppContext): Identity {
@@ -94,6 +112,10 @@ export function getRequiredIdentity(context: AppContext): Identity {
     throw new Error("Expected authenticated identity in context.");
   }
   return identity;
+}
+
+export function getSessionExpiresAt(context: AppContext): number | undefined {
+  return context.get("sessionExpiresAt");
 }
 
 export const requireSameOriginWhenPresent: MiddlewareHandler<EnvWithIdentity> = async (
@@ -121,6 +143,7 @@ export const optionalAuth: MiddlewareHandler<EnvWithIdentity> = async (context, 
   }
 
   context.set("identity", result.identity ?? undefined);
+  context.set("sessionExpiresAt", result.sessionExpiresAt);
   await next();
 };
 
@@ -131,16 +154,18 @@ export const requireAuth: MiddlewareHandler<EnvWithIdentity> = async (context, n
   }
 
   context.set("identity", result.identity);
+  context.set("sessionExpiresAt", result.sessionExpiresAt);
   await next();
 };
 
 export const requireSessionAuth: MiddlewareHandler<EnvWithIdentity> = async (context, next) => {
-  const identity = await authenticateSession(context);
-  if (!identity) {
+  const session = await authenticateSession(context);
+  if (!session) {
     return ErrorResponse.unauthorized();
   }
 
-  context.set("identity", identity);
+  context.set("identity", session.identity);
+  context.set("sessionExpiresAt", session.expiresAt);
   await next();
 };
 

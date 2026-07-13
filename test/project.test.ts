@@ -21,10 +21,12 @@ import {
   listProjectsFromRegistry,
   makeEnv,
   projectRefCacheKey,
+  putPublishedCategories,
   putDefaultLimits,
   putUserLimits,
   runProjectSummaryAlarm,
   serializeProjectRefCacheValue,
+  testCategory,
   type ProjectResponse,
   type ProjectSummaryResponse,
 } from "./workerTestHelpers";
@@ -1201,6 +1203,122 @@ describe("project routes", () => {
     const ownerView = await getProject(testEnv, project.id);
     expect(ownerView.balance).toEqual({ "1": -1500, "2": 1500 });
     expect(ownerView.records).toMatchObject([{ id: 2, authorMemberId: 2 }, { id: 1 }]);
+  });
+
+  it("stores an expense category ID when the category is published", async () => {
+    const { env: testEnv } = makeEnv();
+    const category = testCategory();
+    await putPublishedCategories(testEnv, [category]);
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+
+    const response = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          delta: {},
+          description: {
+            type: "expense",
+            name: "Lunch",
+            paid: { "1": 100 },
+            liability: { "1": 100 },
+            categoryId: category.id,
+          },
+        },
+        await authHeaders(),
+      ),
+    );
+
+    expect(response.status).toBe(201);
+    const view = await getProject(testEnv, project.id);
+    expect(view.records[0]).toMatchObject({
+      description: {
+        type: "expense",
+        categoryId: category.id,
+      },
+    });
+  });
+
+  it("rejects unknown expense category IDs", async () => {
+    const { env: testEnv } = makeEnv();
+    const category = testCategory();
+    await putPublishedCategories(testEnv, []);
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+
+    const response = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          delta: {},
+          description: {
+            type: "expense",
+            name: "Lunch",
+            paid: { "1": 100 },
+            liability: { "1": 100 },
+            categoryId: category.id,
+          },
+        },
+        await authHeaders(),
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid_request" });
+  });
+
+  it("hard fails expense category validation when published config KV is unavailable", async () => {
+    const kvGet = vi.fn(async () => {
+      throw new Error("KV unavailable");
+    });
+    const { env: testEnv } = makeEnv({
+      PUBLISHED_GLOBAL_CONFIG: { get: kvGet } as unknown as KVNamespace,
+    });
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+
+    const response = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          delta: {},
+          description: {
+            type: "expense",
+            name: "Lunch",
+            paid: { "1": 100 },
+            liability: { "1": 100 },
+            categoryId: testCategory().id,
+          },
+        },
+        await authHeaders(),
+      ),
+    );
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "internal_server_error" });
+    expect(kvGet).toHaveBeenCalled();
+  });
+
+  it("does not read category KV for uncategorized expenses", async () => {
+    const kvGet = vi.fn(async () => {
+      throw new Error("category KV should not be touched");
+    });
+    const { env: testEnv } = makeEnv({
+      PUBLISHED_GLOBAL_CONFIG: { get: kvGet } as unknown as KVNamespace,
+    });
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+
+    const response = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody("POST", appendRecordBody(), await authHeaders()),
+    );
+
+    expect(response.status).toBe(201);
+    expect(kvGet).not.toHaveBeenCalled();
   });
 
   it("checks account and project rate limit keys before appending records", async () => {

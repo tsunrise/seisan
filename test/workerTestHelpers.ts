@@ -7,9 +7,10 @@ import {
 } from "cloudflare:test";
 import { expect, vi } from "vitest";
 
-import { CATEGORY_POC_STORE_NAME } from "../worker/categoryPoc";
+import { CATEGORY_CONFIG_KEY, CategoriesDocument, type Category } from "../worker/category";
 import { SESSION_COOKIE_NAME } from "../worker/constants";
 import { signSessionToken } from "../worker/crypto";
+import { GLOBAL_CONFIG_STORE_NAME } from "../worker/globalConfig";
 import { LIMITS_STORE_NAME, LimitsKvStore, type LimitsDocument } from "../worker/limits";
 import worker, { type ProjectStore } from "../worker/index";
 import { PROJECTS_REGISTRY_NAME, type ProjectMember } from "../worker/project";
@@ -48,6 +49,8 @@ export interface ProjectSummaryResponse {
 export interface ProjectRefCacheValue {
   doId: string;
 }
+
+export const TEST_CATEGORY_VECTOR_NAMESPACE = "categories-00000000-0000-4000-8000-000000000001";
 
 export function projectRefCacheKey(projectId: string): string {
   return `project:${projectId}`;
@@ -92,6 +95,7 @@ function makeAllowingRateLimit(): RateLimit {
 export async function cleanupWorkerTestState(): Promise<void> {
   vi.restoreAllMocks();
   await env.CONFIGS.delete(LimitsKvStore.defaultKey());
+  await env.PUBLISHED_GLOBAL_CONFIG.delete(CATEGORY_CONFIG_KEY);
   await runInDurableObject(
     env.LIMITS_STORE.getByName(LIMITS_STORE_NAME),
     async (_instance, state) => {
@@ -99,9 +103,9 @@ export async function cleanupWorkerTestState(): Promise<void> {
     },
   );
   await runInDurableObject(
-    env.CATEGORY_POC_STORE.getByName(CATEGORY_POC_STORE_NAME),
+    env.GLOBAL_CONFIG.getByName(GLOBAL_CONFIG_STORE_NAME),
     async (_instance, state) => {
-      state.storage.sql.exec("DELETE FROM categories");
+      state.storage.sql.exec("DELETE FROM global_config");
     },
   );
 }
@@ -171,6 +175,42 @@ export async function putUserLimits(
   limits: LimitsDocument,
 ): Promise<void> {
   await testEnv.CONFIGS.put(LimitsKvStore.userKey(email), JSON.stringify(limits));
+}
+
+export function testCategory(
+  input: { id?: string; name?: string; description?: string; nowMs?: number } = {},
+): Category {
+  const id = input.id ?? "00000000-0000-4000-8000-000000000010";
+  const name = normalizeCategoryText(input.name ?? "Restaurant");
+  const description = normalizeCategoryText(input.description ?? "Prepared meals");
+  const nowMs = input.nowMs ?? 1_000;
+  return {
+    id,
+    name,
+    normalizedName: name.toLowerCase(),
+    description,
+    documentText: `title: ${name} | text: ${description || name}`,
+    vectorId: `category:${id}`,
+    createdAt: nowMs,
+    updatedAt: nowMs,
+  };
+}
+
+export async function putPublishedCategories(testEnv: Env, categories: Category[]): Promise<void> {
+  await testEnv.PUBLISHED_GLOBAL_CONFIG.put(
+    CATEGORY_CONFIG_KEY,
+    JSON.stringify(
+      CategoriesDocument.parse({
+        version: 1,
+        vectorNamespace: TEST_CATEGORY_VECTOR_NAMESPACE,
+        categories,
+      }),
+    ),
+  );
+}
+
+function normalizeCategoryText(value: string): string {
+  return value.trim().replace(/\s+/gu, " ");
 }
 
 export async function createProject(

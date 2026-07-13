@@ -1,3 +1,4 @@
+import AccountCircleOutlinedIcon from "@mui/icons-material/AccountCircleOutlined";
 import { Box, CircularProgress, Stack, Typography } from "@mui/material";
 import { useState } from "react";
 import { Link } from "react-router";
@@ -29,11 +30,13 @@ interface SeenProjectRows {
 export function ProjectRail({
   project,
   currentMember,
+  currentEmail,
   projects,
   registryEnabled,
 }: {
   project: api.Project;
   currentMember: api.ProjectMember | null;
+  currentEmail: string | null;
   projects: Loadable<ProjectSummaryList>;
   registryEnabled: boolean;
 }) {
@@ -92,6 +95,36 @@ export function ProjectRail({
         }}
       >
         <BrandLink />
+        {currentEmail ? (
+          <Stack
+            component={Link}
+            to="/account"
+            direction="row"
+            sx={{
+              alignItems: "center",
+              gap: 1,
+              width: "fit-content",
+              maxWidth: "100%",
+              color: "text.secondary",
+              textDecoration: "none",
+              "&:hover": { color: "text.primary" },
+              "&:focus-visible": {
+                outline: `2px solid ${ledgerColors.blue}`,
+                outlineOffset: 3,
+              },
+            }}
+          >
+            <AccountCircleOutlinedIcon fontSize="small" />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 850, lineHeight: 1.2 }}>
+                Account
+              </Typography>
+              <Typography noWrap sx={{ fontSize: 11.5, lineHeight: 1.25 }} title={currentEmail}>
+                {currentEmail}
+              </Typography>
+            </Box>
+          </Stack>
+        ) : null}
         <Typography
           variant="h2"
           sx={{

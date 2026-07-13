@@ -14,15 +14,15 @@ interface SeedCategory {
   description: string;
 }
 
-interface CategoryPocCategory {
+interface Category {
   id: string;
   name: string;
   normalizedName: string;
   description: string;
 }
 
-interface CategoryPocListCategoriesResponse {
-  categories: CategoryPocCategory[];
+interface CategoryListResponse {
+  categories: Category[];
 }
 
 const SEED_CATEGORIES: readonly SeedCategory[] = [
@@ -109,19 +109,19 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
 
-  console.log(`Populating category POC categories in ${env}.`);
+  console.log(`Populating categories in ${env}.`);
   const existing = await listCategories(env);
   let added = 0;
-  let replaced = 0;
+  let updated = 0;
   let skipped = 0;
 
   for (const category of SEED_CATEGORIES) {
     const normalizedName = normalizeCategoryName(category.name);
-    const matches = existing.categories.filter(
+    const match = existing.categories.find(
       (existingCategory) => existingCategory.normalizedName === normalizedName,
     );
 
-    if (matches.length === 0) {
+    if (!match) {
       await addCategory(env, category);
       console.log(`Added ${category.name}.`);
       added += 1;
@@ -129,25 +129,20 @@ async function main(argv: string[]): Promise<void> {
     }
 
     if (
-      matches.length === 1 &&
-      normalizeText(matches[0]?.description ?? "") === normalizeText(category.description)
+      normalizeText(match.name) === normalizeText(category.name) &&
+      normalizeText(match.description) === normalizeText(category.description)
     ) {
-      console.log(`Skipped ${category.name}; description is unchanged.`);
+      console.log(`Skipped ${category.name}; category is unchanged.`);
       skipped += 1;
       continue;
     }
 
-    console.log(`Replacing ${category.name}; description changed.`);
-    for (const match of matches) {
-      await removeCategory(env, match.id);
-      console.log(`Deleted ${match.name} (${match.id}).`);
-    }
-    await addCategory(env, category);
-    console.log(`Added ${category.name}.`);
-    replaced += 1;
+    await updateCategory(env, match.id, category);
+    console.log(`Updated ${category.name} (${match.id}).`);
+    updated += 1;
   }
 
-  console.log(`Done. Added: ${added}. Replaced: ${replaced}. Skipped: ${skipped}.`);
+  console.log(`Done. Added: ${added}. Updated: ${updated}. Skipped: ${skipped}.`);
 }
 
 function parseArgs(argv: string[]): { env: ApiTargetEnv; help: boolean } {
@@ -188,16 +183,25 @@ function readOptionValue(args: string[], index: number, optionName: string): str
   return value;
 }
 
-async function listCategories(env: ApiTargetEnv): Promise<CategoryPocListCategoriesResponse> {
-  return runCliJson<CategoryPocListCategoriesResponse>(env, ["category-poc-list"]);
+async function listCategories(env: ApiTargetEnv): Promise<CategoryListResponse> {
+  return runCliJson<CategoryListResponse>(env, ["category-list"]);
 }
 
 async function addCategory(env: ApiTargetEnv, category: SeedCategory): Promise<void> {
-  await runCli(env, ["category-poc-add", category.name, `--description=${category.description}`]);
+  await runCli(env, ["category-add", category.name, `--description=${category.description}`]);
 }
 
-async function removeCategory(env: ApiTargetEnv, id: string): Promise<void> {
-  await runCli(env, ["category-poc-remove", id]);
+async function updateCategory(
+  env: ApiTargetEnv,
+  id: string,
+  category: SeedCategory,
+): Promise<void> {
+  await runCli(env, [
+    "category-update",
+    id,
+    `--name=${category.name}`,
+    `--description=${category.description}`,
+  ]);
 }
 
 async function runCliJson<T>(env: ApiTargetEnv, args: string[]): Promise<T> {
@@ -220,6 +224,7 @@ async function runCli(env: ApiTargetEnv, args: string[]): Promise<string> {
   } catch (error) {
     throw new Error(
       `CLI command failed: pnpm api --env=${env} ${args.join(" ")}\n${formatExecError(error)}`,
+      { cause: error },
     );
   }
 }
@@ -259,21 +264,14 @@ function readStringProperty(value: unknown, property: string): string | undefine
 }
 
 function printHelp(): void {
-  console.log(`Usage: pnpm run category-poc:populate -- [--env=local|dev|production]
+  console.log(`Usage: pnpm run categories:populate -- [--env=local|dev|production]
 
-Seeds the category POC catalog through the existing pnpm api CLI.
-
-Options:
-  --env=<env>  Target environment. Defaults to local.
-  -h, --help   Show this help message.
-`);
+Seeds the default category set through the production category admin API.
+Existing categories with matching normalized names are updated in place when
+their name or description differs.`);
 }
 
 main(process.argv.slice(2)).catch((error: unknown) => {
-  if (error instanceof Error) {
-    console.error(error.message);
-  } else {
-    console.error(error);
-  }
+  console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });

@@ -10,6 +10,8 @@ import { ProjectsPage } from "./pages/ProjectsPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
 
 const AdminApp = lazy(() => import("./admin/AdminApp"));
+const AccountApp = lazy(() => import("./account/AccountApp"));
+const ApiDocsPage = lazy(() => import("./pages/ApiDocsPage"));
 
 export default function App() {
   return (
@@ -19,10 +21,27 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route
+          path="/api-docs"
+          element={
+            <Suspense fallback={null}>
+              <ApiDocsPage />
+            </Suspense>
+          }
+        />
+        <Route path="/account/api-docs" element={<Navigate to="/api-docs" replace />} />
+        <Route
           path="/admin/*"
           element={
             <Suspense fallback={null}>
               <AdminApp />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/account/*"
+          element={
+            <Suspense fallback={null}>
+              <AccountApp />
             </Suspense>
           }
         />
