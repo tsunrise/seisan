@@ -190,6 +190,39 @@ describe("API key routes", () => {
     ]);
   });
 
+  it("removes expired and revoked keys from the source-of-truth store when provisioning", async () => {
+    const { env: testEnv } = makeEnv();
+    const email = "cleanup-api-keys@example.com";
+    const expired = await createApiKey(testEnv, { email, label: "Expired" });
+    const revoked = await createApiKey(testEnv, { email, label: "Revoked" });
+    const active = await createApiKey(testEnv, { email, label: "Active" });
+
+    const revokedResponse = await dispatch(`/api-keys/${revoked.key.id}`, testEnv, {
+      method: "DELETE",
+      headers: await authHeaders(email),
+    });
+    expect(revokedResponse.status).toBe(204);
+
+    const store = testEnv.USER_API_KEYS_STORE.getByName(await sha256Hex(email));
+    await runInDurableObject(store, async (_instance, state) => {
+      state.storage.sql.exec(
+        "UPDATE api_keys SET expires_at = ? WHERE id = ?",
+        Math.floor(Date.now() / 1000) - 1,
+        expired.key.id,
+      );
+    });
+
+    const provisioned = await createApiKey(testEnv, { email, label: "Provisioned" });
+    const listed = await dispatch("/api-keys", testEnv, {
+      headers: await authHeaders(email),
+    });
+    expect(listed.status).toBe(200);
+
+    const { keys } = (await listed.json()) as ApiKeyListResponse;
+    expect(keys).toHaveLength(2);
+    expect(keys.map((key) => key.id).sort()).toEqual([active.key.id, provisioned.key.id].sort());
+  });
+
   it("rejects expired create requests and unknown key revocations", async () => {
     const { env: testEnv } = makeEnv();
     const email = "invalid@example.com";

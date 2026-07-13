@@ -84,6 +84,8 @@ Properties:
 
 `UserAPIKeysStore` is the source of truth for user API-key metadata. It is sharded per normalized email hash and stores key ID, email, hash, label, creation time, expiration time, revocation time, and projection publish state.
 
+After a new key's verifier projection is published successfully, `UserAPIKeysStore` deletes that user's expired and revoked metadata rows. KV verifier entries are not part of this cleanup: expiration TTLs and published revocation markers continue to govern the authentication hot path.
+
 `API_KEY_VERIFICATION` KV is only the hot-path verifier projection. Verification must not call `UserAPIKeysStore` or any other Durable Object.
 
 KV verifier values contain:

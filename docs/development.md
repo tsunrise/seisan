@@ -44,7 +44,7 @@ In the sandbox, Wrangler may print a log-write warning for `~/Library/Preference
 - Do not commit `.dev.vars`.
 - `AUTH_SECRET` and `TURNSTILE_SECRET_KEY` are secrets.
 - `LOGIN_EMAIL_FROM` is a non-secret environment variable in `wrangler.jsonc`.
-- Local fixed-code login is controlled by `LOCAL_DEV_LOGIN_CODE`.
+- The default local environment in `wrangler.jsonc` sets `LOCAL_DEV_LOGIN_CODE` to `123456`; use that code for localhost browser and live API login checks without adding it to `.dev.vars`. Deployed and test environments set this binding to an empty string.
 - Local fixed-code login must only work for localhost-style requests.
 - Login registration is not email-allowlisted. Any syntactically valid email may request a code.
 

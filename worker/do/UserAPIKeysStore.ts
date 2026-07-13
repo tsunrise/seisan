@@ -163,6 +163,7 @@ export class UserAPIKeysStore extends DurableObject<Env> {
       parsed.data.createdAt,
       parsed.data.keyId,
     );
+    this.deleteInactiveKeys(parsed.data.email, parsed.data.createdAt);
 
     const row = this.readKey(parsed.data.keyId);
     if (!row) {
@@ -245,6 +246,15 @@ export class UserAPIKeysStore extends DurableObject<Env> {
         )
         .toArray()[0] ?? null;
     return row?.count ?? 0;
+  }
+
+  private deleteInactiveKeys(email: string, nowSeconds: number): void {
+    this.ctx.storage.sql.exec(
+      `DELETE FROM api_keys
+       WHERE email = ? AND (expires_at <= ? OR revoked_at IS NOT NULL)`,
+      email,
+      nowSeconds,
+    );
   }
 }
 
