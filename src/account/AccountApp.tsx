@@ -3,8 +3,20 @@ import ArrowBackOutlinedIcon from "@mui/icons-material/ArrowBackOutlined";
 import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
 import KeyOutlinedIcon from "@mui/icons-material/KeyOutlined";
 import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
-import { Box, Button, IconButton, Skeleton, Stack, Typography } from "@mui/material";
-import type { ReactNode } from "react";
+import {
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  IconButton,
+  Skeleton,
+  Stack,
+  Typography,
+} from "@mui/material";
+import { useState, type ReactNode } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
 
 import * as api from "../api";
@@ -14,12 +26,20 @@ import { ledgerColors } from "../theme";
 import { loginPath } from "../utils";
 import { AccountHome } from "./AccountHome";
 import { ApiKeysPage } from "./ApiKeysPage";
+import {
+  accountBackTarget,
+  accountLinkState,
+  type AccountBackTarget,
+  type AccountLinkState,
+} from "./navigation";
 
 const sidebarWidth = 248;
 
 export default function AccountApp() {
   const location = useLocation();
   const user = useCurrentUser({ required: true });
+  const [backTarget] = useState(() => accountBackTarget(location.state));
+  const navigationState = backTarget ? accountLinkState(backTarget.label) : undefined;
 
   if (user.status === "loading") {
     return <AccountLoading />;
@@ -29,7 +49,7 @@ export default function AccountApp() {
   }
 
   return (
-    <AccountShell email={user.data.email}>
+    <AccountShell email={user.data.email} backTarget={backTarget} navigationState={navigationState}>
       <Routes>
         <Route
           index
@@ -37,6 +57,7 @@ export default function AccountApp() {
             <AccountHome
               email={user.data.email}
               sessionExpiresAt={user.data.sessionExpiresAt ?? null}
+              navigationState={navigationState}
             />
           }
         />
@@ -47,11 +68,34 @@ export default function AccountApp() {
   );
 }
 
-function AccountShell({ email, children }: { email: string; children: ReactNode }) {
+function AccountShell({
+  email,
+  backTarget,
+  navigationState,
+  children,
+}: {
+  email: string;
+  backTarget: AccountBackTarget | null;
+  navigationState: AccountLinkState | undefined;
+  children: ReactNode;
+}) {
   const location = useLocation();
   const navigate = useNavigate();
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const backLabel = backTarget?.label ?? "Projects";
 
-  function logout() {
+  function goBack() {
+    if (backTarget) {
+      navigate(-1);
+      return;
+    }
+
+    navigate("/projects");
+  }
+
+  function confirmLogout() {
+    setLoggingOut(true);
     void api.logout().finally(() => navigate("/login"));
   }
 
@@ -75,13 +119,15 @@ function AccountShell({ email, children }: { email: string; children: ReactNode 
       >
         <BrandLink sx={{ mb: 2.5 }} />
         <Button
-          component={Link}
-          to="/projects"
+          onClick={goBack}
+          aria-label={`Back to ${backLabel}`}
           variant="text"
           startIcon={<ArrowBackOutlinedIcon />}
-          sx={{ justifyContent: "flex-start", mb: 2, px: 1.25 }}
+          sx={{ justifyContent: "flex-start", width: "100%", mb: 2, px: 1.25 }}
         >
-          Projects
+          <Typography component="span" noWrap title={backLabel} sx={{ minWidth: 0 }}>
+            {backLabel}
+          </Typography>
         </Button>
         <Stack component="nav" aria-label="Account" spacing={0.5}>
           <AccountNavLink
@@ -89,12 +135,14 @@ function AccountShell({ email, children }: { email: string; children: ReactNode 
             label="Home"
             icon={<HomeOutlinedIcon fontSize="small" />}
             active={location.pathname === "/account"}
+            navigationState={navigationState}
           />
           <AccountNavLink
             to="/account/api-keys"
             label="API keys"
             icon={<KeyOutlinedIcon fontSize="small" />}
             active={location.pathname.startsWith("/account/api-keys")}
+            navigationState={navigationState}
           />
         </Stack>
         <Box sx={{ flex: 1 }} />
@@ -114,9 +162,7 @@ function AccountShell({ email, children }: { email: string; children: ReactNode 
               {email}
             </Typography>
           </Box>
-          <IconButton aria-label="Log out" onClick={logout} size="small">
-            <LogoutOutlinedIcon fontSize="small" />
-          </IconButton>
+          <LogoutButton onClick={() => setConfirmingLogout(true)} />
         </Stack>
       </Box>
 
@@ -135,37 +181,44 @@ function AccountShell({ email, children }: { email: string; children: ReactNode 
           direction="row"
           sx={{ alignItems: "center", justifyContent: "space-between", px: 2, py: 1.5 }}
         >
-          <BrandLink size="compact" />
-          <Stack direction="row" spacing={0.75}>
-            <IconButton
-              component={Link}
-              to="/projects"
-              aria-label="Projects"
-              size="small"
-              sx={{ display: { xs: "inline-flex", sm: "none" } }}
-            >
-              <ArrowBackOutlinedIcon fontSize="small" />
-            </IconButton>
+          <BrandLink size="compact" sx={{ flexShrink: 0 }} />
+          <Stack
+            direction="row"
+            spacing={0.75}
+            sx={{ minWidth: 0, maxWidth: { xs: "calc(100% - 116px)", sm: "none" } }}
+          >
             <Button
-              component={Link}
-              to="/projects"
+              onClick={goBack}
+              aria-label={`Back to ${backLabel}`}
               variant="outlined"
               startIcon={<ArrowBackOutlinedIcon fontSize="small" />}
-              sx={{ display: { xs: "none", sm: "inline-flex" }, minHeight: 36 }}
+              sx={{
+                flexShrink: 1,
+                minWidth: 0,
+                maxWidth: { xs: "min(52vw, 220px)", sm: "min(42vw, 260px)" },
+                minHeight: 36,
+                px: { xs: 1.25, sm: 1.75 },
+              }}
             >
-              Projects
+              <Typography component="span" noWrap title={backLabel} sx={{ minWidth: 0 }}>
+                {backLabel}
+              </Typography>
             </Button>
-            <IconButton aria-label="Log out" onClick={logout} size="small">
-              <LogoutOutlinedIcon fontSize="small" />
-            </IconButton>
+            <LogoutButton onClick={() => setConfirmingLogout(true)} />
           </Stack>
         </Stack>
         <Stack component="nav" aria-label="Account" direction="row" sx={{ px: 1.25 }}>
-          <MobileNavLink to="/account" label="Home" active={location.pathname === "/account"} />
+          <MobileNavLink
+            to="/account"
+            label="Home"
+            active={location.pathname === "/account"}
+            navigationState={navigationState}
+          />
           <MobileNavLink
             to="/account/api-keys"
             label="API keys"
             active={location.pathname.startsWith("/account/api-keys")}
+            navigationState={navigationState}
           />
         </Stack>
       </Box>
@@ -182,6 +235,32 @@ function AccountShell({ email, children }: { email: string; children: ReactNode 
       >
         <Box sx={{ width: "min(980px, 100%)", mx: "auto" }}>{children}</Box>
       </Box>
+
+      <Dialog
+        open={confirmingLogout}
+        onClose={() => {
+          if (!loggingOut) {
+            setConfirmingLogout(false);
+          }
+        }}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>Log out?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            This will end your current session. You’ll need to sign in again to access your account.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button disabled={loggingOut} onClick={() => setConfirmingLogout(false)}>
+            Cancel
+          </Button>
+          <Button color="error" variant="contained" disabled={loggingOut} onClick={confirmLogout}>
+            {loggingOut ? "Logging out…" : "Log out"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
@@ -191,16 +270,20 @@ function AccountNavLink({
   label,
   icon,
   active,
+  navigationState,
 }: {
   to: string;
   label: string;
   icon: ReactNode;
   active: boolean;
+  navigationState: AccountLinkState | undefined;
 }) {
   return (
     <Stack
       component={Link}
       to={to}
+      replace
+      state={navigationState}
       direction="row"
       aria-current={active ? "page" : undefined}
       sx={{
@@ -225,11 +308,23 @@ function AccountNavLink({
   );
 }
 
-function MobileNavLink({ to, label, active }: { to: string; label: string; active: boolean }) {
+function MobileNavLink({
+  to,
+  label,
+  active,
+  navigationState,
+}: {
+  to: string;
+  label: string;
+  active: boolean;
+  navigationState: AccountLinkState | undefined;
+}) {
   return (
     <Box
       component={Link}
       to={to}
+      replace
+      state={navigationState}
       aria-current={active ? "page" : undefined}
       sx={{
         position: "relative",
@@ -255,6 +350,14 @@ function MobileNavLink({ to, label, active }: { to: string; label: string; activ
     >
       {label}
     </Box>
+  );
+}
+
+function LogoutButton({ onClick }: { onClick: () => void }) {
+  return (
+    <IconButton aria-label="Log out" onClick={onClick} size="small" sx={{ flexShrink: 0 }}>
+      <LogoutOutlinedIcon fontSize="small" />
+    </IconButton>
   );
 }
 

@@ -6,6 +6,7 @@ import { Link } from "react-router";
 
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { ledgerColors, ledgerFonts } from "../theme";
+import type { AccountLinkState } from "./navigation";
 
 const sessionExpirationFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "long",
@@ -15,9 +16,11 @@ const sessionExpirationFormatter = new Intl.DateTimeFormat(undefined, {
 export function AccountHome({
   email,
   sessionExpiresAt,
+  navigationState,
 }: {
   email: string;
   sessionExpiresAt: number | null;
+  navigationState: AccountLinkState | undefined;
 }) {
   useDocumentTitle("Account - Seisan");
 
@@ -73,6 +76,8 @@ export function AccountHome({
             icon={<KeyOutlinedIcon />}
             title="API keys"
             description="Create and revoke credentials for API clients."
+            replace
+            navigationState={navigationState}
           />
         </Box>
       </Box>
@@ -104,16 +109,22 @@ function DestinationRow({
   icon,
   title,
   description,
+  replace = false,
+  navigationState,
 }: {
   to: string;
   icon: React.ReactNode;
   title: string;
   description: string;
+  replace?: boolean;
+  navigationState?: AccountLinkState;
 }) {
   return (
     <Stack
       component={Link}
       to={to}
+      replace={replace}
+      state={navigationState}
       direction="row"
       sx={{
         alignItems: "center",

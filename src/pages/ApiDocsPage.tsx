@@ -7,6 +7,7 @@ import { Link } from "react-router";
 import "@scalar/api-reference-react/style.css";
 import "./apiDocs.css";
 
+import { accountLinkState } from "../account/navigation";
 import { BrandLink } from "../components/BrandLink";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
@@ -69,6 +70,7 @@ export default function ApiDocsPage() {
           <Button
             component={Link}
             to="/account/api-keys"
+            state={accountLinkState("API reference")}
             variant="contained"
             startIcon={<KeyOutlinedIcon />}
           >

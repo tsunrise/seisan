@@ -14,6 +14,7 @@ import {
 import { Link, Navigate, useLocation, useNavigate } from "react-router";
 
 import * as api from "../api";
+import { accountLinkState } from "../account/navigation";
 import { Amount } from "../components/Amount";
 import { BrandLink } from "../components/BrandLink";
 import { InlineAlert } from "../components/InlineAlert";
@@ -68,6 +69,7 @@ export function ProjectsPage() {
             <Button
               component={Link}
               to="/account"
+              state={accountLinkState("Projects")}
               variant="outlined"
               startIcon={<AccountCircleOutlinedIcon />}
               aria-label={`Account for ${user.data.email}`}

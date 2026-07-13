@@ -55,4 +55,6 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 - Keep the API reference outside the authenticated account shell so its endpoint navigation, structured schemas, cURL samples, and response examples have the full viewport. The API Keys page is the authenticated entry point.
 - The reference is documentation-only: keep Scalar's test-request, credential persistence, API-client, Agent, developer-tool, and telemetry features disabled.
 - Keep the account shell visually aligned with the warm ledger system: a desktop navigation rail, compact mobile tabs, thin dividers, and restrained blue active states.
+- Account entry links identify their source page so the account shell can label and pop back to that browser-history entry. Account tab changes replace the current entry so this destination stays stable; direct account loads fall back to `/projects`.
+- Account logout controls require confirmation before ending the browser session.
 - Authenticated project-list and project-detail surfaces should keep a visible Account entry point. Public project views must not show an account action without a resolved session identity.

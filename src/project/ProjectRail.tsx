@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 
 import type * as api from "../api";
+import { accountLinkState } from "../account/navigation";
 import type { Loadable } from "../types";
 import { Amount } from "../components/Amount";
 import { BrandLink } from "../components/BrandLink";
@@ -99,6 +100,7 @@ export function ProjectRail({
           <Stack
             component={Link}
             to="/account"
+            state={accountLinkState(project.name)}
             direction="row"
             sx={{
               alignItems: "center",

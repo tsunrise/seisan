@@ -4,6 +4,7 @@ import { Box, IconButton, Stack, Typography } from "@mui/material";
 import { Link } from "react-router";
 
 import type * as api from "../api";
+import { accountLinkState } from "../account/navigation";
 import { Amount } from "../components/Amount";
 import { BrandLink } from "../components/BrandLink";
 import { ledgerColors, ledgerFonts } from "../theme";
@@ -65,6 +66,7 @@ export function ProjectHeader({
             <IconButton
               component={Link}
               to="/account"
+              state={accountLinkState(project.name)}
               aria-label="Account"
               sx={{ display: { xs: "inline-flex", lg: "none" } }}
             >
