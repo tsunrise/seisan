@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, platform } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -10,13 +10,14 @@ const execFileAsync = promisify(execFile);
 export const DEFAULT_API_BASE_URL = "http://localhost:5173";
 export const DEV_API_BASE_URL = "https://dev.seisan.waga.me";
 export const PRODUCTION_API_BASE_URL = "https://seisan.waga.me";
-export const SESSION_COOKIE_NAME = "__Host-seisan_session";
+
+const API_KEY_PATTERN = /^seisan_v1_[A-Za-z0-9_-]{16}_[A-Za-z0-9_-]{32}$/u;
 
 export type ApiTargetEnv = "local" | "dev" | "production";
 
-export interface SessionStore {
+export interface ApiKeyStore {
   load(): Promise<string | null>;
-  save(sessionCookie: string): Promise<void>;
+  save(apiKey: string): Promise<void>;
   clear(): Promise<void>;
 }
 
@@ -26,8 +27,9 @@ export interface CloudflareAccessTokenProvider {
 
 export interface SeisanClientOptions {
   targetEnv?: ApiTargetEnv;
+  apiKey?: string;
+  apiKeyStore?: ApiKeyStore;
   fetchFn?: typeof fetch;
-  sessionStore?: SessionStore;
   cloudflareAccessTokenProvider?: CloudflareAccessTokenProvider;
 }
 
@@ -84,16 +86,16 @@ export class ApiError extends Error {
   }
 }
 
-export class MissingSessionError extends Error {
+export class MissingApiKeyError extends Error {
   constructor() {
-    super("No saved session was found.");
-    this.name = "MissingSessionError";
+    super("No API key was found.");
+    this.name = "MissingApiKeyError";
   }
 }
 
 export class UnauthorizedError extends Error {
   constructor() {
-    super("The saved session is missing, expired, or revoked.");
+    super("The API key is invalid, expired, or revoked.");
     this.name = "UnauthorizedError";
   }
 }
@@ -128,16 +130,18 @@ class CloudflaredAccessTokenProvider implements CloudflareAccessTokenProvider {
 export class SeisanClient {
   readonly baseUrl: string;
 
+  private readonly apiKeyOverride: string | undefined;
+  private readonly apiKeyStore: ApiKeyStore;
   private readonly fetchFn: typeof fetch;
-  private readonly sessionStore: SessionStore;
   private readonly cloudflareAccessTokenProvider: CloudflareAccessTokenProvider;
   private readonly cloudflareAccessRequired: boolean;
 
   constructor(options: SeisanClientOptions = {}) {
     const targetEnv = options.targetEnv ?? "local";
     this.baseUrl = normalizeBaseUrl(apiBaseUrlForEnv(targetEnv));
+    this.apiKeyOverride = normalizeOptionalApiKey(options.apiKey);
+    this.apiKeyStore = options.apiKeyStore ?? createDefaultApiKeyStore(this.baseUrl);
     this.fetchFn = options.fetchFn ?? fetch;
-    this.sessionStore = options.sessionStore ?? createDefaultSessionStore(this.baseUrl);
     this.cloudflareAccessTokenProvider =
       options.cloudflareAccessTokenProvider ?? new CloudflaredAccessTokenProvider();
     this.cloudflareAccessRequired = targetEnv === "dev";
@@ -152,40 +156,15 @@ export class SeisanClient {
   }
 
   async logout(): Promise<void> {
-    try {
-      await this.request("POST", "/api/logout", { auth: true, expectedStatus: 204 });
-    } catch (error) {
-      if (!(error instanceof MissingSessionError) && !(error instanceof UnauthorizedError)) {
-        throw error;
-      }
-    } finally {
-      await this.sessionStore.clear();
+    await this.apiKeyStore.clear();
+  }
+
+  async saveApiKey(apiKey: string): Promise<void> {
+    const normalizedApiKey = apiKey.trim();
+    if (!isValidApiKey(normalizedApiKey)) {
+      throw new Error("API key has an invalid format.");
     }
-  }
-
-  async requestLoginCode(email: string): Promise<{ id?: string }> {
-    return this.requestJson<{ id?: string }>("POST", "/api/login/attempt", {
-      auth: false,
-      body: { email },
-      expectedStatus: 202,
-    });
-  }
-
-  async verifyLoginCode(id: string, email: string, code: string): Promise<void> {
-    const response = await this.request("POST", "/api/login/verify", {
-      auth: false,
-      body: { id, email, code },
-      expectedStatus: 200,
-    });
-    const sessionCookie = extractSessionCookie(response.headers);
-    if (!sessionCookie) {
-      throw new Error("Login succeeded but the response did not include a session cookie.");
-    }
-    await this.sessionStore.save(sessionCookie);
-  }
-
-  async clearSession(): Promise<void> {
-    await this.sessionStore.clear();
+    await this.apiKeyStore.save(normalizedApiKey);
   }
 
   async categoryList(): Promise<CategoryListResponse> {
@@ -266,11 +245,7 @@ export class SeisanClient {
     }
 
     if (options.auth) {
-      const sessionCookie = await this.sessionStore.load();
-      if (!sessionCookie) {
-        throw new MissingSessionError();
-      }
-      headers.set("Cookie", sessionCookie);
+      headers.set("Authorization", `Bearer ${await this.loadApiKey()}`);
     }
 
     const url = new URL(path, this.baseUrl);
@@ -290,7 +265,9 @@ export class SeisanClient {
     });
 
     if (options.auth && response.status === 401) {
-      await this.sessionStore.clear();
+      if (!this.apiKeyOverride) {
+        await this.apiKeyStore.clear();
+      }
       throw new UnauthorizedError();
     }
 
@@ -304,6 +281,20 @@ export class SeisanClient {
     }
 
     return response;
+  }
+
+  private async loadApiKey(): Promise<string> {
+    const apiKey = this.apiKeyOverride ?? normalizeOptionalApiKey(await this.apiKeyStore.load());
+    if (!apiKey) {
+      throw new MissingApiKeyError();
+    }
+    if (!isValidApiKey(apiKey)) {
+      if (!this.apiKeyOverride) {
+        await this.apiKeyStore.clear();
+      }
+      throw new UnauthorizedError();
+    }
+    return apiKey;
   }
 
   private async loadCloudflareAccessToken(url: URL): Promise<string | null> {
@@ -323,12 +314,12 @@ interface RequestOptions {
   headers?: RequestInit["headers"];
 }
 
-export function createDefaultSessionStore(baseUrl: string): SessionStore {
+export function createDefaultApiKeyStore(baseUrl: string): ApiKeyStore {
   const account = normalizeBaseUrl(baseUrl);
   if (platform() === "darwin") {
-    return new KeychainSessionStore(account, new FileSessionStore(account));
+    return new KeychainApiKeyStore(account, new FileApiKeyStore(account));
   }
-  return new FileSessionStore(account);
+  return new FileApiKeyStore(account);
 }
 
 export function apiBaseUrlForEnv(targetEnv: ApiTargetEnv): string {
@@ -342,12 +333,12 @@ export function apiBaseUrlForEnv(targetEnv: ApiTargetEnv): string {
   }
 }
 
-class KeychainSessionStore implements SessionStore {
-  private readonly service = "seisan-cli-session";
+class KeychainApiKeyStore implements ApiKeyStore {
+  private readonly service = "seisan-cli-api-key";
   private readonly account: string;
-  private readonly fallback: SessionStore;
+  private readonly fallback: ApiKeyStore;
 
-  constructor(account: string, fallback: SessionStore) {
+  constructor(account: string, fallback: ApiKeyStore) {
     this.account = account;
     this.fallback = fallback;
   }
@@ -368,7 +359,7 @@ class KeychainSessionStore implements SessionStore {
     }
   }
 
-  async save(sessionCookie: string): Promise<void> {
+  async save(apiKey: string): Promise<void> {
     try {
       await this.deleteKeychainItem().catch(() => undefined);
       await execFileAsync("security", [
@@ -378,12 +369,12 @@ class KeychainSessionStore implements SessionStore {
         "-a",
         this.account,
         "-w",
-        sessionCookie,
+        apiKey,
         "-U",
       ]);
       await this.fallback.clear();
     } catch {
-      await this.fallback.save(sessionCookie);
+      await this.fallback.save(apiKey);
     }
   }
 
@@ -402,11 +393,11 @@ class KeychainSessionStore implements SessionStore {
   }
 }
 
-class FileSessionStore implements SessionStore {
+class FileApiKeyStore implements ApiKeyStore {
   private readonly path: string;
 
   constructor(account: string) {
-    this.path = sessionFilePath(account);
+    this.path = apiKeyFilePath(account);
   }
 
   async load(): Promise<string | null> {
@@ -417,9 +408,11 @@ class FileSessionStore implements SessionStore {
     }
   }
 
-  async save(sessionCookie: string): Promise<void> {
+  async save(apiKey: string): Promise<void> {
     await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
-    await writeFile(this.path, sessionCookie, { encoding: "utf8", mode: 0o600 });
+    await chmod(dirname(this.path), 0o700);
+    await writeFile(this.path, apiKey, { encoding: "utf8", mode: 0o600 });
+    await chmod(this.path, 0o600);
   }
 
   async clear(): Promise<void> {
@@ -427,20 +420,8 @@ class FileSessionStore implements SessionStore {
   }
 }
 
-function extractSessionCookie(headers: Headers): string | null {
-  const setCookie = headers.get("set-cookie");
-  if (!setCookie) {
-    return null;
-  }
-
-  const sessionCookie = setCookie
-    .split(/,(?=\s*[^;,]+=)/u)
-    .find((cookie) => cookie.trimStart().startsWith(`${SESSION_COOKIE_NAME}=`));
-  if (!sessionCookie) {
-    return null;
-  }
-
-  return sessionCookie.split(";", 1)[0].trim();
+export function isValidApiKey(value: string): boolean {
+  return API_KEY_PATTERN.test(value);
 }
 
 function normalizeBaseUrl(baseUrl: string): string {
@@ -477,12 +458,16 @@ function readStringProperty(value: unknown, property: string): string | undefine
   return typeof result === "string" ? result : undefined;
 }
 
-function sessionFilePath(account: string): string {
+function normalizeOptionalApiKey(value: string | undefined | null): string | undefined {
+  return value?.trim() || undefined;
+}
+
+function apiKeyFilePath(account: string): string {
   const accountHash = createHash("sha256").update(account).digest("hex").slice(0, 16);
   const configRoot =
     process.env.XDG_CONFIG_HOME ??
     (platform() === "darwin"
       ? join(homedir(), "Library", "Application Support")
       : join(homedir(), ".config"));
-  return join(configRoot, "seisan", `session-${accountHash}`);
+  return join(configRoot, "seisan", `api-key-${accountHash}`);
 }

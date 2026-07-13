@@ -52,6 +52,8 @@ In the sandbox, Wrangler may print a log-write warning for `~/Library/Preference
 
 Run the CLI client with `pnpm run api -- <command>`. It targets `http://localhost:5173` by default.
 
+Authenticated commands use bearer API keys instead of browser login sessions. Set `SEISAN_API_KEY`, or enter an API key at the hidden stdin prompt when no key is available. A prompted key is saved per target environment in macOS Keychain when available, with a mode-`0600` file under the user's config directory as the fallback and as the storage mechanism on other platforms. `SEISAN_API_KEY` overrides a saved key. Run `pnpm run api -- --env=<env> logout` to remove the saved key for an environment; this does not unset `SEISAN_API_KEY` or call the browser-session `/api/logout` route.
+
 Use `--env=dev` for `https://dev.seisan.waga.me` or `--env=production` for `https://seisan.waga.me`. All dev requests and remote admin requests run `cloudflared access token -app=<request-url>` automatically and send the result as `cf-access-token`. The concrete request URL matters because separate Access applications can protect normal dev and admin paths with different audiences. Cloudflare Access validates the token and, on admin paths, forwards `Cf-Access-Jwt-Assertion` to the Worker for explicit Access JWT validation. If `cloudflared` has no cached login for an application, run `cloudflared access login <concrete-request-url>` first. Localhost admin requests rely on the Worker's local admin bypass and do not require an Access token. Feature-specific commands are documented with their feature docs.
 
 ## Cloudflare Resources

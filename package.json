@@ -15,6 +15,7 @@
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "test": "vitest run",
+    "test:client": "node --import tsx --test scripts/client.node-test.ts",
     "api": "tsx scripts/client-cli.ts",
     "categories:populate": "tsx scripts/populate-categories.ts",
     "openapi:generate": "tsx scripts/generate-openapi.ts",

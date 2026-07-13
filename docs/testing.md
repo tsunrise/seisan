@@ -26,6 +26,10 @@ pnpm run lint
 
 Run `pnpm run build` when touching routing, theme/styles, Vite config, shared imports, or assets used by the production bundle.
 
+## Node CLI Tests
+
+Run `pnpm run test:client` for the Node API client and CLI credential behavior. These tests use the Node test runner separately from the Worker-runtime Vitest suite.
+
 ## Browser Verification
 
 Use browser verification when changing visible layout, responsive behavior, scrolling, or user flows, or when explicitly requested.

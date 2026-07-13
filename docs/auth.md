@@ -61,6 +61,8 @@ For local fixed-code login, `/api/login/attempt` returns an attempt ID without s
 
 API keys are intended for direct `/api` usage from no-browser environments.
 
+The Node CLI uses API keys for authenticated application routes. It resolves `SEISAN_API_KEY` first, then a per-environment saved key, and finally a hidden stdin prompt. Prompted keys are stored in macOS Keychain when available or in a mode-`0600` config file fallback. CLI `logout` only removes the saved key because the server `/api/logout` route is intentionally session-only.
+
 Clients send one bearer credential:
 
 ```http

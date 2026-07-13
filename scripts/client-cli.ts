@@ -1,4 +1,5 @@
 #!/usr/bin/env -S tsx
+import { emitKeypressEvents, type Key } from "node:readline";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
@@ -9,7 +10,8 @@ import {
   CloudflareAccessTokenError,
   DEFAULT_API_BASE_URL,
   DEV_API_BASE_URL,
-  MissingSessionError,
+  isValidApiKey,
+  MissingApiKeyError,
   PRODUCTION_API_BASE_URL,
   SeisanClient,
   UnauthorizedError,
@@ -41,7 +43,7 @@ const commands: Record<CommandName, Command> = {
     },
   },
   whoami: {
-    description: "Call GET /whoami, logging in first if no saved session exists.",
+    description: "Call GET /whoami using an API key.",
     requiresAuth: true,
     async run(client) {
       const result = await client.whoami();
@@ -49,11 +51,11 @@ const commands: Record<CommandName, Command> = {
     },
   },
   logout: {
-    description: "Call POST /logout and clear the saved local session.",
+    description: "Remove the saved API key for the target environment.",
     requiresAuth: false,
     async run(client) {
       await client.logout();
-      console.log("Logged out.");
+      console.log("Saved API key removed.");
     },
   },
   "category-add": {
@@ -119,7 +121,8 @@ async function main(argv: string[]): Promise<void> {
     throw new CliError(`Unknown command: ${commandName}`);
   }
 
-  const client = new SeisanClient({ targetEnv });
+  const environmentApiKey = process.env.SEISAN_API_KEY?.trim() || undefined;
+  const client = new SeisanClient({ targetEnv, apiKey: environmentApiKey });
   if (!command.requiresAuth) {
     await command.run(client, commandArgs);
     return;
@@ -128,11 +131,17 @@ async function main(argv: string[]): Promise<void> {
   try {
     await command.run(client, commandArgs);
   } catch (error) {
-    if (!(error instanceof MissingSessionError) && !(error instanceof UnauthorizedError)) {
+    if (!(error instanceof MissingApiKeyError) && !(error instanceof UnauthorizedError)) {
       throw error;
     }
 
-    await loginInteractively(client);
+    if (environmentApiKey) {
+      throw new CliError(
+        "SEISAN_API_KEY is invalid, expired, or revoked. Update or unset the environment variable and try again.",
+      );
+    }
+
+    await readAndSaveApiKey(client);
     await command.run(client, commandArgs);
   }
 }
@@ -150,7 +159,9 @@ function parseArgs(argv: string[]): {
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] ?? "";
-    if (arg === "-h" || arg === "--help") {
+    if (arg === "--") {
+      continue;
+    } else if (arg === "-h" || arg === "--help") {
       help = true;
     } else if (arg.startsWith("--env=")) {
       targetEnv = parseTargetEnv(arg.slice("--env=".length));
@@ -308,27 +319,62 @@ function formatCategoryClassifySummary(result: CategoryClassifyResponse): {
   };
 }
 
-async function loginInteractively(client: SeisanClient): Promise<void> {
-  const rl = createInterface({ input, output });
-  try {
-    const email = (await rl.question("Email: ")).trim();
-    if (!email) {
-      throw new CliError("Email is required.");
-    }
-
-    const attempt = await client.requestLoginCode(email);
-    if (!attempt.id) {
-      throw new CliError("No new code was sent. Try again later.");
-    }
-    const code = (await rl.question("Verification code: ")).trim();
-    if (!/^\d{6}$/u.test(code)) {
-      throw new CliError("Verification code must be 6 digits.");
-    }
-
-    await client.verifyLoginCode(attempt.id, email, code);
-  } finally {
-    rl.close();
+async function readAndSaveApiKey(client: SeisanClient): Promise<void> {
+  const apiKey = (await readHiddenLine("API key (input hidden): ")).trim();
+  if (!isValidApiKey(apiKey)) {
+    throw new CliError("API key has an invalid format.");
   }
+  await client.saveApiKey(apiKey);
+}
+
+async function readHiddenLine(prompt: string): Promise<string> {
+  if (!input.isTTY || typeof input.setRawMode !== "function") {
+    const rl = createInterface({ input, output });
+    try {
+      return await rl.question(prompt);
+    } finally {
+      rl.close();
+    }
+  }
+
+  output.write(prompt);
+  emitKeypressEvents(input);
+  const wasPaused = input.isPaused();
+  const wasRaw = input.isRaw;
+  input.setRawMode(true);
+  input.resume();
+
+  return new Promise<string>((resolve, reject) => {
+    let value = "";
+
+    const finish = (result: { value: string } | { error: Error }): void => {
+      input.removeListener("keypress", onKeypress);
+      input.setRawMode(wasRaw);
+      if (wasPaused) {
+        input.pause();
+      }
+      output.write("\n");
+      if ("error" in result) {
+        reject(result.error);
+      } else {
+        resolve(result.value);
+      }
+    };
+
+    const onKeypress = (character: string | undefined, key: Key): void => {
+      if (key.ctrl && key.name === "c") {
+        finish({ error: new CliError("API key entry cancelled.") });
+      } else if (key.name === "return" || key.name === "enter") {
+        finish({ value });
+      } else if (key.name === "backspace") {
+        value = Array.from(value).slice(0, -1).join("");
+      } else if (!key.ctrl && !key.meta && character) {
+        value += character;
+      }
+    };
+
+    input.on("keypress", onKeypress);
+  });
 }
 
 function printHelp(): void {
@@ -339,6 +385,9 @@ Commands:
 ${Object.entries(commands)
   .map(([name, command]) => `  ${name.padEnd(commandNameWidth)} ${command.description}`)
   .join("\n")}
+
+Authentication:
+  Authenticated commands use SEISAN_API_KEY when set. Otherwise, the CLI uses a saved key or prompts for one and stores it securely. Environment keys override saved keys. Run logout to remove the saved key for the target environment.
 
 Options:
   --env=<env>  Target environment: local (${DEFAULT_API_BASE_URL}), dev (${DEV_API_BASE_URL}), or production (${PRODUCTION_API_BASE_URL}). Defaults to local. Dev and remote admin calls run cloudflared access token automatically.
