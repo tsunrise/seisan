@@ -17,7 +17,7 @@ export const ledgerColors = {
 };
 
 export const ledgerFonts = {
-  sans: '"Source Sans 3 Variable", sans-serif',
+  sans: '"Inter Variable", sans-serif',
   serif: '"Source Serif 4 Variable", serif',
   mono: '"Source Code Pro Variable", monospace',
 };

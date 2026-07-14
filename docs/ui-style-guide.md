@@ -44,9 +44,11 @@ Prefer existing MUI components and icons. Do not add a second UI framework or ic
 
 Use the typography stacks from `ledgerFonts`:
 
-- Source Sans 3 Variable, Source Serif 4 Variable, and Source Code Pro Variable are self-hosted
-  through Fontsource. Keep those bundled faces first in their respective stacks so text and all
-  requested weights render consistently across operating systems.
+- Do not commit, convert, or serve downloaded Apple font binaries. San Francisco is available to
+  the web UI only as a historical design reference.
+- Inter Variable, Source Serif 4 Variable, and Source Code Pro Variable are self-hosted through
+  Fontsource and are the first faces in their respective stacks on every operating system. This
+  keeps glyphs and requested weights consistent across platforms.
 - Display serif is only for major page/detail titles, such as project names and record detail titles.
 - UI sans is for controls, labels, forms, rows, and panels.
 - Mono is for rail/date metadata and tight numeric/system metadata when it helps scanning.

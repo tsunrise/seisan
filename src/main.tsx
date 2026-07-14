@@ -3,9 +3,9 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import { CssBaseline, ThemeProvider } from "@mui/material";
 
+import "@fontsource-variable/inter/wght.css";
+import "@fontsource-variable/inter/wght-italic.css";
 import "@fontsource-variable/source-code-pro/wght.css";
-import "@fontsource-variable/source-sans-3/wght.css";
-import "@fontsource-variable/source-sans-3/wght-italic.css";
 import "@fontsource-variable/source-serif-4/wght.css";
 import "./index.css";
 import App from "./App.tsx";
