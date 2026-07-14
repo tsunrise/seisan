@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "activeDir": "active",
   "resolvedDir": "resolved",
-  "nextId": 15,
+  "nextId": 19,
   "issues": [
     {
       "id": "RT-1",
@@ -142,6 +142,42 @@
       "file": "active/rt-14-api-key-revocation-can-commit-metadata-before-verifier-invalidation-20260628-223040.md",
       "date": "2026-06-28 22:30:40 PDT",
       "commit": "7c452780551a0b06094be5be42d136c51716b2c3"
+    },
+    {
+      "id": "RT-15",
+      "status": "active",
+      "severity": "High",
+      "title": "Oversized Login Emails Create Persistent Storage and Email Amplification",
+      "file": "active/rt-15-oversized-login-emails-create-persistent-storage-and-email-amplification-20260713-203407.md",
+      "date": "2026-07-13 20:34:07 PDT",
+      "commit": "b8176cccc86cb33a2f59d7dcb56b6fe2f994c035"
+    },
+    {
+      "id": "RT-16",
+      "status": "active",
+      "severity": "Medium",
+      "title": "Category Classification Has No Usage Throttle",
+      "file": "active/rt-16-category-classification-has-no-usage-throttle-20260713-203407.md",
+      "date": "2026-07-13 20:34:07 PDT",
+      "commit": "b8176cccc86cb33a2f59d7dcb56b6fe2f994c035"
+    },
+    {
+      "id": "RT-17",
+      "status": "active",
+      "severity": "Medium",
+      "title": "Multi-Account Unauthorized Appends Exhaust Project Rate Limits",
+      "file": "active/rt-17-multi-account-unauthorized-appends-exhaust-project-rate-limits-20260713-203407.md",
+      "date": "2026-07-13 20:34:07 PDT",
+      "commit": "b8176cccc86cb33a2f59d7dcb56b6fe2f994c035"
+    },
+    {
+      "id": "RT-18",
+      "status": "active",
+      "severity": "Medium",
+      "title": "Missing Project Reference Cache Entries Strand Registered Projects",
+      "file": "active/rt-18-missing-project-reference-cache-entries-strand-registered-projects-20260713-203407.md",
+      "date": "2026-07-13 20:34:07 PDT",
+      "commit": "b8176cccc86cb33a2f59d7dcb56b6fe2f994c035"
     }
   ]
 }
