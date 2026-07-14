@@ -27,6 +27,9 @@
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@fontsource-variable/source-code-pro": "^5.2.7",
+    "@fontsource-variable/source-sans-3": "^5.2.9",
+    "@fontsource-variable/source-serif-4": "^5.2.9",
     "@hono/standard-validator": "^0.2.2",
     "@mui/icons-material": "^9.0.1",
     "@mui/material": "^9.0.1",

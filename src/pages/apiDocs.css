@@ -70,10 +70,8 @@
   --scalar-button-1-color: #fffdfa;
   --scalar-link-color: #0c4da3;
   --scalar-link-color-hover: #1167d8;
-  --scalar-font:
-    ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Geist Sans", "Aptos",
-    sans-serif;
-  --scalar-font-code: "SF Mono", "Geist Mono", "JetBrains Mono", ui-monospace, monospace;
+  --scalar-font: "Source Sans 3 Variable", sans-serif;
+  --scalar-font-code: "Source Code Pro Variable", monospace;
   --scalar-radius: 3px;
   --scalar-radius-lg: 4px;
   --scalar-radius-xl: 6px;

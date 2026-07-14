@@ -13,6 +13,15 @@ importers:
       "@emotion/styled":
         specifier: ^11.14.1
         version: 11.14.1(@emotion/react@11.14.0(@types/react@19.2.15)(react@19.2.6))(@types/react@19.2.15)(react@19.2.6)
+      "@fontsource-variable/source-code-pro":
+        specifier: ^5.2.7
+        version: 5.2.7
+      "@fontsource-variable/source-sans-3":
+        specifier: ^5.2.9
+        version: 5.2.9
+      "@fontsource-variable/source-serif-4":
+        specifier: ^5.2.9
+        version: 5.2.9
       "@hono/standard-validator":
         specifier: ^0.2.2
         version: 0.2.2(@standard-schema/spec@1.1.0)(hono@4.12.22)
@@ -1138,6 +1147,24 @@ packages:
     resolution:
       {
         integrity: sha512-BfNqNW6KA83Nexspgb9DZuz578R7HT8MZw1CfK9I6Ah4QReNWEJsXWHN+SdmOVLNGmTPDi+fDT535Df5PzMLbQ==,
+      }
+
+  "@fontsource-variable/source-code-pro@5.2.7":
+    resolution:
+      {
+        integrity: sha512-kZ0VNwnhvSA7vu5MaiO52eicQ4zC+k+8HBLZb+1js0MK/RngLy25NEUFB1y/AKd0ZMwru88T433QBcFf9m/huw==,
+      }
+
+  "@fontsource-variable/source-sans-3@5.2.9":
+    resolution:
+      {
+        integrity: sha512-K9fkQbb0BNnRmmaU+Gpr6U4IaYKpNzA8t07J6aam2i+6v84RT72MVpar8OBr3yYAEznj4riKivPQ2nAF2fPKsw==,
+      }
+
+  "@fontsource-variable/source-serif-4@5.2.9":
+    resolution:
+      {
+        integrity: sha512-PPcxjLFk/fS0WHg79pDM2YNvz61kC+oYZ5cWZZyCS0DHpJncmuYOuiZAsvj4tDxlWPBEvxxcRLQQNmSaRbPkqw==,
       }
 
   "@headlessui/tailwindcss@0.2.2":
@@ -5687,6 +5714,12 @@ snapshots:
     transitivePeerDependencies:
       - "@vue/composition-api"
       - vue
+
+  "@fontsource-variable/source-code-pro@5.2.7": {}
+
+  "@fontsource-variable/source-sans-3@5.2.9": {}
+
+  "@fontsource-variable/source-serif-4@5.2.9": {}
 
   "@headlessui/tailwindcss@0.2.2(tailwindcss@4.3.2)":
     dependencies:

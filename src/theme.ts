@@ -17,9 +17,9 @@ export const ledgerColors = {
 };
 
 export const ledgerFonts = {
-  sans: 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Geist Sans", "Aptos", sans-serif',
-  serif: 'Georgia, "Times New Roman", "Times", serif',
-  mono: '"SF Mono", "Geist Mono", "JetBrains Mono", ui-monospace, monospace',
+  sans: '"Source Sans 3 Variable", sans-serif',
+  serif: '"Source Serif 4 Variable", serif',
+  mono: '"Source Code Pro Variable", monospace',
 };
 
 export const theme = createTheme({
