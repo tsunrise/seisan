@@ -41,6 +41,7 @@ Public auth endpoints live under `/api/login/*`.
 Login attempt rules:
 
 - Login attempt validation uses zod in `worker/auth.ts`.
+- Login attempt and verification email inputs are limited to 255 characters and rejected before Turnstile, hashing, Durable Object, or Send Email work.
 - Login attempts return an opaque attempt ID.
 - Verification must include the attempt ID, email, and code.
 - Keep login cooldown and failed-attempt state in `LoginAttemptStore`.

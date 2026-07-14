@@ -2,6 +2,7 @@
 
 Date: 2026-07-13 20:34:07 PDT
 Commit: b8176cccc86cb33a2f59d7dcb56b6fe2f994c035
+Resolution: Fixed
 
 The login email schemas accept multi-megabyte values. After Turnstile, each unique value is hashed, persisted in its own LoginAttemptStore Durable Object, and forwarded to Send Email, allowing bounded requests to amplify into durable storage, CPU, and email-binding work.
 
@@ -28,3 +29,7 @@ This is direct-client feasible. A deployed attacker needs a valid Turnstile toke
 On the deployed login-attempt path, `worker/routes/login.ts:76-91` verifies Turnstile, hashes the full email and login-code inputs, selects `LOGIN_ATTEMPT_STORE` by the email hash, and passes the full raw email into `createAttempt()`. `worker/do/LoginAttemptStore.ts:67-78` writes that email into SQLite. Unique expired attempts have no alarm-based cleanup; they remain until the same email hash is revisited by a later attempt or verification path.
 
 Finally, `worker/routes/login.ts:97-112` forwards the same unbounded value as `SEND_EMAIL.send(...).to`. A single accepted request therefore combines large-body buffering, hashing/HMAC work, a separately sharded Durable Object write, persistent storage, and an email-binding attempt.
+
+## Resolution
+
+Added a shared 255-character maximum to normalized email validation and applied it to both login request schemas before Turnstile, hashing, Durable Object, or Send Email work. Focused Worker coverage proves 255 characters are accepted, 256 are rejected on attempt and verification, and rejected attempts do not invoke Turnstile or Send Email. The original 8,388,632-byte live request now returns 400 invalid_request in 84 ms; live boundary checks returned 202 at 255 characters and 400 at 256, and the post-replay ping returned 200.

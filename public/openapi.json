@@ -48,6 +48,7 @@
                   "properties": {
                     "email": {
                       "type": "string",
+                      "maxLength": 255,
                       "format": "email",
                       "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
                       "description": "Normalized account email address.",
@@ -136,6 +137,7 @@
                           },
                           "owner": {
                             "type": "string",
+                            "maxLength": 255,
                             "format": "email",
                             "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
                             "description": "Normalized account email address.",
@@ -166,6 +168,7 @@
                                   "linkedEmail": {
                                     "description": "Account currently linked to this member, when present.",
                                     "type": "string",
+                                    "maxLength": 255,
                                     "format": "email",
                                     "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
                                     "examples": ["mika@example.com"]
@@ -944,6 +947,7 @@
                             "type": "array",
                             "items": {
                               "type": "string",
+                              "maxLength": 255,
                               "format": "email",
                               "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
                               "description": "Normalized account email address.",
@@ -1011,6 +1015,7 @@
                     },
                     "owner": {
                       "type": "string",
+                      "maxLength": 255,
                       "format": "email",
                       "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
                       "description": "Normalized account email address.",
@@ -1043,6 +1048,7 @@
                               "type": "array",
                               "items": {
                                 "type": "string",
+                                "maxLength": 255,
                                 "format": "email",
                                 "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
                                 "description": "Normalized account email address.",
@@ -1086,6 +1092,7 @@
                           "linkedEmail": {
                             "description": "Account currently linked to this member, when present.",
                             "type": "string",
+                            "maxLength": 255,
                             "format": "email",
                             "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
                             "examples": ["mika@example.com"]
@@ -1374,6 +1381,7 @@
                     },
                     "owner": {
                       "type": "string",
+                      "maxLength": 255,
                       "format": "email",
                       "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
                       "description": "Normalized account email address.",
@@ -1406,6 +1414,7 @@
                               "type": "array",
                               "items": {
                                 "type": "string",
+                                "maxLength": 255,
                                 "format": "email",
                                 "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
                                 "description": "Normalized account email address.",
@@ -1449,6 +1458,7 @@
                           "linkedEmail": {
                             "description": "Account currently linked to this member, when present.",
                             "type": "string",
+                            "maxLength": 255,
                             "format": "email",
                             "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
                             "examples": ["mika@example.com"]
@@ -2829,6 +2839,7 @@
                     "type": "array",
                     "items": {
                       "type": "string",
+                      "maxLength": 255,
                       "format": "email",
                       "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
                       "description": "Normalized account email address.",
@@ -3041,6 +3052,7 @@
                     "type": "array",
                     "items": {
                       "type": "string",
+                      "maxLength": 255,
                       "format": "email",
                       "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
                       "description": "Normalized account email address.",
@@ -3501,6 +3513,7 @@
                         "linkedEmail": {
                           "description": "Account currently linked to this member, when present.",
                           "type": "string",
+                          "maxLength": 255,
                           "format": "email",
                           "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
                           "examples": ["mika@example.com"]
@@ -3790,6 +3803,7 @@
                         "linkedEmail": {
                           "description": "Account currently linked to this member, when present.",
                           "type": "string",
+                          "maxLength": 255,
                           "format": "email",
                           "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
                           "examples": ["mika@example.com"]
@@ -4229,6 +4243,7 @@
                 "properties": {
                   "email": {
                     "type": "string",
+                    "maxLength": 255,
                     "format": "email",
                     "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
                     "description": "Normalized account email address.",
@@ -4537,6 +4552,7 @@
                         "linkedEmail": {
                           "description": "Account currently linked to this member, when present.",
                           "type": "string",
+                          "maxLength": 255,
                           "format": "email",
                           "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
                           "examples": ["mika@example.com"]

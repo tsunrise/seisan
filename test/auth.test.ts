@@ -19,6 +19,7 @@ import {
   signSessionToken,
   verifySessionToken,
 } from "../worker/crypto";
+import { MAX_EMAIL_LENGTH } from "../worker/email";
 import worker from "../worker/index";
 
 const AUTH_SECRET = "test-auth-secret-at-least-32-bytes";
@@ -42,6 +43,11 @@ interface TestEnv {
 
 function uniqueEmail(): string {
   return `test-${crypto.randomUUID()}@example.com`;
+}
+
+function emailWithLength(length: number): string {
+  const suffix = "@example.com";
+  return `${"a".repeat(length - suffix.length)}${suffix}`;
 }
 
 function makeEnv(turnstileSuccess = true): TestEnv {
@@ -182,6 +188,42 @@ describe("auth worker", () => {
     );
     expect(badVerify.status).toBe(400);
     expect(await badVerify.json()).toEqual({ error: "invalid_request" });
+  });
+
+  it("enforces the maximum email length on login attempts and verification", async () => {
+    const maximumEmail = emailWithLength(MAX_EMAIL_LENGTH);
+    const oversizedEmail = emailWithLength(MAX_EMAIL_LENGTH + 1);
+    const { env: testEnv, sentEmails, turnstileFetch } = makeEnv();
+
+    const accepted = await dispatch(
+      "/login/attempt",
+      testEnv,
+      jsonPost(loginAttemptBody(maximumEmail)),
+    );
+    expect(accepted.status).toBe(202);
+    const attemptId = await readLoginAttemptId(accepted);
+    expect(sentEmails).toHaveLength(1);
+    expect(sentEmails[0].to).toBe(maximumEmail);
+    expect(turnstileFetch).toHaveBeenCalledTimes(1);
+
+    const rejectedAttempt = await dispatch(
+      "/login/attempt",
+      testEnv,
+      jsonPost(loginAttemptBody(oversizedEmail)),
+    );
+    expect(rejectedAttempt.status).toBe(400);
+    expect(await rejectedAttempt.json()).toEqual({ error: "invalid_request" });
+    expect(sentEmails).toHaveLength(1);
+    expect(turnstileFetch).toHaveBeenCalledTimes(1);
+
+    const rejectedVerify = await dispatch(
+      "/login/verify",
+      testEnv,
+      jsonPost(loginVerifyBody(oversizedEmail, "123456", attemptId)),
+    );
+    expect(rejectedVerify.status).toBe(400);
+    expect(await rejectedVerify.json()).toEqual({ error: "invalid_request" });
+    expect(rejectedVerify.headers.get("set-cookie")).toBeNull();
   });
 
   it("requires turnstile before sending login email", async () => {

@@ -2,6 +2,7 @@ import { resolver, type DescribeRouteOptions, type GenerateSpecOptions } from "h
 import type { OpenAPIV3_1 } from "openapi-types";
 import { z } from "zod";
 
+import { MAX_EMAIL_LENGTH } from "./email";
 import { ABSOLUTE_LIST_LIMIT, ABSOLUTE_TEXT_LIMIT } from "./limits";
 
 type OpenApiResponses = NonNullable<DescribeRouteOptions["responses"]>;
@@ -132,6 +133,7 @@ const PositiveSafeInteger = z.number().int().positive().max(Number.MAX_SAFE_INTE
 const NonNegativeSafeInteger = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const Email = z
   .email()
+  .max(MAX_EMAIL_LENGTH)
   .meta({ description: "Normalized account email address.", examples: ["mika@example.com"] });
 const MemberName = z
   .string()

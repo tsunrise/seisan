@@ -24,7 +24,7 @@ import {
   timingSafeEqual,
   verifySessionToken,
 } from "../crypto";
-import { normalizeEmail } from "../email";
+import { normalizedEmailSchema } from "../email";
 import { ErrorResponse } from "../error";
 import { errorResponses, OpenApiRequests, OpenApiResponses, OpenApiSecurity } from "../model";
 import { verifyTurnstileToken } from "../turnstile";
@@ -38,13 +38,13 @@ type LocalDevLoginEnv = Env & {
 };
 
 const LoginAttempt = z.object({
-  email: z.email().transform(normalizeEmail),
+  email: normalizedEmailSchema,
   turnstileToken: z.string().min(1).max(2048).optional(),
 });
 
 const LoginVerify = z.object({
   id: z.string().regex(/^[0-9A-Za-z]{32}$/u),
-  email: z.email().transform(normalizeEmail),
+  email: normalizedEmailSchema,
   code: z.string().regex(/^\d{6}$/u),
 });
 
