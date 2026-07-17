@@ -82,6 +82,7 @@ export function makeEnv(overrides: Partial<Env> = {}): TestEnv {
       SEND_EMAIL: { send: vi.fn() } as unknown as SendEmail,
       APPEND_RECORD_ACCOUNT_RATE_LIMITER: makeAllowingRateLimit(),
       APPEND_RECORD_PROJECT_RATE_LIMITER: makeAllowingRateLimit(),
+      CATEGORY_CLASSIFICATION_ACCOUNT_RATE_LIMITER: makeAllowingRateLimit(),
       ...overrides,
     } as Env,
   };

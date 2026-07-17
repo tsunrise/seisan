@@ -2,6 +2,7 @@
 
 Date: 2026-07-13 20:34:07 PDT
 Commit: b8176cccc86cb33a2f59d7dcb56b6fe2f994c035
+Resolution: Fixed
 
 Any authenticated account can call the category classification route without an account, API-key, IP, or global usage limit. Every valid call reaches Workers AI embedding and Vectorize query work, including calls that ultimately return not found.
 
@@ -25,3 +26,13 @@ The `404` responses resulted from Vectorize not yet returning a candidate in the
 `worker/category/index.ts:160-180` validates the name and `topK`, loads the published document, and calls the vector adapter for every valid request while categories exist. `worker/category/vectorIndex.ts:28-49` invokes the Workers AI embedding model and then `CATEGORY_INDEX.query()` for each call. `worker/category/index.ts:185-187` returns `not_found` only after that paid work completes without a resolvable candidate.
 
 The only configured application rate-limit bindings are append-record account and project limiters in `wrangler.jsonc`; the classification route does not use either and has no classification-specific binding or durable quota.
+
+## Resolution
+
+Added `CATEGORY_CLASSIFICATION_ACCOUNT_RATE_LIMITER` in every Wrangler environment with a 30-request, 60-second policy. The authenticated classification route hashes the normalized account email into a category-specific key and checks the binding after request validation but before `CategoryClassifier` invokes Workers AI or Vectorize. Excess requests return `429 {"error":"rate_limited","reason":"account"}`. Focused tests verify the normalized key and prove that a rejected request performs no AI or Vectorize work.
+
+A clean local replay on 2026-07-16 PDT seeded one disposable category. Classification requests 1 through 30 returned `200`; request 31 returned `429 {"error":"rate_limited","reason":"account"}` in 0.005869 seconds. The category and remote vector were deleted, the final admin list returned `200 {"categories":[]}`, and the original Wrangler state was restored.
+
+The same change lowers `APPEND_RECORD_ACCOUNT_RATE_LIMITER` from 60 to 10 requests per minute. A disposable local project replay returned `201` for appends 1 through 10 and `429 {"error":"rate_limited","reason":"account"}` for append 11.
+
+Full typecheck, lint, 129 Worker tests, production build, OpenAPI check, scoped formatting, and diff checks passed.

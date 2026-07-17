@@ -47,6 +47,9 @@ Request behavior:
 - Duplicate normalized category names return `409 { error: "category_exists" }`.
 - Invalid bodies, invalid IDs, or invalid `topK` return `400 { error: "invalid_request" }`.
 - Classification with no active matching category returns `404 { error: "not_found" }`.
+- Classification is limited to 30 requests per minute per normalized account. Session and API-key
+  authentication for the same account share one quota; excess requests return
+  `429 { error: "rate_limited", reason: "account" }` before Workers AI or Vectorize is called.
 - KV read, missing document, invalid document, AI, or Vectorize failures return `500 { error: "internal_server_error" }`.
 - `topK` defaults to `5` and is capped at `20`.
 

@@ -7,6 +7,7 @@ import {
   type CategoriesDocument as CategoriesDocumentValue,
 } from "../worker/category";
 import { upsertCategoryInDocument } from "../worker/category/document";
+import { sha256Hex } from "../worker/crypto";
 import type { IconName } from "../shared/icon-names";
 import {
   adminDispatch,
@@ -24,6 +25,7 @@ describe("category classification", () => {
 
   it("manages categories through admin endpoints and classifies through the authenticated API", async () => {
     const aiRun = vi.fn(async () => ({ shape: [1, TEST_VECTOR.length], data: [TEST_VECTOR] }));
+    const classificationRateLimit = stubRateLimit(true);
     const upsert = vi.fn<(vectors: VectorizeVector[]) => Promise<VectorizeVectorMutation>>(
       async () => ({ ids: [], count: 1 }),
     );
@@ -31,6 +33,7 @@ describe("category classification", () => {
     const { env: testEnv } = makeEnv({
       AI: fakeAi(aiRun),
       CATEGORY_INDEX: fakeVectorize({ upsert, query }),
+      CATEGORY_CLASSIFICATION_ACCOUNT_RATE_LIMITER: classificationRateLimit.binding,
     });
 
     const emptyList = await dispatch("/categories", testEnv);
@@ -135,6 +138,34 @@ describe("category classification", () => {
       text: ["task: classification | query: Taco Bell"],
     });
     expect(query).toHaveBeenCalledWith(TEST_VECTOR, { topK: 5, namespace: vectorNamespace });
+    expect(classificationRateLimit.limit).toHaveBeenCalledWith({
+      key: `category-classification:account:${await sha256Hex("owner@example.com")}`,
+    });
+  });
+
+  it("rate limits classification by normalized account before paid classification work", async () => {
+    const classificationRateLimit = stubRateLimit(false);
+    const aiRun = vi.fn(async () => ({ shape: [1, TEST_VECTOR.length], data: [TEST_VECTOR] }));
+    const query = vi.fn<() => Promise<VectorizeMatches>>(async () => ({ count: 0, matches: [] }));
+    const { env: testEnv } = makeEnv({
+      AI: fakeAi(aiRun),
+      CATEGORY_INDEX: fakeVectorize({ query }),
+      CATEGORY_CLASSIFICATION_ACCOUNT_RATE_LIMITER: classificationRateLimit.binding,
+    });
+
+    const response = await dispatch(
+      "/categories/classify",
+      testEnv,
+      jsonBody("POST", { name: "Coffee" }, await authHeaders("Owner@Example.COM")),
+    );
+
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ error: "rate_limited", reason: "account" });
+    expect(classificationRateLimit.limit).toHaveBeenCalledWith({
+      key: `category-classification:account:${await sha256Hex("owner@example.com")}`,
+    });
+    expect(aiRun).not.toHaveBeenCalled();
+    expect(query).not.toHaveBeenCalled();
   });
 
   it("updates categories in place and removes deleted categories from published config", async () => {
@@ -678,6 +709,11 @@ function fakeVectorize(methods: Partial<VectorizeMethods> = {}): VectorizeIndex 
     getByIds: vi.fn(async () => []),
     ...methods,
   } as VectorizeIndex;
+}
+
+function stubRateLimit(success: boolean): { binding: RateLimit; limit: ReturnType<typeof vi.fn> } {
+  const limit = vi.fn(async () => ({ success }));
+  return { binding: { limit } as RateLimit, limit };
 }
 
 type VectorizeMethods = Pick<

@@ -155,12 +155,13 @@
     },
     {
       "id": "RT-16",
-      "status": "active",
+      "status": "resolved",
       "severity": "Medium",
       "title": "Category Classification Has No Usage Throttle",
-      "file": "active/rt-16-category-classification-has-no-usage-throttle-20260713-203407.md",
+      "file": "resolved/rt-16-medium-category-classification-has-no-usage-throttle-20260716-231421.md",
       "date": "2026-07-13 20:34:07 PDT",
-      "commit": "b8176cccc86cb33a2f59d7dcb56b6fe2f994c035"
+      "commit": "b8176cccc86cb33a2f59d7dcb56b6fe2f994c035",
+      "resolution": "Fixed"
     },
     {
       "id": "RT-17",

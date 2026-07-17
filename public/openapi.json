@@ -943,6 +943,37 @@
               }
             }
           },
+          "429": {
+            "description": "The request was rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "rate_limited" }
+              }
+            }
+          },
           "500": {
             "description": "Unexpected server error.",
             "content": {

@@ -123,7 +123,7 @@
       "name": "APPEND_RECORD_ACCOUNT_RATE_LIMITER",
       "namespace_id": "2026061801",
       "simple": {
-        "limit": 60,
+        "limit": 10,
         "period": 60,
       },
     },
@@ -132,6 +132,14 @@
       "namespace_id": "2026061802",
       "simple": {
         "limit": 120,
+        "period": 60,
+      },
+    },
+    {
+      "name": "CATEGORY_CLASSIFICATION_ACCOUNT_RATE_LIMITER",
+      "namespace_id": "2026061803",
+      "simple": {
+        "limit": 30,
         "period": 60,
       },
     },
@@ -211,7 +219,7 @@
           "name": "APPEND_RECORD_ACCOUNT_RATE_LIMITER",
           "namespace_id": "2026061811",
           "simple": {
-            "limit": 60,
+            "limit": 10,
             "period": 60,
           },
         },
@@ -220,6 +228,14 @@
           "namespace_id": "2026061812",
           "simple": {
             "limit": 120,
+            "period": 60,
+          },
+        },
+        {
+          "name": "CATEGORY_CLASSIFICATION_ACCOUNT_RATE_LIMITER",
+          "namespace_id": "2026061813",
+          "simple": {
+            "limit": 30,
             "period": 60,
           },
         },
@@ -273,7 +289,7 @@
         },
         {
           "binding": "PUBLISHED_GLOBAL_CONFIG",
-          "id": "37308f06b8e942a6ba312cb8c927024c"
+          "id": "37308f06b8e942a6ba312cb8c927024c",
         },
       ],
       "durable_objects": {
@@ -315,7 +331,7 @@
           "name": "APPEND_RECORD_ACCOUNT_RATE_LIMITER",
           "namespace_id": "2026061821",
           "simple": {
-            "limit": 60,
+            "limit": 10,
             "period": 60,
           },
         },
@@ -324,6 +340,14 @@
           "namespace_id": "2026061822",
           "simple": {
             "limit": 120,
+            "period": 60,
+          },
+        },
+        {
+          "name": "CATEGORY_CLASSIFICATION_ACCOUNT_RATE_LIMITER",
+          "namespace_id": "2026061823",
+          "simple": {
+            "limit": 30,
             "period": 60,
           },
         },
@@ -374,7 +398,7 @@
         },
         {
           "binding": "PUBLISHED_GLOBAL_CONFIG",
-          "id": "5ac6312fce824bdca1b5f6de27eb5f4f"
+          "id": "5ac6312fce824bdca1b5f6de27eb5f4f",
         },
       ],
       "durable_objects": {
@@ -416,7 +440,7 @@
           "name": "APPEND_RECORD_ACCOUNT_RATE_LIMITER",
           "namespace_id": "2026061831",
           "simple": {
-            "limit": 60,
+            "limit": 10,
             "period": 60,
           },
         },
@@ -425,6 +449,14 @@
           "namespace_id": "2026061832",
           "simple": {
             "limit": 120,
+            "period": 60,
+          },
+        },
+        {
+          "name": "CATEGORY_CLASSIFICATION_ACCOUNT_RATE_LIMITER",
+          "namespace_id": "2026061833",
+          "simple": {
+            "limit": 30,
             "period": 60,
           },
         },

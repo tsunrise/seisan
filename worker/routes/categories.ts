@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   type AppContext,
   type EnvWithIdentity,
+  getRequiredIdentity,
   parseJson,
   requireAuth,
   requireSameOriginWhenPresent,
@@ -19,6 +20,8 @@ import {
   CategoryId,
   CategoryName,
 } from "../category";
+import { sha256Hex } from "../crypto";
+import { normalizeEmail } from "../email";
 import { ErrorResponse } from "../error";
 import { PublishedGlobalConfigKvStore } from "../globalConfig";
 import { errorResponses, OpenApiRequests, OpenApiResponses, OpenApiSecurity } from "../model";
@@ -70,7 +73,7 @@ categoryApp.post(
     requestBody: OpenApiRequests.CategoryClassify,
     responses: {
       200: OpenApiResponses.CategoryClassification,
-      ...errorResponses(400, 401, 404, 500),
+      ...errorResponses(400, 401, 404, 429, 500),
     },
   }),
   requireSameOriginWhenPresent,
@@ -79,6 +82,13 @@ categoryApp.post(
     const parsed = await parseJson(context, ClassifyCategoryBody);
     if (!parsed.ok) {
       return ErrorResponse.invalidRequest();
+    }
+
+    const rateLimit = await new CategoryClassificationRateLimiter(context.env).limitAccount(
+      getRequiredIdentity(context).email,
+    );
+    if (!rateLimit.success) {
+      return ErrorResponse.rateLimited("account");
     }
 
     const result = await new CategoryClassifier(context.env, context.executionCtx).classify(
@@ -96,6 +106,24 @@ categoryApp.post(
     });
   },
 );
+
+class CategoryClassificationRateLimiter {
+  private static readonly accountKeyPrefix = "category-classification:account:";
+
+  private readonly env: Env;
+
+  constructor(env: Env) {
+    this.env = env;
+  }
+
+  async limitAccount(accountEmail: string): Promise<RateLimitOutcome> {
+    return this.env.CATEGORY_CLASSIFICATION_ACCOUNT_RATE_LIMITER.limit({
+      key: `${CategoryClassificationRateLimiter.accountKeyPrefix}${await sha256Hex(
+        normalizeEmail(accountEmail),
+      )}`,
+    });
+  }
+}
 
 adminCategoryApp.get("/", listCategoriesForUpdate);
 
