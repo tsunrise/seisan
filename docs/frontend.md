@@ -46,7 +46,10 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 ## Expense Category Classification
 
 - The expense composer classifies the exact expense text after a 400 ms debounce or immediately on
-  blur, requesting the top three candidates.
+  blur, requesting up to 20 candidates.
+- The category menu initially shows the first three unique ranked candidates plus every additional
+  unique candidate scoring above `0.2`, followed by a `Show all categories` action. Expanding shows
+  the remaining categories and `Others` alphabetically below a divider.
 - Superseded requests must be aborted and ignored. Classification times out after 5 seconds and
   falls back to `Others`; scores below `0.2` also produce `Others`.
 - Manual dropdown selections remain authoritative for the rest of that composer session even while

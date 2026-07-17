@@ -2,6 +2,7 @@ import AddIcon from "@mui/icons-material/Add";
 import {
   Button,
   CircularProgress,
+  ListSubheader,
   MenuItem,
   Stack,
   TextField,
@@ -58,6 +59,7 @@ export function ExpenseComposer({
   const [customAmounts, setCustomAmounts] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
+  const [showAllCategories, setShowAllCategories] = useState(false);
   const nameRef = useRef(name);
   useLayoutEffect(() => {
     nameRef.current = name;
@@ -207,6 +209,7 @@ export function ExpenseComposer({
           slotProps={{
             select: {
               IconComponent: categoryIsPending ? CategoryLoadingIcon : undefined,
+              onOpen: () => setShowAllCategories(false),
               renderValue: () => <CategoryOptionContent category={selectedCategory} />,
             },
           }}
@@ -216,15 +219,44 @@ export function ExpenseComposer({
               <CategoryOptionContent category={category} />
             </MenuItem>
           ))}
+          {!showAllCategories && (
+            <ListSubheader
+              disableSticky
+              sx={{
+                borderTop: categoryOptions.suggested.length > 0 ? "1px solid" : undefined,
+                borderColor: "divider",
+                mt: categoryOptions.suggested.length > 0 ? 0.5 : 0,
+                p: 0,
+              }}
+            >
+              <Button
+                fullWidth
+                size="small"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setShowAllCategories(true);
+                }}
+                sx={{
+                  justifyContent: "flex-start",
+                  minHeight: 40,
+                  px: 2,
+                  textTransform: "none",
+                }}
+              >
+                Show all categories
+              </Button>
+            </ListSubheader>
+          )}
           {categoryOptions.remaining.map((category, index) => (
             <MenuItem
               key={category.id}
               value={category.id}
-              sx={
-                index === 0 && categoryOptions.suggested.length > 0
+              sx={{
+                display: showAllCategories ? "flex" : "none",
+                ...(index === 0 && categoryOptions.suggested.length > 0
                   ? { borderTop: "1px solid", borderColor: "divider", mt: 0.5 }
-                  : undefined
-              }
+                  : {}),
+              }}
             >
               <CategoryOptionContent category={category} />
             </MenuItem>

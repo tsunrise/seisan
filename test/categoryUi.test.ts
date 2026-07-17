@@ -14,23 +14,32 @@ import {
 import { ICON_NAME_VALUES, isIconName } from "../shared/icon-names";
 
 describe("category UI helpers", () => {
-  it("puts three unique candidates first and sorts the remaining categories with Others", () => {
+  it("puts every unique candidate above 0.2 first and sorts the remainder with Others", () => {
     const restaurant = category("restaurant", "Restaurant", "restaurant");
     const grocery = category("grocery", "Grocery", "grocery");
     const travel = category("travel", "Travel", "travel");
     const education = category("education", "Education", "education");
+    const medical = category("medical", "Medical", "medical");
+    const shopping = category("shopping", "Shopping", "shopping");
     const result = orderedCategoryOptions(
-      [travel, education, grocery, restaurant],
+      [travel, education, grocery, restaurant, medical, shopping],
       [
         candidate(travel, 0.9),
         candidate(restaurant, 0.8),
         candidate(travel, 0.7),
         candidate(grocery, 0.6),
+        candidate(medical, 0.3),
+        candidate(shopping, 0.2),
       ],
     );
 
-    expect(result.suggested.map((item) => item.name)).toEqual(["Travel", "Restaurant", "Grocery"]);
-    expect(result.remaining.map((item) => item.name)).toEqual(["Education", "Others"]);
+    expect(result.suggested.map((item) => item.name)).toEqual([
+      "Travel",
+      "Restaurant",
+      "Grocery",
+      "Medical",
+    ]);
+    expect(result.remaining.map((item) => item.name)).toEqual(["Education", "Others", "Shopping"]);
   });
 
   it("sorts the full list with Others when there are no suggestions", () => {
@@ -41,6 +50,20 @@ describe("category UI helpers", () => {
 
     expect(result.suggested).toEqual([]);
     expect(result.remaining.map((item) => item.name)).toEqual(["Grocery", "Others", "Travel"]);
+  });
+
+  it("fills the suggestion list to three when fewer than three candidates score above 0.2", () => {
+    const travel = category("travel", "Travel", "travel");
+    const grocery = category("grocery", "Grocery", "grocery");
+    const restaurant = category("restaurant", "Restaurant", "restaurant");
+    const education = category("education", "Education", "education");
+    const result = orderedCategoryOptions(
+      [education, grocery, restaurant, travel],
+      [candidate(travel, 0.8), candidate(grocery, 0.2), candidate(restaurant, 0.1)],
+    );
+
+    expect(result.suggested.map((item) => item.name)).toEqual(["Travel", "Grocery", "Restaurant"]);
+    expect(result.remaining.map((item) => item.name)).toEqual(["Education", "Others"]);
   });
 
   it("uses the inclusive score threshold for automatic decisions", () => {

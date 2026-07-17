@@ -59,19 +59,23 @@ export function orderedCategoryOptions(
 ): { suggested: CategoryOption[]; remaining: CategoryOption[] } {
   const suggested: CategoryOption[] = [];
   const seen = new Set<string>();
+  const uniqueCandidates: CategoryCandidateOption[] = [];
 
   for (const candidate of candidates) {
     if (!seen.has(candidate.category.id)) {
       seen.add(candidate.category.id);
+      uniqueCandidates.push(candidate);
+    }
+  }
+
+  for (const [index, candidate] of uniqueCandidates.entries()) {
+    if (index < 3 || candidate.score > CATEGORY_SCORE_THRESHOLD) {
       suggested.push(candidate.category);
-      if (suggested.length === 3) {
-        break;
-      }
     }
   }
 
   const remaining = [...categories, OTHERS_CATEGORY]
-    .filter((category) => !seen.has(category.id))
+    .filter((category) => !suggested.some((suggestion) => suggestion.id === category.id))
     .sort(compareCategoryNames);
 
   return { suggested, remaining };

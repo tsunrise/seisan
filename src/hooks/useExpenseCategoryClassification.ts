@@ -121,7 +121,7 @@ export function useExpenseCategoryClassification(input: string) {
       }));
 
       const promise = api
-        .classifyCategory({ name: requestInput, topK: 3 }, { signal: controller.signal })
+        .classifyCategory({ name: requestInput, topK: 20 }, { signal: controller.signal })
         .then((classification): ClassificationResolution => {
           if (
             !isCurrentClassification(
