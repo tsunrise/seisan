@@ -18,6 +18,8 @@
     "test:client": "node --import tsx --test scripts/client.node-test.ts",
     "api": "tsx scripts/client-cli.ts",
     "categories:populate": "tsx scripts/populate-categories.ts",
+    "categories:cleanup": "tsx scripts/cleanup-categories.ts",
+    "categories:evaluate": "tsx scripts/evaluate-categories.ts",
     "openapi:generate": "tsx scripts/generate-openapi.ts",
     "openapi:check": "tsx scripts/generate-openapi.ts --check",
     "preview": "pnpm run build && vite preview",

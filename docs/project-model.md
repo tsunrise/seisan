@@ -16,6 +16,9 @@ Use this before changing project, member, record, ACL, or balance behavior.
 - Balances are stored by member ID, in cents.
 - Record descriptions are JSON to allow future description types without schema churn.
 - Validate that record deltas match the server-derived delta and sum to zero.
+- Expense category IDs are validated against published categories when records are posted. Project
+  reads omit malformed, deleted, or otherwise unresolvable stored category IDs so historical records
+  degrade to the general expense category.
 
 ## Access
 

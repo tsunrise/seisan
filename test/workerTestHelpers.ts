@@ -7,6 +7,7 @@ import {
 } from "cloudflare:test";
 import { expect, vi } from "vitest";
 
+import type { IconName } from "../shared/icon-names";
 import { CATEGORY_CONFIG_KEY, CategoriesDocument, type Category } from "../worker/category";
 import { SESSION_COOKIE_NAME } from "../worker/constants";
 import { signSessionToken } from "../worker/crypto";
@@ -178,7 +179,13 @@ export async function putUserLimits(
 }
 
 export function testCategory(
-  input: { id?: string; name?: string; description?: string; nowMs?: number } = {},
+  input: {
+    id?: string;
+    name?: string;
+    description?: string;
+    icon?: IconName;
+    nowMs?: number;
+  } = {},
 ): Category {
   const id = input.id ?? "00000000-0000-4000-8000-000000000010";
   const name = normalizeCategoryText(input.name ?? "Restaurant");
@@ -189,6 +196,7 @@ export function testCategory(
     name,
     normalizedName: name.toLowerCase(),
     description,
+    ...(input.icon ? { icon: input.icon } : {}),
     documentText: `title: ${name} | text: ${description || name}`,
     vectorId: `category:${id}`,
     createdAt: nowMs,

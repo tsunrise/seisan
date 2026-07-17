@@ -28,11 +28,15 @@ Session tokens are signed with `AUTH_SECRET`. Session revocation uses KV and is 
 
 Routes that do not authenticate with API keys:
 
+- `GET /api/categories`
 - `/api/login/*`
 - `/api/logout`
 - `/api/api-keys*`
 
-These routes must not accept API keys. Login routes are public auth-creation routes; logout and API-key management require session cookies. API-key management is intentionally session-only so an API key cannot create, list, revoke, or roll API keys.
+`GET /api/categories` is a public read-only configuration route used by public project timelines.
+The remaining routes in this list must not accept API keys. Login routes are public auth-creation
+routes; logout and API-key management require session cookies. API-key management is intentionally
+session-only so an API key cannot create, list, revoke, or roll API keys.
 
 ## Login Attempts And Turnstile
 

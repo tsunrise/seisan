@@ -14,7 +14,7 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 - API calls from the browser go through `src/api.ts` and use relative `/api/*` URLs.
 - Shared record text, money, timestamp, and title formatting belongs in `src/domain.ts`.
 - Components should call helpers such as `recordTitle`, `recordDetailTitle`, `formatCents`, and timestamp formatters instead of duplicating formatting rules.
-- Keep record actor/subject selection in `src/project/recordActor.ts` so avatar direction and record summaries stay consistent.
+- Keep record actor/subject selection in `src/project/recordActor.ts` so marker emphasis and record summaries stay consistent.
 
 ## Responsive Project UI
 
@@ -36,6 +36,26 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 - This marker is required so initial scroll and restore logic keep the latest record content clear of the fixed action, especially on iPhone Safari.
 - Record cards should only make the record content row clickable, not the surrounding timeline lane.
 - Keep hover states subtle and consistent with the row tone.
+- Project pages load the public category list once and share it with the expense composer and
+  timeline. Missing category metadata renders as `Others` with the default expense icon.
+- Expense markers use category icons; transfer and promise markers use their hardcoded record-type
+  icons. Expense rows show the resolved category name directly below the record title.
+- `shared/icon-names.ts` is the backend/frontend icon contract, and `NamedIcon` is the only frontend
+  name-to-MUI mapping. Keep category icons semantically distinct; unknown names use the expense icon.
+
+## Expense Category Classification
+
+- The expense composer classifies the exact expense text after a 400 ms debounce or immediately on
+  blur, requesting the top three candidates.
+- Superseded requests must be aborted and ignored. Classification times out after 5 seconds and
+  falls back to `Others`; scores below `0.2` also produce `Others`.
+- Manual dropdown selections remain authoritative for the rest of that composer session even while
+  later classifications refresh suggestion ordering.
+- Do not post while the latest expense text is unresolved. Submission must independently confirm
+  the exact text snapshot so Enter or programmatic submission cannot attach a stale category.
+- While classification is unresolved, replace the category select chevron with a compact progress
+  spinner and disable the unchanged `Post` action. Do not add classification status helper text
+  below the category field.
 
 ## Branding, Titles, And SEO
 

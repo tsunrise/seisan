@@ -6,6 +6,8 @@ import {
   CategoriesDocument,
   CategoryClassificationName,
   CategoryClassificationTopK,
+  CategoryId,
+  type CategoryIconName,
   type CategoriesDocument as CategoriesDocumentValue,
   type Category as CategoryValue,
 } from "./schema";
@@ -18,6 +20,7 @@ export {
   CategoryClassificationName,
   CategoryClassificationTopK,
   CategoryDescription,
+  CategoryIconName,
   CategoryId,
   CategoryName,
 } from "./schema";
@@ -34,6 +37,7 @@ export interface CategoryWriteInput {
   id?: string;
   name: string;
   description?: string;
+  icon?: CategoryIconName;
 }
 
 export class CategoryClassifier {
@@ -130,16 +134,36 @@ export class CategoryClassifier {
     };
   }
 
-  /** Removes config first and schedules Vectorize cleanup as a best-effort side effect. */
+  /** Awaits Vectorize deletion acceptance before removing the category from config. */
   async deleteCategory(
     id: string,
-  ): Promise<Result<void, "invalid_request" | "not_found" | "config_read_failed">> {
-    const deleted = await this.globalConfig().deleteCategory(id);
+  ): Promise<
+    Result<void, "invalid_request" | "not_found" | "vectorize_failed" | "config_read_failed">
+  > {
+    const parsedId = CategoryId.safeParse(id);
+    if (!parsedId.success) {
+      return { ok: false, error: "invalid_request" };
+    }
+
+    const loaded = await this.globalConfig().listCategories();
+    if (!loaded.ok) {
+      return { ok: false, error: "config_read_failed" };
+    }
+    const category = loaded.document.categories.find((candidate) => candidate.id === parsedId.data);
+    if (!category) {
+      return { ok: false, error: "not_found" };
+    }
+
+    const vectorResult = await this.vectorIndex.delete([category.vectorId]);
+    if (!vectorResult.ok) {
+      return vectorResult;
+    }
+
+    const deleted = await this.globalConfig().deleteCategory(parsedId.data);
     if (!deleted.ok) {
       return mapGlobalConfigDeleteError(deleted);
     }
 
-    this.vectorIndex.scheduleDelete([deleted.vectorId]);
     return { ok: true };
   }
 

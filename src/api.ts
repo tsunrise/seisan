@@ -1,3 +1,5 @@
+import type { IconName } from "../shared/icon-names";
+
 export type ProjectAcl = { type: "public" } | { type: "restricted"; emails: string[] };
 export type MoneyByMemberId = Record<string, number>;
 
@@ -77,6 +79,7 @@ export interface Category {
   name: string;
   normalizedName: string;
   description: string;
+  icon?: IconName;
   documentText: string;
   vectorId: string;
   createdAt: number;
@@ -320,13 +323,17 @@ export async function listProjects(): Promise<Array<WithSyncTime<ProjectSummary>
   return response.projects;
 }
 
-export async function classifyCategory(input: {
-  name: string;
-  topK?: number;
-}): Promise<CategoryClassification> {
+export async function classifyCategory(
+  input: {
+    name: string;
+    topK?: number;
+  },
+  options: { signal?: AbortSignal } = {},
+): Promise<CategoryClassification> {
   return requestJson("/api/categories/classify", {
     method: "POST",
     body: input,
+    signal: options.signal,
   });
 }
 
@@ -498,6 +505,7 @@ async function requestJson<T>(
     method?: string;
     body?: unknown;
     expectedStatus?: number;
+    signal?: AbortSignal;
   } = {},
 ): Promise<T> {
   const response = await request(path, options);
@@ -510,6 +518,7 @@ async function requestEmpty(
     method?: string;
     body?: unknown;
     expectedStatus?: number;
+    signal?: AbortSignal;
   } = {},
 ): Promise<void> {
   await request(path, options);
@@ -521,6 +530,7 @@ async function request(
     method?: string;
     body?: unknown;
     expectedStatus?: number;
+    signal?: AbortSignal;
   },
 ): Promise<Response> {
   const headers = new Headers({ Accept: "application/json" });
@@ -534,6 +544,7 @@ async function request(
     method: options.method ?? "GET",
     headers,
     body,
+    signal: options.signal,
     credentials: "same-origin",
   });
   const expectedStatus = options.expectedStatus ?? 200;

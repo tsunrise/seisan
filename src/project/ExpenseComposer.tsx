@@ -1,6 +1,7 @@
 import AddIcon from "@mui/icons-material/Add";
 import {
   Button,
+  CircularProgress,
   MenuItem,
   Stack,
   TextField,
@@ -9,16 +10,24 @@ import {
   Typography,
 } from "@mui/material";
 import type { FormEvent } from "react";
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import * as api from "../api";
 import { getApiErrorMessage } from "../apiErrorMessages";
 import { InlineAlert } from "../components/InlineAlert";
 import { MoneyTable } from "../components/MoneyTable";
+import { NamedIcon } from "../components/NamedIcon";
 import { PanelFrame } from "../components/PanelFrame";
+import {
+  categoryIdForRecord,
+  orderedCategoryOptions,
+  OTHERS_CATEGORY,
+  type CategoryOption,
+} from "../categories";
 import { activeMembers, allocateEqual, allocateRatio, deriveDelta, parseCents } from "../domain";
 import { useAppSnackbar } from "../hooks/useAppSnackbar";
+import { useExpenseCategoryClassification } from "../hooks/useExpenseCategoryClassification";
 import type { SplitMode } from "../types";
 import { MemberSplitRow } from "./MemberSplitRow";
 import { RecordFormBridge } from "./RecordFormBridge";
@@ -27,11 +36,13 @@ import { RecordSentenceField, RecordSentenceRow } from "./RecordSentenceRow";
 export function ExpenseComposer({
   project,
   currentMember,
+  categories,
   onPosted,
   onBack,
 }: {
   project: api.Project;
   currentMember: api.ProjectMember;
+  categories: api.Category[];
   onPosted: () => void;
   onBack: () => void;
 }) {
@@ -46,6 +57,12 @@ export function ExpenseComposer({
   const [ratios, setRatios] = useState<Record<number, string>>({});
   const [customAmounts, setCustomAmounts] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [posting, setPosting] = useState(false);
+  const nameRef = useRef(name);
+  useLayoutEffect(() => {
+    nameRef.current = name;
+  }, [name]);
+  const categoryClassification = useExpenseCategoryClassification(name);
   const total = parseCents(amount);
   const liability = useMemo(() => {
     if (total === null) {
@@ -81,21 +98,54 @@ export function ExpenseComposer({
   };
   const delta = deriveDelta(description);
   const customTotal = Object.values(liability).reduce((sum, value) => sum + value, 0);
+  const categoryOptions = useMemo(
+    () => orderedCategoryOptions(categories, categoryClassification.state.candidates),
+    [categories, categoryClassification.state.candidates],
+  );
+  const allCategoryOptions = [...categoryOptions.suggested, ...categoryOptions.remaining];
+  const selectedCategory =
+    allCategoryOptions.find(
+      (category) => category.id === categoryClassification.state.categoryId,
+    ) ?? OTHERS_CATEGORY;
+  const categoryIsPending =
+    name.trim().length > 0 && !categoryClassification.classificationIsCurrent;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError(null);
-    if (total === null || total <= 0 || selectedIds.length === 0 || customTotal !== total) {
+    if (
+      !name.trim() ||
+      total === null ||
+      total <= 0 ||
+      selectedIds.length === 0 ||
+      customTotal !== total
+    ) {
       setError("Check the amount and split.");
       return;
     }
+    const submittedName = name;
+    setPosting(true);
     try {
-      await api.appendRecord(project.id, { description, delta });
+      const classification = await categoryClassification.ensureClassification(submittedName);
+      if (classification.stale || nameRef.current !== submittedName) {
+        return;
+      }
+      const categoryId = categoryIdForRecord(classification.selectedCategoryId);
+      const submittedDescription: api.RecordDescription = {
+        ...description,
+        ...(categoryId ? { categoryId } : {}),
+      };
+      await api.appendRecord(project.id, {
+        description: submittedDescription,
+        delta: deriveDelta(submittedDescription),
+      });
       showSuccess("Record posted.");
       onPosted();
       navigate(`/project/${project.id}`);
     } catch (error) {
       showError(getApiErrorMessage(error));
+    } finally {
+      setPosting(false);
     }
   }
 
@@ -138,16 +188,51 @@ export function ExpenseComposer({
               label="Expense"
               value={name}
               onChange={(event) => setName(event.target.value)}
+              onBlur={categoryClassification.classifyOnBlur}
               required
             />
           </RecordSentenceField>
         </RecordSentenceRow>
+        <TextField
+          select
+          fullWidth
+          label="Category"
+          value={categoryClassification.state.categoryId}
+          onChange={(event) => categoryClassification.selectCategory(event.target.value)}
+          sx={
+            categoryIsPending
+              ? { "& .MuiSelect-icon": { right: 12, top: "calc(50% - 9px)" } }
+              : undefined
+          }
+          slotProps={{
+            select: {
+              IconComponent: categoryIsPending ? CategoryLoadingIcon : undefined,
+              renderValue: () => <CategoryOptionContent category={selectedCategory} />,
+            },
+          }}
+        >
+          {categoryOptions.suggested.map((category) => (
+            <MenuItem key={category.id} value={category.id}>
+              <CategoryOptionContent category={category} />
+            </MenuItem>
+          ))}
+          {categoryOptions.remaining.map((category, index) => (
+            <MenuItem
+              key={category.id}
+              value={category.id}
+              sx={
+                index === 0 && categoryOptions.suggested.length > 0
+                  ? { borderTop: "1px solid", borderColor: "divider", mt: 0.5 }
+                  : undefined
+              }
+            >
+              <CategoryOptionContent category={category} />
+            </MenuItem>
+          ))}
+        </TextField>
         <Stack spacing={1.25}>
-          <Stack
-            direction={{ xs: "column", sm: "row" }}
-            sx={{ alignItems: { xs: "stretch", sm: "center" }, gap: 1 }}
-          >
-            <Typography variant="h3" sx={{ flex: "1 1 auto" }}>
+          <Stack sx={{ alignItems: "stretch", gap: 1 }}>
+            <Typography variant="h3" sx={{ whiteSpace: "nowrap" }}>
               Shared with
             </Typography>
             <ToggleButtonGroup
@@ -161,8 +246,10 @@ export function ExpenseComposer({
                 }
               }}
               sx={{
-                flex: { xs: "1 1 auto", sm: "0 0 240px" },
+                width: "100%",
                 "& .MuiToggleButton-root": {
+                  flex: "1 1 0",
+                  minWidth: 0,
                   minHeight: 36,
                   px: 1.5,
                 },
@@ -204,10 +291,38 @@ export function ExpenseComposer({
         </Stack>
         <MoneyTable title="Preview" project={project} map={delta} />
         {error ? <InlineAlert>{error}</InlineAlert> : null}
-        <Button type="submit" variant="contained" startIcon={<AddIcon />}>
-          Post
+        <Button
+          type="submit"
+          variant="contained"
+          startIcon={<AddIcon />}
+          disabled={!name.trim() || categoryIsPending || posting}
+        >
+          {posting ? "Posting…" : "Post"}
         </Button>
       </Stack>
     </PanelFrame>
+  );
+}
+
+function CategoryOptionContent({ category }: { category: CategoryOption }) {
+  return (
+    <Stack direction="row" spacing={1.25} sx={{ alignItems: "center", minWidth: 0 }}>
+      <NamedIcon name={category.icon} sx={{ color: "text.secondary", fontSize: 20 }} />
+      <Typography component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+        {category.name}
+      </Typography>
+    </Stack>
+  );
+}
+
+function CategoryLoadingIcon({ className }: { className?: string }) {
+  return (
+    <CircularProgress
+      aria-label="Classifying category"
+      className={className}
+      color="inherit"
+      size={18}
+      thickness={5}
+    />
   );
 }

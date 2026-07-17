@@ -5,6 +5,8 @@ import { homedir, platform } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
+import type { IconName } from "../shared/icon-names";
+
 const execFileAsync = promisify(execFile);
 
 export const DEFAULT_API_BASE_URL = "http://localhost:5173";
@@ -38,6 +40,7 @@ export interface Category {
   name: string;
   normalizedName: string;
   description: string;
+  icon?: IconName;
   documentText: string;
   vectorId: string;
   createdAt: number;
@@ -52,6 +55,7 @@ export interface CategoryCandidate {
 export interface CategoryWriteInput {
   name: string;
   description?: string;
+  icon?: IconName;
 }
 
 export interface CategoryWriteResponse {
@@ -169,7 +173,7 @@ export class SeisanClient {
 
   async categoryList(): Promise<CategoryListResponse> {
     return this.requestJson<CategoryListResponse>("GET", "/api/categories", {
-      auth: true,
+      auth: false,
     });
   }
 

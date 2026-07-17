@@ -32,6 +32,7 @@ export function RecordTimeline({
   scrollToLatestKey = 0,
   restoreScrollKey = "",
   selectedRecordId = null,
+  categories,
 }: {
   project: api.Project;
   currentMember: api.ProjectMember | null;
@@ -42,6 +43,7 @@ export function RecordTimeline({
   scrollToLatestKey?: number;
   restoreScrollKey?: string;
   selectedRecordId?: number | null;
+  categories: api.Category[];
 }) {
   const timelineRef = useRef<HTMLElement | null>(null);
   const topSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -406,6 +408,7 @@ export function RecordTimeline({
                         project={project}
                         record={record}
                         currentMember={currentMember}
+                        categories={categories}
                         selected={selected}
                         onOpen={saveCurrentScroll}
                       />

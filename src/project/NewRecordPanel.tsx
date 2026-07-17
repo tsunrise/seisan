@@ -17,10 +17,12 @@ import { TransferComposer } from "./TransferComposer";
 export function NewRecordPanel({
   project,
   currentMember,
+  categories,
   onPosted,
 }: {
   project: api.Project;
   currentMember: api.ProjectMember | null;
+  categories: api.Category[];
   onPosted: () => void;
 }) {
   const [mode, setMode] = useState<"choice" | "expense" | "transfer" | "promise">("choice");
@@ -38,6 +40,7 @@ export function NewRecordPanel({
       <ExpenseComposer
         project={project}
         currentMember={currentMember}
+        categories={categories}
         onPosted={onPosted}
         onBack={() => setMode("choice")}
       />

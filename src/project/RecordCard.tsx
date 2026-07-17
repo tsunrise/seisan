@@ -4,9 +4,10 @@ import { Link } from "react-router";
 
 import type * as api from "../api";
 import { Amount } from "../components/Amount";
+import { NamedIcon } from "../components/NamedIcon";
+import { resolveRecordCategory } from "../categories";
 import { formatRelativeTime, memberName, recordTitle } from "../domain";
 import { ledgerColors } from "../theme";
-import { initials } from "../utils";
 import { timelineLayout } from "./timelineLayout";
 import { recordActorMemberId } from "./recordActor";
 
@@ -14,12 +15,14 @@ export function RecordCard({
   project,
   record,
   currentMember,
+  categories,
   selected = false,
   onOpen,
 }: {
   project: api.Project;
   record: api.ProjectRecord;
   currentMember: api.ProjectMember | null;
+  categories: api.Category[];
   selected?: boolean;
   onOpen?: (recordId: number) => void;
 }) {
@@ -43,10 +46,20 @@ export function RecordCard({
         textDecorationThickness: "1.5px",
       }
     : {};
+  const expenseCategory =
+    record.description.type === "expense"
+      ? resolveRecordCategory(categories, record.description.categoryId)
+      : null;
+  const markerIconName =
+    record.description.type === "expense"
+      ? expenseCategory?.icon
+      : record.description.type === "transfer"
+        ? "transfer"
+        : "promise";
 
   return (
     <TimelineRecordShell
-      marker={initials(actor?.name ?? "?")}
+      marker={<NamedIcon name={markerIconName} sx={{ fontSize: { xs: 19, md: 20 } }} />}
       markerActive={subjectIsCurrentMember || selected}
       compact={compact}
     >
@@ -156,6 +169,19 @@ export function RecordCard({
           >
             {recordTitle(record, project.members)}
           </Typography>
+          {expenseCategory ? (
+            <Typography
+              sx={{
+                color: "text.secondary",
+                fontSize: 13,
+                fontWeight: 600,
+                overflowWrap: "anywhere",
+                ...revertedTextSx,
+              }}
+            >
+              {expenseCategory.name}
+            </Typography>
+          ) : null}
           <Typography
             sx={{
               color: "text.secondary",
@@ -351,7 +377,7 @@ function TimelineRecordShell({
   compact,
   children,
 }: {
-  marker: string;
+  marker: ReactNode;
   markerActive: boolean;
   compact: boolean;
   children: ReactNode;

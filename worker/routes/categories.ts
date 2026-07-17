@@ -15,6 +15,7 @@ import {
   CategoryClassificationName,
   CategoryClassificationTopK,
   CategoryDescription,
+  CategoryIconName,
   CategoryId,
   CategoryName,
 } from "../category";
@@ -29,6 +30,7 @@ const CategoryWriteBody = z
   .object({
     name: CategoryName,
     description: CategoryDescription.optional().default(""),
+    icon: CategoryIconName.optional(),
   })
   .strict();
 
@@ -49,13 +51,11 @@ categoryApp.get(
     summary: "List configured spending categories",
     description:
       "Returns the currently published category definitions used by Seisan's expense classifier.",
-    security: OpenApiSecurity.ApiKeyBearer,
     responses: {
       200: OpenApiResponses.CategoryList,
-      ...errorResponses(401, 500),
+      ...errorResponses(500),
     },
   }),
-  requireAuth,
   listPublishedCategories,
 );
 
@@ -129,6 +129,7 @@ adminCategoryApp.post("/", async (context) => {
   const result = await new CategoryClassifier(context.env, context.executionCtx).upsertCategory({
     name: parsed.data.name,
     description: parsed.data.description,
+    icon: parsed.data.icon,
   });
   if (!result.ok) {
     return mapUpsertError(result);
@@ -155,6 +156,7 @@ adminCategoryApp.put("/:id", async (context) => {
     id: id.data,
     name: parsed.data.name,
     description: parsed.data.description,
+    icon: parsed.data.icon,
   });
   if (!result.ok) {
     return mapUpsertError(result);
@@ -212,6 +214,7 @@ function mapDeleteError(result: ErrorResultOf<CategoryClassifier["deleteCategory
       return ErrorResponse.invalidRequest();
     case "not_found":
       return ErrorResponse.notFound();
+    case "vectorize_failed":
     case "config_read_failed":
       return ErrorResponse.internalServerError();
   }

@@ -15,25 +15,32 @@ Implementation files:
 - `worker/category/document.ts`: category document codec, construction, canonical ordering, and pure mutations.
 - `worker/category/vectorIndex.ts`: Workers AI embedding and Vectorize query/upsert/delete behavior.
 - `worker/do/GlobalConfig.ts`: generic strongly consistent SQL key/value store plus category mutation methods.
-- `worker/routes/categories.ts`: public classification route and admin category CRUD routes.
-- `scripts/client.ts`, `scripts/client-cli.ts`, and `scripts/populate-categories.ts`: CLI support and seeding.
+- `worker/routes/categories.ts`: public category listing, authenticated classification, and admin
+  category CRUD routes.
+- `scripts/client.ts`, `scripts/client-cli.ts`, `scripts/populate-categories.ts`, and
+  `scripts/cleanup-categories.ts`: CLI support, seeding, and removal of obsolete categories.
+- `scripts/category-challenges.ts` and `scripts/evaluate-categories.ts`: the reproducible local
+  classification corpus and live Workers AI/Vectorize evaluation harness.
 - `test/categoryClassification.test.ts`: focused category coverage.
 
-Admin routes are excluded from public OpenAPI. `GET /api/categories` and `POST /api/categories/classify` are public API surfaces and are included in OpenAPI with bearer API-key auth.
+Admin routes are excluded from public OpenAPI. `GET /api/categories` is a public unauthenticated API
+surface. `POST /api/categories/classify` is included in OpenAPI with bearer API-key auth.
 
 ## API
 
-Authenticated application route:
+Application routes:
 
-- `GET /api/categories`: returns `{ categories }` from `PUBLISHED_GLOBAL_CONFIG`.
+- `GET /api/categories`: public read-only route returning `{ categories }` from
+  `PUBLISHED_GLOBAL_CONFIG` so public project timelines can resolve category labels and icons.
 - `POST /api/categories/classify` with `{ name, topK? }`: classifies a post name and returns `{ category, score, candidates }`.
 
 Admin routes:
 
 - `GET /api/admin/categories`: returns the same response shape from strongly consistent `GlobalConfig` storage for admin workflows.
-- `POST /api/admin/categories` with `{ name, description? }`: creates a category and returns `{ category, vectorizeMutation }` with status `201`.
-- `PUT /api/admin/categories/:id` with `{ name, description? }`: updates a category in place and returns `{ category, vectorizeMutation }`.
-- `DELETE /api/admin/categories/:id`: removes a category and returns `204`.
+- `POST /api/admin/categories` with `{ name, description?, icon? }`: creates a category and returns `{ category, vectorizeMutation }` with status `201`.
+- `PUT /api/admin/categories/:id` with `{ name, description?, icon? }`: updates a category in place and returns `{ category, vectorizeMutation }`.
+- `DELETE /api/admin/categories/:id`: waits for Vectorize to accept deletion, removes the category,
+  and returns `204`.
 
 Request behavior:
 
@@ -59,6 +66,7 @@ Category classification owns only the `categories` key. Its value is a JSON stri
       "name": "Restaurant",
       "normalizedName": "restaurant",
       "description": "Prepared meals...",
+      "icon": "restaurant",
       "documentText": "title: Restaurant | text: Prepared meals...",
       "vectorId": "category:<uuid>",
       "createdAt": 1814136000000,
@@ -76,10 +84,15 @@ Schema invariants:
 - `documentText` is the exact persisted embedding input, so changing prompt formatting does not silently reinterpret existing categories.
 - `vectorId` remains stable across category updates; Vectorize upserts replace the embedding associated with that category.
 - Category arrays are serialized in normalized-name order, and IDs, normalized names, and vector IDs must be unique within a document.
+- `icon` is one of the names in `shared/icon-names.ts`. It remains optional when parsing version-1
+  documents for backward compatibility. New categories default to `expense`, and updates that omit
+  `icon` preserve the stored value.
+- The default taxonomy assigns a distinct semantic icon to every category. Re-running the population
+  script updates stored icon names in place without changing category IDs or vector embeddings.
 
 Admin reads and writes go through `CategoryClassifier`. `getCategoriesForUpdate()` delegates to `GlobalConfig.listCategories()`, while mutations delegate to `GlobalConfig.upsertCategory()`, `setCategories()`, and `deleteCategory()`. The Durable Object performs category reads and mutations against SQLite and schedules the full document to be written to `PUBLISHED_GLOBAL_CONFIG` under the same `categories` key before `CategoryClassifier` runs Vectorize work. Overlapping publication tasks converge to the latest SQLite document as described in `docs/global-config.md`.
 
-Authenticated category listing, classification, and expense `categoryId` validation read only `PUBLISHED_GLOBAL_CONFIG` with a 5 minute KV cache TTL. There is intentionally no DO fallback: missing, unreadable, or invalid KV data is a hard `500`. The admin list route reads `GlobalConfig` directly so administrative read/modify/write workflows observe strongly consistent state.
+Public category listing, authenticated classification, and expense `categoryId` validation read only `PUBLISHED_GLOBAL_CONFIG` with a 5 minute KV cache TTL. There is intentionally no DO fallback: missing, unreadable, or invalid KV data is a hard `500`. The admin list route reads `GlobalConfig` directly so administrative read/modify/write workflows observe strongly consistent state.
 
 Create the remote KV namespaces before deploying dev or production, then fill the generated IDs into `wrangler.jsonc`:
 
@@ -121,15 +134,24 @@ Create or update category:
 
 Delete category:
 
-1. Call `GLOBAL_CONFIG.deleteCategory()`.
-2. Inside the Durable Object, remove the category, store the updated document in SQLite, and schedule publication to `PUBLISHED_GLOBAL_CONFIG`.
-3. Schedule `CATEGORY_INDEX.deleteByIds([vectorId])` with `waitUntil`; deletion is best-effort.
+1. Read the category and stable vector ID from strongly consistent `GlobalConfig` storage.
+2. Await `CATEGORY_INDEX.deleteByIds([vectorId])`. This confirms that Vectorize accepted the
+   asynchronous mutation, not that index propagation has completed.
+3. If Vectorize rejects the request, return `500` without removing the category so cleanup can be
+   retried safely.
+4. Call `GLOBAL_CONFIG.deleteCategory()`; inside the Durable Object, remove the category, store the
+   updated document in SQLite, and schedule publication to `PUBLISHED_GLOBAL_CONFIG`.
 
 Expense posting:
 
 1. Validate record schema and project access as usual.
 2. If `description.type === "expense"` and `categoryId` is present, read `PUBLISHED_GLOBAL_CONFIG`.
 3. Reject unknown IDs with `400`; hard fail KV problems with `500`.
+
+Project reads are more tolerant than writes. When returning stored records, the project route removes
+an expense `categoryId` that is malformed, no longer present in the published document, or cannot be
+resolved because category configuration is unavailable. Clients therefore treat that historical
+record as the general `Others` expense instead of receiving a stale category reference.
 
 ## CLI
 
@@ -139,8 +161,8 @@ Commands:
 
 ```sh
 pnpm run api -- category-list
-pnpm run api -- category-add "Restaurant" --description="Places that sell prepared meals"
-pnpm run api -- category-update <category-id> --name="Restaurant" --description="Prepared meals"
+pnpm run api -- category-add "Restaurant" --description="Places that sell prepared meals" --icon=restaurant
+pnpm run api -- category-update <category-id> --name="Restaurant" --description="Prepared meals" --icon=restaurant
 pnpm run api -- category-remove <category-id>
 pnpm run api -- classify-category "Taco Bell" --top-k=5
 pnpm run api -- classify-category "Taco Bell" --top-k=5 --verbose
@@ -148,7 +170,8 @@ pnpm run api -- classify-category "Taco Bell" --top-k=5 --verbose
 
 `classify-category` prints the winning category name, score, and candidate category names by default. Pass `--verbose` to print complete category objects.
 
-The `category-list` CLI command uses the strongly consistent admin compatibility route. Application clients use authenticated `GET /api/categories`, which reads published KV.
+The `category-list` CLI command uses the strongly consistent admin compatibility route. Application
+clients use public `GET /api/categories`, which reads published KV.
 
 Seed the default category set through the CLI:
 
@@ -158,7 +181,54 @@ pnpm run categories:populate -- --env=dev
 pnpm run categories:populate -- --env=production
 ```
 
-The seed script lists categories, skips existing categories whose normalized name, display name, and description match, creates missing categories, and updates changed categories in place to preserve IDs.
+The seed script lists categories, skips existing categories whose normalized name, display name,
+description, and icon match, creates missing categories, and updates changed categories in place to
+preserve IDs.
+
+After populating a replacement taxonomy, remove categories that are no longer seeded:
+
+```sh
+pnpm run categories:cleanup -- --env=local --dry-run
+pnpm run categories:cleanup -- --env=local
+```
+
+Use the same commands with `--env=dev` or `--env=production`. Cleanup refuses to run until every
+current seed category exists, so deployment order is always populate first and cleanup second.
+Deleting an obsolete category does not rewrite immutable project records; the tolerant project-read
+behavior above makes those old IDs render as `Others`.
+Cleanup stops if a deletion is not accepted by Vectorize. Because the category remains configured,
+rerunning the command safely retries that category.
+
+## Default Taxonomy And Evaluation
+
+The built-in taxonomy is optimized around shared apartments and group road, rail, flight, and ship
+travel. Category meanings are intentionally flat and mutually exclusive. In particular:
+
+- `Fuel & Charging` is only vehicle energy.
+- `Vehicle Rental & Maintenance` is renting or maintaining a group-operated vehicle.
+- `Parking & Tolls` is road access and vehicle parking.
+- `Public Transit & Rideshare` is a purchased ride where the group is not operating the vehicle.
+- Flights, lodging, passenger ships, and temporary travel connectivity remain separate travel
+  intents.
+- Home labor and repair services intentionally fall back to `Others`; a dedicated category was too
+  broad and attracted unrelated expense descriptions.
+- Pet expenses also fall back to `Others` because they are uncommon in the group-spend use cases the
+  default taxonomy targets.
+
+Run the live corpus against an isolated local state with a unique persistence path for each
+experiment:
+
+```sh
+CATEGORY_EXPERIMENT_STATE=.wrangler/category-experiments/run-1 \
+  pnpm run dev --config vite.category-experiment.config.ts --host 127.0.0.1 --port 5174
+pnpm run categories:evaluate
+```
+
+The unique local Durable Object state creates a new persisted `vectorNamespace`; this is required
+because the remotely bound Vectorize index persists across local-state resets. The evaluator seeds
+the taxonomy, waits for Vectorize convergence, authenticates through the localhost fixed-code flow,
+and reports overall, scenario, and per-challenge results. Use `--skip-seed --show-all` to rerun and
+print every result against an already seeded experiment state.
 
 For remote admin requests, and for every dev request, the client runs `cloudflared access token -app=<request-url>` automatically and sends the resulting token as `cf-access-token`. Use the concrete request URL for token lookup because normal dev and admin paths can belong to different Access applications with different audiences.
 

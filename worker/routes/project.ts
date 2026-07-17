@@ -31,6 +31,7 @@ import {
   ProjectEmailsUtils,
   ProjectId,
   ProjectNameUtils,
+  type ProjectRecord,
 } from "../project";
 
 const PROJECT_REGISTRY_CACHE_TTL_SECONDS = 60;
@@ -343,13 +344,14 @@ projectApp.get(
       return mapProjectStoreError(result.error);
     }
 
+    const records = await recordsWithCurrentCategories(context, result.records);
     return context.json({
       id: projectLookup.projectId,
       name: result.name,
       owner: result.owner,
       acl: result.acl,
       members: result.members,
-      records: result.records,
+      records,
       balance: result.balance,
       updatedAt: result.updatedAt,
     });
@@ -1057,6 +1059,41 @@ async function validateExpenseCategory(
   }
 
   return { ok: true };
+}
+
+async function recordsWithCurrentCategories(
+  context: AppContext,
+  records: ProjectRecord[],
+): Promise<ProjectRecord[]> {
+  if (
+    !records.some(
+      (record) =>
+        record.description.type === "expense" && record.description.categoryId !== undefined,
+    )
+  ) {
+    return records;
+  }
+
+  const categories = await new PublishedGlobalConfigKvStore(
+    context.env.PUBLISHED_GLOBAL_CONFIG,
+  ).getValue(CATEGORY_CONFIG_KEY);
+  const validCategoryIds = new Set(
+    categories.ok ? categories.value.categories.map((category) => category.id) : [],
+  );
+
+  return records.map((record) => {
+    if (
+      record.description.type !== "expense" ||
+      record.description.categoryId === undefined ||
+      validCategoryIds.has(record.description.categoryId)
+    ) {
+      return record;
+    }
+
+    const description = { ...record.description };
+    delete description.categoryId;
+    return { ...record, description };
+  });
 }
 
 class ProjectRefFetcher {

@@ -95,6 +95,25 @@ export class CategoryVectorIndex {
     }
   }
 
+  /** Waits until Vectorize accepts deletion; index propagation remains asynchronous. */
+  async delete(
+    vectorIds: string[],
+  ): Promise<Result<{ mutation: VectorizeVectorMutation }, "vectorize_failed">> {
+    if (vectorIds.length === 0) {
+      return { ok: true, mutation: { ids: [], count: 0 } };
+    }
+
+    try {
+      return {
+        ok: true,
+        mutation: await this.index.deleteByIds(vectorIds),
+      };
+    } catch (error) {
+      console.error("failed to delete category vectors", { vectorIds, error });
+      return { ok: false, error: "vectorize_failed" };
+    }
+  }
+
   scheduleDelete(vectorIds: string[]): void {
     if (vectorIds.length === 0) {
       return;

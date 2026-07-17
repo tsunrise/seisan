@@ -2,6 +2,7 @@ import { resolver, type DescribeRouteOptions, type GenerateSpecOptions } from "h
 import type { OpenAPIV3_1 } from "openapi-types";
 import { z } from "zod";
 
+import { ICON_NAME_VALUES } from "../shared/icon-names";
 import { MAX_EMAIL_LENGTH } from "./email";
 import { ABSOLUTE_LIST_LIMIT, ABSOLUTE_TEXT_LIMIT } from "./limits";
 
@@ -108,6 +109,7 @@ const exampleCategory = {
   name: "Dining",
   normalizedName: "dining",
   description: "Restaurants, cafes, and prepared meals.",
+  icon: "restaurant",
   documentText: "Dining: restaurants, cafes, and prepared meals.",
   vectorId: "category:dining",
   createdAt: exampleCreatedAt,
@@ -118,6 +120,7 @@ const exampleGroceriesCategory = {
   name: "Groceries",
   normalizedName: "groceries",
   description: "Food and household supplies bought from stores.",
+  icon: "grocery",
   documentText: "Groceries: food and household supplies bought from stores.",
   vectorId: "category:groceries",
   createdAt: exampleCreatedAt,
@@ -159,6 +162,10 @@ const CategoryId = z
   .string()
   .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu)
   .meta({ description: "Stable UUID for a spending category.", examples: [exampleCategoryId] });
+const CategoryIconName = z.enum(ICON_NAME_VALUES).meta({
+  description: "Shared icon name used by category-aware clients.",
+  examples: ["restaurant"],
+});
 
 const ProjectAcl = z
   .discriminatedUnion("type", [
@@ -439,6 +446,9 @@ const Category = z
       .string()
       .meta({ description: "Normalized name used for matching.", examples: ["dining"] }),
     description: z.string().meta({ description: "Human-readable category definition." }),
+    icon: CategoryIconName.optional().meta({
+      description: "Category icon name. Older category documents may omit this field.",
+    }),
     documentText: z.string().meta({ description: "Text used to produce the category embedding." }),
     vectorId: z.string().meta({
       description: "Identifier of the published category vector.",

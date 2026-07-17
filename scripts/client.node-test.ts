@@ -83,6 +83,22 @@ test("a missing API key fails before making a request", async () => {
   assert.equal(fetchCalls, 0);
 });
 
+test("the public category list does not load or send an API key", async () => {
+  const store = new MemoryApiKeyStore(STORED_API_KEY);
+  let authorization: string | null = "not-called";
+  const client = new SeisanClient({
+    apiKeyStore: store,
+    fetchFn: mockFetch((_input, init) => {
+      authorization = new Headers(init?.headers).get("Authorization");
+      return Response.json({ categories: [] });
+    }),
+  });
+
+  await assert.doesNotReject(client.categoryList());
+  assert.equal(authorization, null);
+  assert.equal(store.loadCalls, 0);
+});
+
 test("a rejected saved key is cleared", async () => {
   const store = new MemoryApiKeyStore(STORED_API_KEY);
   const client = new SeisanClient({

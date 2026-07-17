@@ -330,7 +330,6 @@
         "tags": ["Categories"],
         "summary": "List configured spending categories",
         "description": "Returns the currently published category definitions used by Seisan's expense classifier.",
-        "security": [{ "apiKeyBearer": [] }],
         "responses": {
           "200": {
             "description": "Configured spending categories.",
@@ -363,6 +362,40 @@
                           "description": {
                             "type": "string",
                             "description": "Human-readable category definition."
+                          },
+                          "icon": {
+                            "description": "Category icon name. Older category documents may omit this field.",
+                            "type": "string",
+                            "enum": [
+                              "expense",
+                              "transfer",
+                              "promise",
+                              "restaurant",
+                              "grocery",
+                              "fuel",
+                              "vehicle",
+                              "parking",
+                              "transit",
+                              "home",
+                              "household",
+                              "home-repair",
+                              "utilities",
+                              "connectivity",
+                              "medical",
+                              "pet",
+                              "shopping",
+                              "entertainment",
+                              "travel",
+                              "lodging",
+                              "cruise",
+                              "finance",
+                              "personal-care",
+                              "education",
+                              "insurance",
+                              "subscription",
+                              "beach"
+                            ],
+                            "examples": ["restaurant"]
                           },
                           "documentText": {
                             "type": "string",
@@ -406,6 +439,7 @@
                             "name": "Dining",
                             "normalizedName": "dining",
                             "description": "Restaurants, cafes, and prepared meals.",
+                            "icon": "restaurant",
                             "documentText": "Dining: restaurants, cafes, and prepared meals.",
                             "vectorId": "category:dining",
                             "createdAt": 1767225600000,
@@ -426,6 +460,7 @@
                       "name": "Dining",
                       "normalizedName": "dining",
                       "description": "Restaurants, cafes, and prepared meals.",
+                      "icon": "restaurant",
                       "documentText": "Dining: restaurants, cafes, and prepared meals.",
                       "vectorId": "category:dining",
                       "createdAt": 1767225600000,
@@ -436,6 +471,7 @@
                       "name": "Groceries",
                       "normalizedName": "groceries",
                       "description": "Food and household supplies bought from stores.",
+                      "icon": "grocery",
                       "documentText": "Groceries: food and household supplies bought from stores.",
                       "vectorId": "category:groceries",
                       "createdAt": 1767225600000,
@@ -443,37 +479,6 @@
                     }
                   ]
                 }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is required or invalid.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "description": "Stable machine-readable error code.",
-                      "examples": ["invalid_request"]
-                    },
-                    "reason": {
-                      "description": "Additional human-readable context, when available.",
-                      "type": "string"
-                    }
-                  },
-                  "required": ["error"],
-                  "additionalProperties": false,
-                  "description": "API error response.",
-                  "examples": [
-                    {
-                      "error": "invalid_request",
-                      "reason": "The request body did not match the documented schema."
-                    }
-                  ]
-                },
-                "example": { "error": "unauthorized" }
               }
             }
           },
@@ -578,6 +583,40 @@
                           "type": "string",
                           "description": "Human-readable category definition."
                         },
+                        "icon": {
+                          "description": "Category icon name. Older category documents may omit this field.",
+                          "type": "string",
+                          "enum": [
+                            "expense",
+                            "transfer",
+                            "promise",
+                            "restaurant",
+                            "grocery",
+                            "fuel",
+                            "vehicle",
+                            "parking",
+                            "transit",
+                            "home",
+                            "household",
+                            "home-repair",
+                            "utilities",
+                            "connectivity",
+                            "medical",
+                            "pet",
+                            "shopping",
+                            "entertainment",
+                            "travel",
+                            "lodging",
+                            "cruise",
+                            "finance",
+                            "personal-care",
+                            "education",
+                            "insurance",
+                            "subscription",
+                            "beach"
+                          ],
+                          "examples": ["restaurant"]
+                        },
                         "documentText": {
                           "type": "string",
                           "description": "Text used to produce the category embedding."
@@ -620,6 +659,7 @@
                           "name": "Dining",
                           "normalizedName": "dining",
                           "description": "Restaurants, cafes, and prepared meals.",
+                          "icon": "restaurant",
                           "documentText": "Dining: restaurants, cafes, and prepared meals.",
                           "vectorId": "category:dining",
                           "createdAt": 1767225600000,
@@ -659,6 +699,40 @@
                               "description": {
                                 "type": "string",
                                 "description": "Human-readable category definition."
+                              },
+                              "icon": {
+                                "description": "Category icon name. Older category documents may omit this field.",
+                                "type": "string",
+                                "enum": [
+                                  "expense",
+                                  "transfer",
+                                  "promise",
+                                  "restaurant",
+                                  "grocery",
+                                  "fuel",
+                                  "vehicle",
+                                  "parking",
+                                  "transit",
+                                  "home",
+                                  "household",
+                                  "home-repair",
+                                  "utilities",
+                                  "connectivity",
+                                  "medical",
+                                  "pet",
+                                  "shopping",
+                                  "entertainment",
+                                  "travel",
+                                  "lodging",
+                                  "cruise",
+                                  "finance",
+                                  "personal-care",
+                                  "education",
+                                  "insurance",
+                                  "subscription",
+                                  "beach"
+                                ],
+                                "examples": ["restaurant"]
                               },
                               "documentText": {
                                 "type": "string",
@@ -702,6 +776,7 @@
                                 "name": "Dining",
                                 "normalizedName": "dining",
                                 "description": "Restaurants, cafes, and prepared meals.",
+                                "icon": "restaurant",
                                 "documentText": "Dining: restaurants, cafes, and prepared meals.",
                                 "vectorId": "category:dining",
                                 "createdAt": 1767225600000,
@@ -731,6 +806,7 @@
                     "name": "Dining",
                     "normalizedName": "dining",
                     "description": "Restaurants, cafes, and prepared meals.",
+                    "icon": "restaurant",
                     "documentText": "Dining: restaurants, cafes, and prepared meals.",
                     "vectorId": "category:dining",
                     "createdAt": 1767225600000,
@@ -744,6 +820,7 @@
                         "name": "Dining",
                         "normalizedName": "dining",
                         "description": "Restaurants, cafes, and prepared meals.",
+                        "icon": "restaurant",
                         "documentText": "Dining: restaurants, cafes, and prepared meals.",
                         "vectorId": "category:dining",
                         "createdAt": 1767225600000,
@@ -757,6 +834,7 @@
                         "name": "Groceries",
                         "normalizedName": "groceries",
                         "description": "Food and household supplies bought from stores.",
+                        "icon": "grocery",
                         "documentText": "Groceries: food and household supplies bought from stores.",
                         "vectorId": "category:groceries",
                         "createdAt": 1767225600000,

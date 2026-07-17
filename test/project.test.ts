@@ -16,6 +16,7 @@ import {
   createProject,
   dispatch,
   getProject,
+  getProjectStoreStub,
   jsonBody,
   limitsDocument,
   listProjectsFromRegistry,
@@ -1238,6 +1239,70 @@ describe("project routes", () => {
         categoryId: category.id,
       },
     });
+  });
+
+  it("treats a deleted stored category as an uncategorized expense", async () => {
+    const { env: testEnv } = makeEnv();
+    const category = testCategory();
+    await putPublishedCategories(testEnv, [category]);
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+
+    const response = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          delta: {},
+          description: {
+            type: "expense",
+            name: "Lunch",
+            paid: { "1": 100 },
+            liability: { "1": 100 },
+            categoryId: category.id,
+          },
+        },
+        await authHeaders(),
+      ),
+    );
+    expect(response.status).toBe(201);
+
+    await putPublishedCategories(testEnv, []);
+    const view = await getProject(testEnv, project.id);
+    const storedRecord = view.records[0] as { description?: unknown } | undefined;
+    expect(storedRecord?.description).toEqual(
+      expect.objectContaining({ type: "expense", name: "Lunch" }),
+    );
+    expect(storedRecord?.description).not.toHaveProperty("categoryId");
+  });
+
+  it("ignores a malformed category ID found in stored record JSON", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+    const response = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody("POST", appendRecordBody(), await authHeaders()),
+    );
+    expect(response.status).toBe(201);
+
+    const store = await getProjectStoreStub(testEnv, project.id);
+    await runInDurableObject(store, async (_instance, state) => {
+      const row = state.storage.sql
+        .exec<{ description_json: string }>("SELECT description_json FROM records WHERE id = 1")
+        .toArray()[0];
+      expect(row).toBeDefined();
+      const description = JSON.parse(row?.description_json ?? "null") as Record<string, unknown>;
+      description.categoryId = "not-a-category-id";
+      state.storage.sql.exec(
+        "UPDATE records SET description_json = ? WHERE id = 1",
+        JSON.stringify(description),
+      );
+    });
+
+    const view = await getProject(testEnv, project.id);
+    const storedRecord = view.records[0] as { description?: unknown } | undefined;
+    expect(storedRecord?.description).not.toHaveProperty("categoryId");
   });
 
   it("rejects unknown expense category IDs", async () => {

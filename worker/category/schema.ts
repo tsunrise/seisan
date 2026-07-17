@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { ICON_NAME_VALUES } from "../../shared/icon-names";
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const CATEGORY_VECTOR_NAMESPACE_PATTERN =
   /^categories-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -32,6 +34,9 @@ export const CategoryDescription = z
   .transform(normalizeCategoryText)
   .pipe(z.string().max(CATEGORY_DESCRIPTION_MAX_LENGTH));
 export type CategoryDescription = z.infer<typeof CategoryDescription>;
+
+export const CategoryIconName = z.enum(ICON_NAME_VALUES);
+export type CategoryIconName = z.infer<typeof CategoryIconName>;
 
 export const CategoryClassificationName = z
   .string()
@@ -76,6 +81,7 @@ export const Category = z
     name: CategoryName,
     normalizedName: z.string().min(1).max(CATEGORY_NAME_MAX_LENGTH),
     description: CategoryDescription,
+    icon: CategoryIconName.optional(),
     documentText: CategoryDocumentText,
     vectorId: CategoryVectorId,
     createdAt: NonNegativeSafeInteger,

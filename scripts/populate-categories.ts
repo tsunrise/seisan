@@ -1,8 +1,10 @@
 #!/usr/bin/env -S tsx
 import { execFile } from "node:child_process";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+
+import type { IconName } from "../shared/icon-names";
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -12,6 +14,7 @@ type ApiTargetEnv = "local" | "dev" | "production";
 interface SeedCategory {
   name: string;
   description: string;
+  icon: IconName;
 }
 
 interface Category {
@@ -19,86 +22,127 @@ interface Category {
   name: string;
   normalizedName: string;
   description: string;
+  icon?: IconName;
 }
 
 interface CategoryListResponse {
   categories: Category[];
 }
 
-const SEED_CATEGORIES: readonly SeedCategory[] = [
+export const SEED_CATEGORIES: readonly SeedCategory[] = [
   {
-    name: "Restaurant",
+    name: "Dining Out",
+    icon: "restaurant",
     description:
-      "Prepared meals, cafes, bars, bakeries, coffee shops, takeout, delivery, fast food, dining out",
+      "Restaurants and prepared food including Saigon Seafood Harbor, cafes, bakeries, tea and coffee shops, coffee before a train or at a station, bars, takeout, delivery, fast food, airport snacks, breakfast, lunch, and dinner",
   },
   {
-    name: "Grocery",
+    name: "Groceries",
+    icon: "grocery",
     description:
-      "Supermarkets, grocery stores, markets, food ingredients, pantry staples, household food purchases",
+      "Supermarkets and grocery stores including 99 Ranch, Safeway, Trader Joe's, Whole Foods, and Costco groceries; food markets, vegetables, eggs, produce, meat, seafood, ingredients, pantry staples, and food to prepare at home",
   },
   {
-    name: "Transportation: Gas/Fuel",
+    name: "Rent",
+    icon: "home",
     description:
-      "Gas stations, gasoline, diesel, fuel purchases, EV charging, service station fuel",
+      "Apartment rent, house rent, room rent, mortgage, lease payments, and recurring payments to a landlord or property manager",
   },
   {
-    name: "Transportation: Transit/Rideshare",
-    description: "Buses, trains, subway, ferry, taxis, rideshare, parking, tolls, commuter passes",
+    name: "Home Internet & Utility Bills",
+    icon: "utilities",
+    description:
+      "Recurring home-provider bills including internet, Wi-Fi, Comcast, Xfinity, electricity, power, PG&E natural gas, water, sewer, garbage collection bills, city trash pickup utilities, Waste Management, and phone service",
   },
   {
-    name: "Housing: Rent/Mortgage",
+    name: "Household Supplies & Appliances",
+    icon: "household",
     description:
-      "Rent payments, mortgage payments, property management charges, housing lease payments, apartment rent",
+      "Physical goods for a shared apartment including garbage bags, facial tissue, toilet paper, detergent, paper goods, furniture such as sofas and couches, appliances such as vacuum cleaners, Bissell, Roomba, microwaves and air fryers, kitchenware, cookware, and tools",
   },
   {
-    name: "Housing: Utilities",
+    name: "Fuel & Charging",
+    icon: "fuel",
     description:
-      "Electricity, gas, water, sewer, trash, internet, phone, utility bills, broadband service",
+      "Fuel stations and vehicle energy including Shell, Chevron, Exxon, BP, gasoline, gas, petrol, diesel, ChargePoint, Tesla Supercharger, and EV charging",
   },
   {
-    name: "Health: Medical/Pharmacy",
+    name: "Vehicle Rental & Maintenance",
+    icon: "vehicle",
     description:
-      "Doctors, dentists, hospitals, clinics, prescriptions, pharmacy, medical insurance copays, urgent care",
+      "Operating a group vehicle other than fuel, parking, or tolls; Hertz, Enterprise Rent-A-Car, Avis Rent a Car, Avis car rental, rental vehicles, oil changes, tires, repairs, roadside assistance, car washes, and maintenance",
   },
   {
-    name: "Shopping: General Merchandise",
+    name: "Parking & Tolls",
+    icon: "parking",
     description:
-      "Retail stores, online shopping, clothing, electronics, household goods, department stores, marketplace purchases",
+      "Parking garages and meters at hotels, airports, or stations; FasTrak, toll roads, turnpikes, congestion charges, Golden Gate Bridge tolls, and other road-use fees",
   },
   {
-    name: "Entertainment: Media/Events",
+    name: "Public Transit & Rideshare",
+    icon: "transit",
     description:
-      "Movies, concerts, tickets, games, streaming subscriptions, books, music, hobbies, recreation",
+      "Passenger rail including JR, Caltrain, Amtrak, Eurostar, and Shinkansen; commuter trains, subway, metro, buses, trams, taxis, Uber, Lyft, and ground transit tickets or passes",
   },
   {
-    name: "Travel: Lodging/Airfare",
+    name: "Flights",
+    icon: "travel",
     description:
-      "Hotels, lodging, airfare, airlines, booking sites, rental cars, travel reservations, vacation expenses",
+      "Airline tickets and airfare including United, Delta, ANA, Southwest Airlines tickets, flights, checked baggage, seat selection, and other charges attached to air travel",
   },
   {
-    name: "Financial: Fees/Transfers",
+    name: "Lodging",
+    icon: "lodging",
     description:
-      "Bank fees, service charges, interest, ATM fees, account transfers, payment processing, finance charges",
+      "Hotels, motels, hostels, resorts, inns, vacation rentals, Airbnb, campsites, and overnight accommodation",
   },
   {
-    name: "Personal Care",
+    name: "Cruises & Ferries",
+    icon: "cruise",
     description:
-      "Haircuts, salons, grooming, cosmetics, toiletries, spa services, personal hygiene purchases",
+      "Cruise fares, passenger ships, ocean liners, overnight ships, ferries, water taxis, and tickets whose purpose is transportation by boat",
   },
   {
-    name: "Education",
+    name: "Travel Connectivity",
+    icon: "connectivity",
     description:
-      "Tuition, classes, courses, school supplies, books for study, training, certification fees",
+      "Travel SIM cards, eSIM plans, international roaming, portable Wi-Fi, pocket Wi-Fi, and temporary mobile data bought for a trip",
   },
   {
-    name: "Insurance",
+    name: "Activities & Entertainment",
+    icon: "entertainment",
     description:
-      "Auto insurance, health insurance, renters insurance, homeowners insurance, premiums, policy payments",
+      "Tours, sightseeing, museums, theme parks, national parks, attractions, concerts, movies, sporting events, games, recreation, and admission tickets",
   },
   {
-    name: "Subscriptions: Software/Services",
+    name: "Digital Subscriptions",
+    icon: "subscription",
     description:
-      "Software subscriptions, cloud services, app subscriptions, memberships, recurring digital service payments",
+      "Recurring paid digital products including software, AI services, streaming music or video, news, apps, cloud storage, and online memberships",
+  },
+  {
+    name: "Shopping",
+    icon: "shopping",
+    description:
+      "Personal clothing, shoes, electronics, souvenirs, gifts, accessories, department stores, online retail, and general merchandise not bought for the shared home",
+  },
+  {
+    name: "Health Care",
+    icon: "medical",
+    description:
+      "Doctors, dentists, hospitals, urgent care, clinics, prescriptions, pharmacies, medical treatment, copays, and medical supplies",
+  },
+  {
+    name: "Personal Care Services",
+    icon: "personal-care",
+    description:
+      "Haircuts, hair salons, barbers, manicures, spas, massages, facials, grooming appointments, and other personal care services",
+  },
+  {
+    name: "Insurance Premiums",
+    icon: "insurance",
+    description:
+      "Payments specifically for insurance policies and coverage, including renters insurance, homeowners insurance, auto insurance, health insurance, travel insurance, and premiums",
   },
 ];
 
@@ -130,7 +174,8 @@ async function main(argv: string[]): Promise<void> {
 
     if (
       normalizeText(match.name) === normalizeText(category.name) &&
-      normalizeText(match.description) === normalizeText(category.description)
+      normalizeText(match.description) === normalizeText(category.description) &&
+      match.icon === category.icon
     ) {
       console.log(`Skipped ${category.name}; category is unchanged.`);
       skipped += 1;
@@ -188,7 +233,12 @@ async function listCategories(env: ApiTargetEnv): Promise<CategoryListResponse> 
 }
 
 async function addCategory(env: ApiTargetEnv, category: SeedCategory): Promise<void> {
-  await runCli(env, ["category-add", category.name, `--description=${category.description}`]);
+  await runCli(env, [
+    "category-add",
+    category.name,
+    `--description=${category.description}`,
+    `--icon=${category.icon}`,
+  ]);
 }
 
 async function updateCategory(
@@ -201,6 +251,7 @@ async function updateCategory(
     id,
     `--name=${category.name}`,
     `--description=${category.description}`,
+    `--icon=${category.icon}`,
   ]);
 }
 
@@ -271,7 +322,9 @@ Existing categories with matching normalized names are updated in place when
 their name or description differs.`);
 }
 
-main(process.argv.slice(2)).catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  main(process.argv.slice(2)).catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}

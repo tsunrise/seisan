@@ -20,7 +20,7 @@ Use these implementation files as the design source of truth:
 - `src/components/styles.ts`: shared panel and surface styles.
 - `src/components/PanelFrame.tsx`: standard panel title, back action, and frame behavior.
 - `src/project/RecordTimeline.tsx`: day-group timeline composition.
-- `src/project/RecordCard.tsx`: full record rows and minor system events.
+- `src/project/RecordCard.tsx`: full record rows and minor system events, including category/type markers.
 - `src/project/RecordSentenceRow.tsx`: sentence-style composer layout.
 - `src/project/timelineLayout.ts`: date/marker column widths, rail position, row heights, marker offsets, and transition constants.
 - `src/project/timelineScroll.ts`: scroll restoration, sticky header offset, fixed mobile CTA clearance.
@@ -76,7 +76,7 @@ The project timeline is the primary visual language.
 Records render oldest-to-newest. Each loaded day is a group:
 
 - Left column: sticky vertical day label.
-- Middle rail: one continuous thin vertical rule with avatars or system nodes overlaid.
+- Middle rail: one continuous thin vertical rule with category/type icons or system nodes overlaid.
 - Content column: clickable record content only.
 
 Date timeline rules:
@@ -96,7 +96,9 @@ Full record rows:
 
 - Flat ledger rows separated by rail rhythm, whitespace, and date-boundary separators, not chat bubbles or dense per-item dividers.
 - Actor name, title, relative metadata, record number, and viewer amount should align predictably.
-- Avatar centers should align optically with the first title line, not the actor label or full row center.
+- Category/type icon centers should align optically with the first title line, not the actor label or full row center.
+- Expense rows show the category name immediately below the title in secondary text. Missing,
+  deleted, or general categories display `Others`.
 - Keep minimum row height compact enough that whitespace feels intentional: roughly 112px on mobile/tablet and 120px on desktop for ordinary one-line records, with mobile rows allowed to grow when amount metadata stacks.
 - Records without a visible viewer amount can use a tighter minimum height, because there is no lower-right amount anchoring the row.
 - Use a faint separator only at day boundaries, aligned to the content column between adjacent records from different dates. Do not draw same-day row dividers.
@@ -109,7 +111,7 @@ Minor system events:
 
 - Use for revert records and similar low-weight history events.
 - Keep them compact, but align their right-side record number with full record rows.
-- Use a small hollow timeline node rather than a full avatar.
+- Use a small hollow timeline node rather than a full record icon.
 - Center the hollow node on the system message baseline and keep the row visually lighter than a full record.
 - Use one quiet row aligned to the rail, not a chip, toast, full record card, or divider-bearing row.
 - Do not draw separator lines between consecutive minor system events.

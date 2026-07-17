@@ -4,6 +4,7 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 
 import { useCurrentUser } from "../hooks/useCurrentUser";
+import { useCategories } from "../hooks/useCategories";
 import { useProject } from "../hooks/useProject";
 import { useProjects } from "../hooks/useProjects";
 import { InlineAlert } from "../components/InlineAlert";
@@ -31,6 +32,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
   const projectId = params.projectId ?? "";
   const recordId = params.recordId ? Number(params.recordId) : null;
   const user = useCurrentUser({ required: false });
+  const categories = useCategories();
   const [reloadKey, reload] = useReducer((value: number) => value + 1, 0);
   const [missingRecordId, setMissingRecordId] = useState<number | null>(null);
   const loadingDetailRecordIdRef = useRef<number | null>(null);
@@ -126,6 +128,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
   const timelineIsVisible = panel === "timeline" || timelineIsVisibleOnDesktop;
   const recordDetailIsLoading =
     panel === "recordDetail" && recordId !== null && selectedRecord === null;
+  const categoryData = categories.status === "ready" ? categories.data : [];
 
   return (
     <Box
@@ -180,6 +183,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
           scrollToLatestKey={reloadKey}
           restoreScrollKey={panel === "timeline" ? location.key : ""}
           selectedRecordId={panel === "recordDetail" ? recordId : null}
+          categories={categoryData}
         />
         <Box
           data-project-mobile-action=""
@@ -249,7 +253,12 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
           />
         ) : null}
         {panel === "newRecord" ? (
-          <NewRecordPanel project={project.data} currentMember={currentMember} onPosted={reload} />
+          <NewRecordPanel
+            project={project.data}
+            currentMember={currentMember}
+            categories={categoryData}
+            onPosted={reload}
+          />
         ) : null}
         {panel === "recordDetail" && selectedRecord ? (
           <RecordDetail

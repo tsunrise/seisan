@@ -1,6 +1,7 @@
 import {
   CategoriesDocument,
   CategoryDescription,
+  CategoryIconName,
   CategoryId,
   CategoryName,
   type CategoriesDocument as CategoriesDocumentValue,
@@ -14,6 +15,7 @@ export interface CategoryDocumentWriteInput {
   id?: string;
   name: string;
   description?: string;
+  icon?: CategoryIconName;
   nowMs: number;
 }
 
@@ -88,6 +90,7 @@ export function upsertCategoryInDocument(
       id,
       name: input.name,
       description: input.description ?? "",
+      icon: input.icon ?? existing?.icon ?? "expense",
       nowMs: input.nowMs,
       createdAt: existing?.createdAt,
       vectorId: existing?.vectorId,
@@ -141,18 +144,21 @@ function buildCategory(input: {
   id: string;
   name: string;
   description: string;
+  icon: CategoryIconName;
   nowMs: number;
   createdAt?: number;
   vectorId?: string;
 }): CategoryValue {
   const name = CategoryName.parse(input.name);
   const description = CategoryDescription.parse(input.description);
+  const icon = CategoryIconName.parse(input.icon);
   const id = CategoryId.parse(input.id);
   return {
     id,
     name,
     normalizedName: name.toLowerCase(),
     description,
+    icon,
     documentText: `title: ${name} | text: ${description || name}`,
     vectorId: input.vectorId ?? `category:${id}`,
     createdAt: input.createdAt ?? input.nowMs,

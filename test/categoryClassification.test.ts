@@ -3,8 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CATEGORY_CONFIG_KEY,
+  CategoriesDocument,
   type CategoriesDocument as CategoriesDocumentValue,
 } from "../worker/category";
+import { upsertCategoryInDocument } from "../worker/category/document";
+import type { IconName } from "../shared/icon-names";
 import {
   adminDispatch,
   authHeaders,
@@ -30,12 +33,7 @@ describe("category classification", () => {
       CATEGORY_INDEX: fakeVectorize({ upsert, query }),
     });
 
-    const unauthenticatedList = await dispatch("/categories", testEnv);
-    expect(unauthenticatedList.status).toBe(401);
-
-    const emptyList = await dispatch("/categories", testEnv, {
-      headers: await authHeaders(),
-    });
+    const emptyList = await dispatch("/categories", testEnv);
     expect(emptyList.status).toBe(500);
     expect(await emptyList.json()).toEqual({ error: "internal_server_error" });
 
@@ -49,6 +47,7 @@ describe("category classification", () => {
       jsonBody("POST", {
         name: " Restaurant ",
         description: " Places that sell prepared meals ",
+        icon: "restaurant",
       }),
     );
     expect(addResponse.status).toBe(201);
@@ -58,6 +57,7 @@ describe("category classification", () => {
         name: "Restaurant",
         normalizedName: "restaurant",
         description: "Places that sell prepared meals",
+        icon: "restaurant",
         documentText: "title: Restaurant | text: Places that sell prepared meals",
       },
       vectorizeMutation: { ids: [], count: 1 },
@@ -96,23 +96,21 @@ describe("category classification", () => {
     ).resolves.toMatchObject({
       version: 1,
       vectorNamespace,
-      categories: [{ id: addBody.category.id, name: "Restaurant" }],
+      categories: [{ id: addBody.category.id, name: "Restaurant", icon: "restaurant" }],
     });
 
     const publishedGet = vi.spyOn(testEnv.PUBLISHED_GLOBAL_CONFIG, "get");
-    const listResponse = await dispatch("/categories", testEnv, {
-      headers: await authHeaders(),
-    });
+    const listResponse = await dispatch("/categories", testEnv);
     expect(listResponse.status).toBe(200);
     await expect(listResponse.json()).resolves.toMatchObject({
-      categories: [{ id: addBody.category.id, name: "Restaurant" }],
+      categories: [{ id: addBody.category.id, name: "Restaurant", icon: "restaurant" }],
     });
     expect(publishedGet).toHaveBeenCalledWith(CATEGORY_CONFIG_KEY, { cacheTtl: 300 });
 
     const adminListAlias = await adminDispatch("/categories", testEnv);
     expect(adminListAlias.status).toBe(200);
     await expect(adminListAlias.json()).resolves.toMatchObject({
-      categories: [{ id: addBody.category.id, name: "Restaurant" }],
+      categories: [{ id: addBody.category.id, name: "Restaurant", icon: "restaurant" }],
     });
 
     query.mockResolvedValueOnce({
@@ -129,7 +127,7 @@ describe("category classification", () => {
     );
     expect(classifyResponse.status).toBe(200);
     await expect(classifyResponse.json()).resolves.toMatchObject({
-      category: { id: addBody.category.id, name: "Restaurant" },
+      category: { id: addBody.category.id, name: "Restaurant", icon: "restaurant" },
       score: 0.91,
       candidates: [{ category: { id: addBody.category.id }, score: 0.91 }],
     });
@@ -152,7 +150,11 @@ describe("category classification", () => {
     });
 
     const restaurant = (await (
-      await adminDispatch("/categories", testEnv, jsonBody("POST", { name: "Restaurant" }))
+      await adminDispatch(
+        "/categories",
+        testEnv,
+        jsonBody("POST", { name: "Restaurant", icon: "restaurant" }),
+      )
     ).json()) as CategoryWriteResponse;
     const grocery = (await (
       await adminDispatch("/categories", testEnv, jsonBody("POST", { name: "Grocery" }))
@@ -174,7 +176,9 @@ describe("category classification", () => {
       createdAt: restaurant.category.createdAt,
       name: "Dining",
       normalizedName: "dining",
+      icon: "restaurant",
     });
+    expect(grocery.category.icon).toBe("expense");
 
     const duplicateUpdate = await adminDispatch(
       `/categories/${restaurant.category.id}`,
@@ -222,6 +226,38 @@ describe("category classification", () => {
     expect(deleteAgain.status).toBe(404);
   });
 
+  it("keeps category deletion retryable when Vectorize does not accept it", async () => {
+    const deleteByIds = vi
+      .fn<() => Promise<VectorizeVectorMutation>>()
+      .mockRejectedValueOnce(new Error("Vectorize unavailable"))
+      .mockResolvedValueOnce({ ids: [], count: 1 });
+    const { env: testEnv } = makeEnv({
+      AI: fakeAi(vi.fn(async () => ({ shape: [1, TEST_VECTOR.length], data: [TEST_VECTOR] }))),
+      CATEGORY_INDEX: fakeVectorize({
+        upsert: vi.fn(async () => ({ ids: [], count: 1 })),
+        deleteByIds,
+      }),
+    });
+
+    const restaurant = (await (
+      await adminDispatch("/categories", testEnv, jsonBody("POST", { name: "Restaurant" }))
+    ).json()) as CategoryWriteResponse;
+
+    const failedDelete = await adminDispatch(`/categories/${restaurant.category.id}`, testEnv, {
+      method: "DELETE",
+    });
+    expect(failedDelete.status).toBe(500);
+    await expect(
+      adminDispatch("/categories", testEnv).then((response) => response.json()),
+    ).resolves.toMatchObject({ categories: [{ id: restaurant.category.id }] });
+
+    const retriedDelete = await adminDispatch(`/categories/${restaurant.category.id}`, testEnv, {
+      method: "DELETE",
+    });
+    expect(retriedDelete.status).toBe(204);
+    expect(deleteByIds).toHaveBeenCalledTimes(2);
+  });
+
   it("validates requests, auth, and hard category KV failures", async () => {
     const upsert = vi
       .fn()
@@ -252,6 +288,13 @@ describe("category classification", () => {
       jsonBody("POST", { description: "Missing name" }),
     );
     expect(missingName.status).toBe(400);
+
+    const invalidIcon = await adminDispatch(
+      "/categories",
+      testEnv,
+      jsonBody("POST", { name: "Invalid icon", icon: "not-an-icon" }),
+    );
+    expect(invalidIcon.status).toBe(400);
 
     const failedAdd = await adminDispatch(
       "/categories",
@@ -353,6 +396,7 @@ describe("category classification", () => {
         name: "Restaurant",
         normalizedName: "restaurant",
         description: "Prepared meals",
+        icon: "expense",
         createdAt: 1_000,
         updatedAt: 1_000,
       },
@@ -379,6 +423,7 @@ describe("category classification", () => {
         createdAt: 1_000,
         updatedAt: 1_002,
         name: "Dining",
+        icon: "expense",
       },
     });
 
@@ -402,6 +447,37 @@ describe("category classification", () => {
       version: 1,
       categories: [],
     });
+  });
+
+  it("accepts and safely updates legacy version-1 category documents without icons", () => {
+    const parsed = CategoriesDocument.safeParse({
+      version: 1,
+      vectorNamespace: "categories-00000000-0000-4000-8000-000000000001",
+      categories: [
+        {
+          id: "00000000-0000-4000-8000-000000000010",
+          name: "Restaurant",
+          normalizedName: "restaurant",
+          description: "Prepared meals",
+          documentText: "title: Restaurant | text: Prepared meals",
+          vectorId: "category:00000000-0000-4000-8000-000000000010",
+          createdAt: 1_000,
+          updatedAt: 1_000,
+        },
+      ],
+    });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      throw new Error("expected legacy category document to parse");
+    }
+
+    expect(
+      upsertCategoryInDocument(parsed.data, {
+        id: parsed.data.categories[0]?.id,
+        name: "Dining",
+        nowMs: 2_000,
+      }),
+    ).toMatchObject({ ok: true, category: { name: "Dining", icon: "expense" } });
   });
 
   it("applies concurrent category mutations through GlobalConfig", async () => {
@@ -550,6 +626,7 @@ interface CategoryWriteResponse {
     name: string;
     normalizedName: string;
     description: string;
+    icon?: IconName;
     documentText: string;
     vectorId: string;
     createdAt: number;

@@ -3,6 +3,7 @@ import { emitKeypressEvents, type Key } from "node:readline";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
+import { isIconName, type IconName } from "../shared/icon-names";
 import {
   type ApiTargetEnv,
   ApiError,
@@ -61,7 +62,7 @@ const commands: Record<CommandName, Command> = {
   "category-add": {
     description: "Admin: add a category classification category.",
     requiresAuth: false,
-    usage: 'category-add <name> [--description="..."]',
+    usage: 'category-add <name> [--description="..."] [--icon=<icon-name>]',
     async run(client, args) {
       const input = parseCategoryWriteArgs(args, { requireNameFlag: false });
       printJson(await client.categoryAdd(input));
@@ -81,7 +82,7 @@ const commands: Record<CommandName, Command> = {
   "category-update": {
     description: "Admin: update a category classification category by ID.",
     requiresAuth: false,
-    usage: 'category-update <category-id> --name="..." [--description="..."]',
+    usage: 'category-update <category-id> --name="..." [--description="..."] [--icon=<icon-name>]',
     async run(client, args) {
       const { id, input } = parseCategoryUpdateArgs(args);
       printJson(await client.categoryUpdate(id, input));
@@ -197,9 +198,10 @@ function parseTargetEnv(value: string): ApiTargetEnv {
 function parseCategoryWriteArgs(
   args: string[],
   options: { requireNameFlag: boolean },
-): { name: string; description?: string } {
+): { name: string; description?: string; icon?: IconName } {
   let name: string | undefined;
   let description: string | undefined;
+  let icon: IconName | undefined;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index] ?? "";
@@ -213,6 +215,11 @@ function parseCategoryWriteArgs(
     } else if (arg === "--description") {
       description = readOptionValue(args, index, "--description");
       index += 1;
+    } else if (arg.startsWith("--icon=")) {
+      icon = parseIconName(arg.slice("--icon=".length));
+    } else if (arg === "--icon") {
+      icon = parseIconName(readOptionValue(args, index, "--icon"));
+      index += 1;
     } else if (!options.requireNameFlag && !name) {
       name = arg;
     } else {
@@ -220,12 +227,12 @@ function parseCategoryWriteArgs(
     }
   }
 
-  return { name: requireNonEmpty(name, "category name"), description };
+  return { name: requireNonEmpty(name, "category name"), description, icon };
 }
 
 function parseCategoryUpdateArgs(args: string[]): {
   id: string;
-  input: { name: string; description?: string };
+  input: { name: string; description?: string; icon?: IconName };
 } {
   const id = args[0];
   if (!id) {
@@ -298,6 +305,13 @@ function requireNonEmpty(value: string | undefined, label: string): string {
     throw new CliError(`${label} is required.`);
   }
   return trimmed;
+}
+
+function parseIconName(value: string): IconName {
+  if (!isIconName(value)) {
+    throw new CliError(`Unknown icon name: ${value}`);
+  }
+  return value;
 }
 
 function printJson(value: unknown): void {
