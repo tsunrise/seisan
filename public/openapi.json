@@ -1618,7 +1618,7 @@
                             "examples": [{ "1": -6200, "2": 6200 }]
                           },
                           "description": {
-                            "oneOf": [
+                            "anyOf": [
                               {
                                 "type": "object",
                                 "properties": {
@@ -1675,40 +1675,114 @@
                                 ]
                               },
                               {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "transfer",
-                                    "description": "Transfer record discriminator."
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "const": "transfer",
+                                        "description": "Transfer record discriminator."
+                                      },
+                                      "from": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 9007199254740991,
+                                        "description": "Member ID sending the money.",
+                                        "examples": [2]
+                                      },
+                                      "to": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 9007199254740991,
+                                        "description": "Member ID receiving the money.",
+                                        "examples": [1]
+                                      },
+                                      "amount": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 9007199254740991,
+                                        "description": "Transferred amount in integer cents.",
+                                        "examples": [6200]
+                                      }
+                                    },
+                                    "required": ["type", "from", "to", "amount"],
+                                    "additionalProperties": false,
+                                    "description": "A payment from one project member to another.",
+                                    "examples": [
+                                      { "type": "transfer", "from": 2, "to": 1, "amount": 6200 }
+                                    ]
                                   },
-                                  "from": {
-                                    "type": "integer",
-                                    "exclusiveMinimum": 0,
-                                    "maximum": 9007199254740991,
-                                    "description": "Member ID sending the money.",
-                                    "examples": [2]
-                                  },
-                                  "to": {
-                                    "type": "integer",
-                                    "exclusiveMinimum": 0,
-                                    "maximum": 9007199254740991,
-                                    "description": "Member ID receiving the money.",
-                                    "examples": [1]
-                                  },
-                                  "amount": {
-                                    "type": "integer",
-                                    "exclusiveMinimum": 0,
-                                    "maximum": 9007199254740991,
-                                    "description": "Transferred amount in integer cents.",
-                                    "examples": [6200]
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "type": {
+                                        "type": "string",
+                                        "const": "transfer",
+                                        "description": "Transfer record discriminator."
+                                      },
+                                      "src": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 9007199254740991,
+                                        "description": "Member ID sending the money.",
+                                        "examples": [2]
+                                      },
+                                      "dests": {
+                                        "minItems": 1,
+                                        "maxItems": 10000,
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "id": {
+                                              "type": "integer",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 9007199254740991,
+                                              "description": "Member ID receiving this portion of the transfer.",
+                                              "examples": [1]
+                                            },
+                                            "amount": {
+                                              "type": "integer",
+                                              "exclusiveMinimum": 0,
+                                              "maximum": 9007199254740991,
+                                              "description": "Amount sent to this member in integer cents.",
+                                              "examples": [6200]
+                                            }
+                                          },
+                                          "required": ["id", "amount"],
+                                          "additionalProperties": false,
+                                          "description": "One recipient and amount in a multi-recipient transfer."
+                                        },
+                                        "description": "Unique recipients and their positive cent-denominated amounts."
+                                      }
+                                    },
+                                    "required": ["type", "src", "dests"],
+                                    "additionalProperties": false,
+                                    "description": "A payment from one project member to one or more project members.",
+                                    "examples": [
+                                      {
+                                        "type": "transfer",
+                                        "src": 2,
+                                        "dests": [
+                                          { "id": 1, "amount": 3100 },
+                                          { "id": 3, "amount": 3100 }
+                                        ]
+                                      }
+                                    ]
                                   }
-                                },
-                                "required": ["type", "from", "to", "amount"],
-                                "additionalProperties": false,
-                                "description": "A payment from one project member to another.",
+                                ],
+                                "description": "A legacy single-recipient or multi-recipient transfer record.",
                                 "examples": [
-                                  { "type": "transfer", "from": 2, "to": 1, "amount": 6200 }
+                                  { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
+                                  {
+                                    "type": "transfer",
+                                    "src": 2,
+                                    "dests": [
+                                      { "id": 1, "amount": 3100 },
+                                      { "id": 3, "amount": 3100 }
+                                    ]
+                                  }
                                 ]
                               },
                               {
@@ -1796,6 +1870,14 @@
                                 "categoryId": "4a6cc79a-51da-4e94-9d62-45ba3d853b1c"
                               },
                               { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
+                              {
+                                "type": "transfer",
+                                "src": 2,
+                                "dests": [
+                                  { "id": 1, "amount": 3100 },
+                                  { "id": 3, "amount": 3100 }
+                                ]
+                              },
                               {
                                 "type": "promise",
                                 "debtorMemberId": 2,
@@ -2438,7 +2520,7 @@
                     "examples": [{ "1": -6200, "2": 6200 }]
                   },
                   "description": {
-                    "oneOf": [
+                    "anyOf": [
                       {
                         "type": "object",
                         "properties": {
@@ -2495,39 +2577,113 @@
                         ]
                       },
                       {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "const": "transfer",
-                            "description": "Transfer record discriminator."
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "transfer",
+                                "description": "Transfer record discriminator."
+                              },
+                              "from": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991,
+                                "description": "Member ID sending the money.",
+                                "examples": [2]
+                              },
+                              "to": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991,
+                                "description": "Member ID receiving the money.",
+                                "examples": [1]
+                              },
+                              "amount": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991,
+                                "description": "Transferred amount in integer cents.",
+                                "examples": [6200]
+                              }
+                            },
+                            "required": ["type", "from", "to", "amount"],
+                            "additionalProperties": false,
+                            "description": "A payment from one project member to another.",
+                            "examples": [{ "type": "transfer", "from": 2, "to": 1, "amount": 6200 }]
                           },
-                          "from": {
-                            "type": "integer",
-                            "exclusiveMinimum": 0,
-                            "maximum": 9007199254740991,
-                            "description": "Member ID sending the money.",
-                            "examples": [2]
-                          },
-                          "to": {
-                            "type": "integer",
-                            "exclusiveMinimum": 0,
-                            "maximum": 9007199254740991,
-                            "description": "Member ID receiving the money.",
-                            "examples": [1]
-                          },
-                          "amount": {
-                            "type": "integer",
-                            "exclusiveMinimum": 0,
-                            "maximum": 9007199254740991,
-                            "description": "Transferred amount in integer cents.",
-                            "examples": [6200]
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "transfer",
+                                "description": "Transfer record discriminator."
+                              },
+                              "src": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991,
+                                "description": "Member ID sending the money.",
+                                "examples": [2]
+                              },
+                              "dests": {
+                                "minItems": 1,
+                                "maxItems": 10000,
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "integer",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 9007199254740991,
+                                      "description": "Member ID receiving this portion of the transfer.",
+                                      "examples": [1]
+                                    },
+                                    "amount": {
+                                      "type": "integer",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 9007199254740991,
+                                      "description": "Amount sent to this member in integer cents.",
+                                      "examples": [6200]
+                                    }
+                                  },
+                                  "required": ["id", "amount"],
+                                  "additionalProperties": false,
+                                  "description": "One recipient and amount in a multi-recipient transfer."
+                                },
+                                "description": "Unique recipients and their positive cent-denominated amounts."
+                              }
+                            },
+                            "required": ["type", "src", "dests"],
+                            "additionalProperties": false,
+                            "description": "A payment from one project member to one or more project members.",
+                            "examples": [
+                              {
+                                "type": "transfer",
+                                "src": 2,
+                                "dests": [
+                                  { "id": 1, "amount": 3100 },
+                                  { "id": 3, "amount": 3100 }
+                                ]
+                              }
+                            ]
                           }
-                        },
-                        "required": ["type", "from", "to", "amount"],
-                        "additionalProperties": false,
-                        "description": "A payment from one project member to another.",
-                        "examples": [{ "type": "transfer", "from": 2, "to": 1, "amount": 6200 }]
+                        ],
+                        "description": "A legacy single-recipient or multi-recipient transfer record.",
+                        "examples": [
+                          { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
+                          {
+                            "type": "transfer",
+                            "src": 2,
+                            "dests": [
+                              { "id": 1, "amount": 3100 },
+                              { "id": 3, "amount": 3100 }
+                            ]
+                          }
+                        ]
                       },
                       {
                         "type": "object",
@@ -2610,6 +2766,14 @@
                       },
                       { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
                       {
+                        "type": "transfer",
+                        "src": 2,
+                        "dests": [
+                          { "id": 1, "amount": 3100 },
+                          { "id": 3, "amount": 3100 }
+                        ]
+                      },
+                      {
                         "type": "promise",
                         "debtorMemberId": 2,
                         "creditorMemberId": 1,
@@ -2636,6 +2800,17 @@
                   {
                     "delta": { "1": 6200, "2": -6200 },
                     "description": { "type": "transfer", "from": 2, "to": 1, "amount": 6200 }
+                  },
+                  {
+                    "delta": { "1": 3100, "2": -6200, "3": 3100 },
+                    "description": {
+                      "type": "transfer",
+                      "src": 2,
+                      "dests": [
+                        { "id": 1, "amount": 3100 },
+                        { "id": 3, "amount": 3100 }
+                      ]
+                    }
                   },
                   {
                     "delta": { "1": -3100, "2": 3100 },
@@ -2878,6 +3053,217 @@
                   ]
                 },
                 "example": { "error": "rate_limited" }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "internal_server_error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/project/{id}/settle": {
+      "get": {
+        "operationId": "getApiProjectByIdSettle",
+        "tags": ["Projects"],
+        "summary": "Get a project settlement plan",
+        "description": "Returns a deterministic transfer plan that settles the project's current cent-denominated balances. Public projects may be read without authentication.",
+        "security": [{}, { "apiKeyBearer": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Public project ID.",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "8d46d6c6-b970-4b2b-8d3e-47f57058f951"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current project settlement plan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "transfers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "src": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "description": "Member ID sending the money.",
+                            "examples": [2]
+                          },
+                          "dests": {
+                            "minItems": 1,
+                            "maxItems": 10000,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991,
+                                  "description": "Member ID receiving this portion of the transfer.",
+                                  "examples": [1]
+                                },
+                                "amount": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991,
+                                  "description": "Amount sent to this member in integer cents.",
+                                  "examples": [6200]
+                                }
+                              },
+                              "required": ["id", "amount"],
+                              "additionalProperties": false,
+                              "description": "One recipient and amount in a multi-recipient transfer."
+                            },
+                            "description": "Unique recipients and their positive cent-denominated amounts."
+                          }
+                        },
+                        "required": ["src", "dests"],
+                        "additionalProperties": false,
+                        "description": "A grouped transfer from one member to one or more recipients.",
+                        "examples": [{ "src": 2, "dests": [{ "id": 1, "amount": 6200 }] }]
+                      },
+                      "description": "Grouped transfers that settle the current project balances."
+                    }
+                  },
+                  "required": ["transfers"],
+                  "additionalProperties": false
+                },
+                "example": { "transfers": [{ "src": 2, "dests": [{ "id": 1, "amount": 6200 }] }] }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "unauthorized" }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is not allowed to perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "forbidden" }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested resource was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "not_found" }
               }
             }
           },

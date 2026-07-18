@@ -82,6 +82,20 @@ function promiseRecordBody({
   };
 }
 
+function multiTransferRecordBody(
+  src: number,
+  dests: Array<{ id: number; amount: number }>,
+  delta: Record<string, number> = Object.fromEntries([
+    [String(src), -dests.reduce((total, destination) => total + destination.amount, 0)],
+    ...dests.map((destination) => [String(destination.id), destination.amount] as const),
+  ]),
+) {
+  return {
+    delta,
+    description: { type: "transfer" as const, src, dests },
+  };
+}
+
 function stubRateLimit(success: boolean): { binding: RateLimit; limit: ReturnType<typeof vi.fn> } {
   const limit = vi.fn(async () => ({ success }));
   return { binding: { limit } as RateLimit, limit };
@@ -709,6 +723,126 @@ describe("project routes", () => {
     );
     expect(overflow.status).toBe(409);
     expect(await overflow.json()).toEqual({ error: "money_limit_exceeded" });
+  });
+
+  it("posts and reverts multi-recipient transfers while preserving destination order", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+    const bob = await createMember(testEnv, project.id, "Bob");
+    const carol = await createMember(testEnv, project.id, "Carol");
+    const dests = [
+      { id: carol.id, amount: 200 },
+      { id: bob.id, amount: 300 },
+    ];
+
+    const posted = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody("POST", multiTransferRecordBody(1, dests), await authHeaders()),
+    );
+    expect(posted.status).toBe(201);
+    expect(await posted.json()).toEqual({ id: 1 });
+
+    const view = await getProject(testEnv, project.id);
+    expect(view.balance).toEqual({ "1": -500, "2": 300, "3": 200 });
+    expect(view.records).toMatchObject([
+      {
+        id: 1,
+        delta: { "1": -500, "2": 300, "3": 200 },
+        description: { type: "transfer", src: 1, dests },
+      },
+    ]);
+
+    const reverted = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        { delta: { "1": 500, "2": -300, "3": -200 }, description: { type: "revert", id: 1 } },
+        await authHeaders(),
+      ),
+    );
+    expect(reverted.status).toBe(201);
+    expect((await getProject(testEnv, project.id)).balance).toEqual({});
+  });
+
+  it("rejects invalid multi-recipient transfers", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+    const bob = await createMember(testEnv, project.id, "Bob");
+
+    const invalidBodies = [
+      multiTransferRecordBody(1, [], {}),
+      multiTransferRecordBody(
+        1,
+        [
+          { id: bob.id, amount: 50 },
+          { id: bob.id, amount: 50 },
+        ],
+        { "1": -100, "2": 100 },
+      ),
+      multiTransferRecordBody(1, [{ id: 1, amount: 100 }], {}),
+      multiTransferRecordBody(1, [{ id: bob.id, amount: 0 }], {}),
+      multiTransferRecordBody(1, [{ id: 999, amount: 100 }], { "1": -100, "999": 100 }),
+      multiTransferRecordBody(1, [{ id: bob.id, amount: 100 }], { "1": -99, "2": 99 }),
+    ];
+
+    for (const body of invalidBodies) {
+      const response = await dispatch(
+        `/project/${project.id}`,
+        testEnv,
+        jsonBody("POST", body, await authHeaders()),
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "invalid_request" });
+    }
+
+    const oversized = multiTransferRecordBody(
+      1,
+      Array.from({ length: ABSOLUTE_LIST_LIMIT + 1 }, (_, index) => ({
+        id: index + 2,
+        amount: 1,
+      })),
+      {},
+    );
+    const oversizedResponse = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody("POST", oversized, await authHeaders()),
+    );
+    expect(oversizedResponse.status).toBe(400);
+    expect(await oversizedResponse.json()).toEqual({ error: "invalid_request" });
+  });
+
+  it("applies money limits to multi-recipient amounts and the aggregate source delta", async () => {
+    const { env: testEnv } = makeEnv();
+    const owner = `multi-limit-${crypto.randomUUID()}@example.com`;
+    await putUserLimits(
+      testEnv,
+      owner,
+      limitsDocument({
+        "money.maxAmountCents": 100,
+        "money.maxBalanceCents": 1_000,
+      }),
+    );
+    const project = await createProject(testEnv, { owner, ownerMemberName: "Alice" });
+    const bob = await createMember(testEnv, project.id, "Bob", owner);
+    const carol = await createMember(testEnv, project.id, "Carol", owner);
+
+    const response = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        multiTransferRecordBody(1, [
+          { id: bob.id, amount: 60 },
+          { id: carol.id, amount: 50 },
+        ]),
+        await authHeaders(owner),
+      ),
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "money_limit_exceeded" });
   });
 
   it("posts promise records with debtor-positive balances and optional reasons", async () => {

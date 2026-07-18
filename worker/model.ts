@@ -48,6 +48,18 @@ const exampleTransferDescription = {
   to: 1,
   amount: 6_200,
 };
+const exampleMultiTransferDescription = {
+  type: "transfer",
+  src: 2,
+  dests: [
+    { id: 1, amount: 3_100 },
+    { id: 3, amount: 3_100 },
+  ],
+};
+const exampleTransferBatch = {
+  src: 2,
+  dests: [{ id: 1, amount: 6_200 }],
+};
 const examplePromiseDescription = {
   type: "promise",
   debtorMemberId: 2,
@@ -222,7 +234,39 @@ const ExpenseDescription = z
     examples: [exampleExpenseDescription],
   });
 
-const TransferDescription = z
+const TransferDestination = z
+  .object({
+    id: PositiveSafeInteger.meta({
+      description: "Member ID receiving this portion of the transfer.",
+      examples: [1],
+    }),
+    amount: PositiveSafeInteger.meta({
+      description: "Amount sent to this member in integer cents.",
+      examples: [6_200],
+    }),
+  })
+  .strict()
+  .meta({ description: "One recipient and amount in a multi-recipient transfer." });
+
+const TransferBatch = z
+  .object({
+    src: PositiveSafeInteger.meta({
+      description: "Member ID sending the money.",
+      examples: [2],
+    }),
+    dests: z
+      .array(TransferDestination)
+      .min(1)
+      .max(ABSOLUTE_LIST_LIMIT)
+      .meta({ description: "Unique recipients and their positive cent-denominated amounts." }),
+  })
+  .strict()
+  .meta({
+    description: "A grouped transfer from one member to one or more recipients.",
+    examples: [exampleTransferBatch],
+  });
+
+const LegacyTransferDescription = z
   .object({
     type: z.literal("transfer").meta({ description: "Transfer record discriminator." }),
     from: PositiveSafeInteger.meta({ description: "Member ID sending the money.", examples: [2] }),
@@ -237,6 +281,22 @@ const TransferDescription = z
     description: "A payment from one project member to another.",
     examples: [exampleTransferDescription],
   });
+
+const MultiTransferDescription = z
+  .object({
+    type: z.literal("transfer").meta({ description: "Transfer record discriminator." }),
+    ...TransferBatch.shape,
+  })
+  .strict()
+  .meta({
+    description: "A payment from one project member to one or more project members.",
+    examples: [exampleMultiTransferDescription],
+  });
+
+const TransferDescription = z.union([LegacyTransferDescription, MultiTransferDescription]).meta({
+  description: "A legacy single-recipient or multi-recipient transfer record.",
+  examples: [exampleTransferDescription, exampleMultiTransferDescription],
+});
 
 const PromiseDescription = z
   .object({
@@ -279,17 +339,13 @@ const RevertDescription = z
   });
 
 const RecordDescription = z
-  .discriminatedUnion("type", [
-    ExpenseDescription,
-    TransferDescription,
-    PromiseDescription,
-    RevertDescription,
-  ])
+  .union([ExpenseDescription, TransferDescription, PromiseDescription, RevertDescription])
   .meta({
     description: "Typed details for an expense, transfer, promise, or revert record.",
     examples: [
       exampleExpenseDescription,
       exampleTransferDescription,
+      exampleMultiTransferDescription,
       examplePromiseDescription,
       exampleRevertDescription,
     ],
@@ -420,6 +476,13 @@ const RecordCreatedBody = z
       description: "Project-local ID of the created record.",
       examples: [5],
     }),
+  })
+  .strict();
+const SettlementPlanBody = z
+  .object({
+    transfers: z
+      .array(TransferBatch)
+      .meta({ description: "Grouped transfers that settle the current project balances." }),
   })
   .strict();
 const ErrorBody = z
@@ -590,6 +653,10 @@ const ProjectAppendRecordRequest = z
     examples: [
       { delta: { "1": -6_200, "2": 6_200 }, description: exampleExpenseDescription },
       { delta: { "1": 6_200, "2": -6_200 }, description: exampleTransferDescription },
+      {
+        delta: { "1": 3_100, "2": -6_200, "3": 3_100 },
+        description: exampleMultiTransferDescription,
+      },
       { delta: { "1": -3_100, "2": 3_100 }, description: examplePromiseDescription },
       { delta: { "1": 6_200, "2": -6_200 }, description: exampleRevertDescription },
     ],
@@ -767,6 +834,9 @@ export const OpenApiResponses = {
   }),
   Member: jsonResponse("Project member.", MemberBody, { member: exampleMember }),
   RecordCreated: jsonResponse("Created project record.", RecordCreatedBody, { id: 5 }),
+  SettlementPlan: jsonResponse("Current project settlement plan.", SettlementPlanBody, {
+    transfers: [exampleTransferBatch],
+  }),
   InvalidRequest: jsonResponse("Malformed or invalid request.", ErrorBody, exampleError),
   Unauthorized: jsonResponse("Authentication is required or invalid.", ErrorBody, {
     error: "unauthorized",

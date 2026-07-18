@@ -1,8 +1,9 @@
-import type * as api from "../api";
+import { transferSourceMemberId } from "../domain";
+import type { ProjectRecord } from "../projectTypes";
 
-export function recordActorMemberId(record: api.ProjectRecord): number {
+export function recordActorMemberId(record: ProjectRecord): number {
   if (record.description.type === "transfer") {
-    return record.description.from;
+    return transferSourceMemberId(record.description);
   }
   if (record.description.type === "promise") {
     return record.description.debtorMemberId;

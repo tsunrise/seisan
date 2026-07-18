@@ -31,6 +31,7 @@ import {
   ProjectEmailsUtils,
   ProjectId,
   ProjectNameUtils,
+  TransferBatch,
   type ProjectRecord,
 } from "../project";
 
@@ -126,7 +127,7 @@ const ExpenseDescription = z
     }
   });
 
-const TransferDescription = z
+const LegacyTransferDescription = z
   .object({
     type: z.literal("transfer"),
     from: MemberId,
@@ -142,6 +143,12 @@ const TransferDescription = z
       });
     }
   });
+
+const MultiTransferDescription = TransferBatch.safeExtend({
+  type: z.literal("transfer"),
+});
+
+const TransferDescription = z.union([LegacyTransferDescription, MultiTransferDescription]);
 
 const PromiseDescription = z
   .object({
@@ -166,7 +173,7 @@ const RevertDescription = z.object({
   id: z.number().int().positive(),
 });
 
-const RecordDescription = z.discriminatedUnion("type", [
+const RecordDescription = z.union([
   ExpenseDescription,
   TransferDescription,
   PromiseDescription,
@@ -355,6 +362,42 @@ projectApp.get(
       balance: result.balance,
       updatedAt: result.updatedAt,
     });
+  },
+);
+
+projectApp.get(
+  "/project/:id/settle",
+  describeRoute({
+    tags: ["Projects"],
+    summary: "Get a project settlement plan",
+    description:
+      "Returns a deterministic transfer plan that settles the project's current cent-denominated balances. Public projects may be read without authentication.",
+    security: OpenApiSecurity.OptionalApiKeyBearer,
+    parameters: [OpenApiParameters.ProjectId],
+    responses: {
+      200: OpenApiResponses.SettlementPlan,
+      ...errorResponses(401, 403, 404, 500),
+    },
+  }),
+  optionalAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
+    }
+
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
+
+    const identity = context.get("identity");
+    const result = await projectLookup.store.settle({
+      callerEmail: identity ? normalizeEmail(identity.email) : null,
+    });
+    if (!result.ok) {
+      return mapProjectStoreError(result.error);
+    }
+    return context.json({ transfers: result.transfers });
   },
 );
 
@@ -1207,6 +1250,9 @@ function mapAclAdminResult(result: { ok: true } | { ok: false; error: string }):
 }
 
 function mapProjectStoreError(error: string): Response {
+  if (error === "invalid_balance") {
+    return ErrorResponse.internalServerError();
+  }
   if (error === "uninitialized" || error === "not_found") {
     return ErrorResponse.notFound();
   }

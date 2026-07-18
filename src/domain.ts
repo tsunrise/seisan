@@ -1,4 +1,9 @@
-import type { MoneyByMemberId, ProjectMember, ProjectRecord, RecordDescription } from "./api";
+import type {
+  MoneyByMemberId,
+  ProjectMember,
+  ProjectRecord,
+  RecordDescription,
+} from "./projectTypes";
 
 export { formatRelativeTime } from "./relativeTime";
 
@@ -88,7 +93,11 @@ export function recordTitle(record: ProjectRecord, members: ProjectMember[]): st
     return `Paid ${formatCents(paid)} for ${description.name}`;
   }
   if (description.type === "transfer") {
-    return `Transferred ${memberName(members, description.to)} ${formatCents(description.amount)}`;
+    const destinations = transferDestinations(description);
+    return `Transferred ${formatMemberList(
+      members,
+      destinations.map((destination) => destination.id),
+    )} ${formatCents(destinations.reduce((total, destination) => total + destination.amount, 0))}`;
   }
   if (description.type === "promise") {
     return promiseCardTitle(description, members);
@@ -106,10 +115,12 @@ export function recordDetailTitle(record: ProjectRecord, members: ProjectMember[
   }
 
   if (description.type === "transfer") {
-    return `${memberName(members, description.from)} transferred ${memberName(
-      members,
-      description.to,
-    )} ${formatCents(description.amount)}`;
+    return `${memberName(members, transferSourceMemberId(description))} transferred ${formatList(
+      transferDestinations(description).map(
+        (destination) =>
+          `${memberName(members, destination.id)} ${formatCents(destination.amount)}`,
+      ),
+    )}`;
   }
 
   if (description.type === "promise") {
@@ -139,6 +150,16 @@ function formatMemberList(members: ProjectMember[], memberIds: number[]): string
     .join(", ")}, and ${memberName(members, memberIds[memberIds.length - 1])}`;
 }
 
+function formatList(items: string[]): string {
+  if (items.length <= 1) {
+    return items[0] ?? "someone";
+  }
+  if (items.length === 2) {
+    return `${items[0]} and ${items[1]}`;
+  }
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
 export function sumMoney(map: MoneyByMemberId): number {
   return Object.values(map).reduce((total, amount) => total + amount, 0);
 }
@@ -153,10 +174,14 @@ export function negateMoneyMap(map: MoneyByMemberId): MoneyByMemberId {
 
 export function deriveDelta(description: RecordDescription): MoneyByMemberId {
   if (description.type === "transfer") {
-    return normalizeMoneyMap({
-      [description.from]: -description.amount,
-      [description.to]: description.amount,
-    });
+    const delta: MoneyByMemberId = {};
+    let total = 0;
+    for (const destination of transferDestinations(description)) {
+      delta[String(destination.id)] = (delta[String(destination.id)] ?? 0) + destination.amount;
+      total += destination.amount;
+    }
+    delta[String(transferSourceMemberId(description))] = -total;
+    return normalizeMoneyMap(delta);
   }
   if (description.type === "promise") {
     return normalizeMoneyMap({
@@ -176,6 +201,20 @@ export function deriveDelta(description: RecordDescription): MoneyByMemberId {
     delta[memberId] = (delta[memberId] ?? 0) - amount;
   }
   return normalizeMoneyMap(delta);
+}
+
+type TransferRecordDescription = Extract<RecordDescription, { type: "transfer" }>;
+
+export function transferSourceMemberId(description: TransferRecordDescription): number {
+  return "from" in description ? description.from : description.src;
+}
+
+function transferDestinations(
+  description: TransferRecordDescription,
+): Array<{ id: number; amount: number }> {
+  return "from" in description
+    ? [{ id: description.to, amount: description.amount }]
+    : description.dests;
 }
 
 export function normalizeMoneyMap(map: Record<string | number, number>): MoneyByMemberId {

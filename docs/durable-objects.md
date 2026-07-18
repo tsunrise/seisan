@@ -26,6 +26,17 @@ Use this before changing Durable Object classes, storage schemas, migrations, or
 - Keep the summary good enough for project lists; it does not need to be perfectly fresh.
 - When a `ProjectStore` mutation affects project-list data, call `queueProjectSummarySync()` rather than writing registry summary rows or Cache API entries inline.
 
+## Settlement Plan Cache
+
+- `ProjectStore` stores the settlement plan and its `latestRecordId` together in the
+  `settlementPlanCache` Durable Object KV value.
+- Cache reads compare against `MAX(records.id)`, using zero for an empty ledger. This SQL value is
+  authoritative even if project metadata KV lags a completed record transaction.
+- Record changes invalidate the cache lazily through the ID mismatch. The cache has no TTL and does
+  not need eager deletion when a record is posted.
+- Treat malformed cached JSON as a miss. Do not cache a computed plan when stored balances fail the
+  safe-integer or zero-sum invariants.
+
 ## Public Durable Object Methods
 
 Public Durable Object methods should follow the local pattern:

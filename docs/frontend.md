@@ -40,6 +40,9 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
   timeline. Missing category metadata renders as `Others` with the default expense icon.
 - Expense markers use category icons; transfer and promise markers use their hardcoded record-type
   icons. Expense rows show the resolved category name directly below the record title.
+- Transfer readers support both legacy single-recipient records and multi-recipient records. For a
+  multi-recipient transfer, summaries show the recipient list and total while details show each
+  recipient's amount; the source member remains the timeline actor.
 - `shared/icon-names.ts` is the backend/frontend icon contract, and `NamedIcon` is the only frontend
   name-to-MUI mapping. Keep category icons semantically distinct; unknown names use the expense icon.
 

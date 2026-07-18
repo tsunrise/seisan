@@ -6,9 +6,11 @@ import {
   PROJECTS_REGISTRY_NAME,
   PROJECT_SUMMARY_SYNC_DELAY_MS,
   MoneyByMemberIdUtils,
+  SettlementPlanUtils,
   ProjectNameUtils,
   ProjectId,
   ProjectEmailsUtils,
+  TransferBatch,
   type ProjectAcl,
   type ProjectAclType,
   type ProjectJoin,
@@ -45,6 +47,12 @@ const ProjectMetadata = z.object({
   updated_at: z.number().int().nonnegative(),
 });
 type ProjectMetadata = z.infer<typeof ProjectMetadata>;
+
+const SettlementPlanCache = z.object({
+  latestRecordId: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  transfers: z.array(TransferBatch).max(ABSOLUTE_LIST_LIMIT),
+});
+type SettlementPlanCache = z.infer<typeof SettlementPlanCache>;
 
 interface MemberRow extends Record<string, SqlStorageValue> {
   id: number;
@@ -87,6 +95,7 @@ interface ActiveLinkedMemberRow extends Record<string, SqlStorageValue> {
 
 const INITIALIZED_KEY = "initialized";
 const PROJECT_METADATA_KEY = "projectMetadata";
+const SETTLEMENT_PLAN_CACHE_KEY = "settlementPlanCache";
 const OWNER_LIMITS_POLICY_TTL_SECONDS = 10;
 
 type ProjectStoreError =
@@ -210,6 +219,7 @@ export class ProjectStore extends DurableObject<Env> {
       return this.getMembersForResponse({ includeLinkedEmails: true });
     });
 
+    this.ctx.storage.kv.delete(SETTLEMENT_PLAN_CACHE_KEY);
     this.saveProjectMetadata(metadata);
     this.ctx.storage.kv.put(INITIALIZED_KEY, true);
     this.initialized = true;
@@ -306,8 +316,15 @@ export class ProjectStore extends DurableObject<Env> {
       }
     }
     if (description.type === "transfer") {
-      referencedMemberIds.add(description.from);
-      referencedMemberIds.add(description.to);
+      if ("from" in description) {
+        referencedMemberIds.add(description.from);
+        referencedMemberIds.add(description.to);
+      } else {
+        referencedMemberIds.add(description.src);
+        for (const destination of description.dests) {
+          referencedMemberIds.add(destination.id);
+        }
+      }
     }
     if (description.type === "promise") {
       referencedMemberIds.add(description.debtorMemberId);
@@ -420,6 +437,37 @@ export class ProjectStore extends DurableObject<Env> {
       balance,
       updatedAt: meta.updated_at,
     };
+  }
+
+  settle(input: {
+    callerEmail?: string | null;
+  }):
+    | { ok: true; transfers: TransferBatch[] }
+    | { ok: false; error: "uninitialized" | "forbidden" | "invalid_balance" } {
+    const metadata = this.getProjectMetadata(input.callerEmail);
+    if (!metadata.ok) {
+      return metadata;
+    }
+
+    const latestRecordId = this.getMaxRecordId();
+    const cached = this.readSettlementPlanCache();
+    if (cached?.latestRecordId === latestRecordId) {
+      return { ok: true, transfers: cached.transfers };
+    }
+
+    const balance = Object.fromEntries(
+      this.ctx.storage.sql
+        .exec<BalanceRow>("SELECT member_id, amount_cents FROM balances ORDER BY member_id")
+        .toArray()
+        .map((row) => [String(row.member_id), row.amount_cents]),
+    );
+    const transfers = SettlementPlanUtils.create(balance);
+    if (!transfers) {
+      return { ok: false, error: "invalid_balance" };
+    }
+
+    this.writeSettlementPlanCache({ latestRecordId, transfers });
+    return { ok: true, transfers };
   }
 
   getProjectBalance(input: {
@@ -934,6 +982,28 @@ export class ProjectStore extends DurableObject<Env> {
     return parsed.data;
   }
 
+  private readSettlementPlanCache(): SettlementPlanCache | null {
+    const raw = this.ctx.storage.kv.get<string>(SETTLEMENT_PLAN_CACHE_KEY);
+    if (typeof raw !== "string") {
+      return null;
+    }
+
+    try {
+      const parsed = SettlementPlanCache.safeParse(JSON.parse(raw));
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private writeSettlementPlanCache(cache: SettlementPlanCache): void {
+    const parsed = SettlementPlanCache.safeParse(cache);
+    if (!parsed.success) {
+      throw new Error("invalid settlement plan cache");
+    }
+    this.ctx.storage.kv.put(SETTLEMENT_PLAN_CACHE_KEY, JSON.stringify(parsed.data));
+  }
+
   private async loadOwnerLimitsPolicy(): Promise<LimitsPolicy> {
     const ownerEmail = this.getMeta()?.owner_email;
     if (!ownerEmail) {
@@ -970,7 +1040,13 @@ export class ProjectStore extends DurableObject<Env> {
       return null;
     }
     if (description.type === "transfer") {
-      return policy.allowsMoneyAmount(description.amount) ? null : "money_limit_exceeded";
+      const amounts =
+        "from" in description
+          ? [description.amount]
+          : description.dests.map((destination) => destination.amount);
+      return amounts.every((amount) => policy.allowsMoneyAmount(amount))
+        ? null
+        : "money_limit_exceeded";
     }
     if (description.type === "promise") {
       if (description.reason !== undefined && !policy.allowsExpenseName(description.reason)) {
@@ -1409,13 +1485,40 @@ export class ProjectStore extends DurableObject<Env> {
     }
 
     if (description.type === "transfer") {
-      if (description.from === description.to || description.amount <= 0) {
+      if ("from" in description) {
+        if (description.from === description.to || description.amount <= 0) {
+          return null;
+        }
+        return MoneyByMemberIdUtils.normalize({
+          [String(description.from)]: -description.amount,
+          [String(description.to)]: description.amount,
+        });
+      }
+
+      if (description.dests.length === 0 || description.dests.length > ABSOLUTE_LIST_LIMIT) {
         return null;
       }
-      return MoneyByMemberIdUtils.normalize({
-        [String(description.from)]: -description.amount,
-        [String(description.to)]: description.amount,
-      });
+      const delta: MoneyByMemberId = {};
+      const seenDestinationIds = new Set<number>();
+      let total = 0;
+      for (const destination of description.dests) {
+        if (
+          destination.id === description.src ||
+          seenDestinationIds.has(destination.id) ||
+          !Number.isSafeInteger(destination.amount) ||
+          destination.amount <= 0
+        ) {
+          return null;
+        }
+        seenDestinationIds.add(destination.id);
+        total += destination.amount;
+        if (!Number.isSafeInteger(total)) {
+          return null;
+        }
+        MoneyByMemberIdUtils.add(delta, destination.id, destination.amount);
+      }
+      MoneyByMemberIdUtils.add(delta, description.src, -total);
+      return MoneyByMemberIdUtils.normalize(delta);
     }
 
     if (description.type === "promise") {
@@ -1460,9 +1563,12 @@ export class ProjectStore extends DurableObject<Env> {
       return true;
     }
     return (
-      description.type === "expense" &&
-      (ProjectStore.hasOversizedMoneyMap(description.paid) ||
-        ProjectStore.hasOversizedMoneyMap(description.liability))
+      (description.type === "expense" &&
+        (ProjectStore.hasOversizedMoneyMap(description.paid) ||
+          ProjectStore.hasOversizedMoneyMap(description.liability))) ||
+      (description.type === "transfer" &&
+        "dests" in description &&
+        description.dests.length > ABSOLUTE_LIST_LIMIT)
     );
   }
 
