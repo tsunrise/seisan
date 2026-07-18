@@ -15,6 +15,7 @@ import {
   createMember,
   createProject,
   dispatch,
+  getProjectSummaryAlarm,
   getProject,
   getProjectStoreStub,
   jsonBody,
@@ -1169,6 +1170,7 @@ describe("project routes", () => {
       name: "Bob",
       deleted: false,
       linkedEmail: memberEmail,
+      config: {},
     });
 
     const outsider = await dispatch(`/project/${project.id}`, testEnv, {
@@ -1200,8 +1202,8 @@ describe("project routes", () => {
 
     const authenticatedViewer = await getProject(testEnv, project.id, "outsider@example.com");
     expect(authenticatedViewer.members).toEqual([
-      { id: 1, name: "Alice", deleted: false, linkedEmail: "owner@example.com" },
-      { id: 2, name: "Bob", deleted: false },
+      { id: 1, name: "Alice", deleted: false, linkedEmail: "owner@example.com", config: {} },
+      { id: 2, name: "Bob", deleted: false, config: {} },
     ]);
   });
 
@@ -1299,14 +1301,25 @@ describe("project routes", () => {
     );
     expect(bobJoin.status).toBe(201);
     expect(await bobJoin.json()).toEqual({
-      member: { id: 2, name: "Bob", deleted: false, linkedEmail: "member@example.com" },
+      member: {
+        id: 2,
+        name: "Bob",
+        deleted: false,
+        linkedEmail: "member@example.com",
+      },
     });
 
     const bobView = await getProject(testEnv, project.id, "member@example.com");
     expect(bobView.balance).toEqual({ "1": -2000, "2": 2000 });
     expect(bobView.members).toEqual([
-      { id: 1, name: "Alice", deleted: false, linkedEmail: "owner@example.com" },
-      { id: 2, name: "Bob", deleted: false, linkedEmail: "member@example.com" },
+      { id: 1, name: "Alice", deleted: false, linkedEmail: "owner@example.com", config: {} },
+      {
+        id: 2,
+        name: "Bob",
+        deleted: false,
+        linkedEmail: "member@example.com",
+        config: {},
+      },
     ]);
 
     expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
@@ -1834,7 +1847,12 @@ describe("project routes", () => {
 
     expect(carolJoin.status).toBe(201);
     expect(await carolJoin.json()).toEqual({
-      member: { id: 2, name: "Carol", deleted: false, linkedEmail: "carol@example.com" },
+      member: {
+        id: 2,
+        name: "Carol",
+        deleted: false,
+        linkedEmail: "carol@example.com",
+      },
     });
 
     const duplicateJoin = await dispatch(
@@ -1869,7 +1887,12 @@ describe("project routes", () => {
     );
     expect(selfRename.status).toBe(200);
     expect(await selfRename.json()).toEqual({
-      member: { id: bob.id, name: "Robert", deleted: false, linkedEmail: "member@example.com" },
+      member: {
+        id: bob.id,
+        name: "Robert",
+        deleted: false,
+        linkedEmail: "member@example.com",
+      },
     });
 
     const selfUnlink = await dispatch(
@@ -1917,6 +1940,237 @@ describe("project routes", () => {
     });
   });
 
+  it("replaces, shallow-patches, and clears member config without publishing it", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+    const bob = await createMember(testEnv, project.id, "Bob");
+    expect(bob).not.toHaveProperty("config");
+
+    const bobJoin = await dispatch(
+      `/project/${project.id}/join`,
+      testEnv,
+      jsonBody("POST", { memberId: bob.id }, await authHeaders("member@example.com")),
+    );
+    expect(bobJoin.status).toBe(201);
+    expect(await bobJoin.json()).toEqual({
+      member: {
+        id: bob.id,
+        name: "Bob",
+        deleted: false,
+        linkedEmail: "member@example.com",
+      },
+    });
+
+    const selfOtherWrite = await dispatch(
+      `/project/${project.id}/members/1/config`,
+      testEnv,
+      jsonBody("PATCH", { size: 2 }, await authHeaders("member@example.com")),
+    );
+    expect(selfOtherWrite.status).toBe(403);
+
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
+
+    const replace = await dispatch(
+      `/project/${project.id}/members/${bob.id}/config`,
+      testEnv,
+      jsonBody(
+        "PUT",
+        { size: 2, paymentMethod: "  venmo: bob@example.com  " },
+        await authHeaders(),
+      ),
+    );
+    expect(replace.status).toBe(200);
+    expect(await replace.json()).toEqual({
+      size: 2,
+      paymentMethod: "venmo: bob@example.com",
+    });
+
+    const patchSize = await dispatch(
+      `/project/${project.id}/members/${bob.id}/config`,
+      testEnv,
+      jsonBody("PATCH", { size: 3 }, await authHeaders("member@example.com")),
+    );
+    expect(patchSize.status).toBe(200);
+    expect(await patchSize.json()).toEqual({
+      size: 3,
+      paymentMethod: "venmo: bob@example.com",
+    });
+
+    const removePaymentMethod = await dispatch(
+      `/project/${project.id}/members/${bob.id}/config`,
+      testEnv,
+      jsonBody("PATCH", { paymentMethod: null }, await authHeaders("member@example.com")),
+    );
+    expect(removePaymentMethod.status).toBe(200);
+    expect(await removePaymentMethod.json()).toEqual({ size: 3 });
+
+    const emptyPatch = await dispatch(
+      `/project/${project.id}/members/${bob.id}/config`,
+      testEnv,
+      jsonBody("PATCH", {}, await authHeaders("member@example.com")),
+    );
+    expect(emptyPatch.status).toBe(200);
+    expect(await emptyPatch.json()).toEqual({ size: 3 });
+
+    const authenticatedProject = await getProject(testEnv, project.id, "member@example.com");
+    expect(authenticatedProject.members.find((member) => member.id === bob.id)?.config).toEqual({
+      size: 3,
+    });
+
+    expect(await getProjectSummaryAlarm(testEnv, project.id)).toBeNull();
+    const registryProject = (await listProjectsFromRegistry(testEnv, "member@example.com")).find(
+      (listed) => listed.id === project.id,
+    );
+    expect(registryProject?.member).toMatchObject({ id: bob.id, name: "Bob" });
+    expect(registryProject?.member).not.toHaveProperty("config");
+    const rawRegistryMember = await runInDurableObject(
+      testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
+      async (_instance, state) =>
+        state.storage.sql
+          .exec<
+            { member_json: string } & Record<string, SqlStorageValue>
+          >("SELECT member_json FROM project_members WHERE email = ? AND project_id = ?", "member@example.com", project.id)
+          .toArray()[0]?.member_json,
+    );
+    expect(JSON.parse(rawRegistryMember ?? "null")).not.toHaveProperty("config");
+
+    const clear = await dispatch(
+      `/project/${project.id}/members/${bob.id}/config`,
+      testEnv,
+      jsonBody("PUT", {}, await authHeaders()),
+    );
+    expect(clear.status).toBe(200);
+    expect(await clear.json()).toEqual({});
+  });
+
+  it("validates member config at HTTP boundaries", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv);
+    const bob = await createMember(testEnv, project.id, "Bob");
+    const path = `/project/${project.id}/members/${bob.id}/config`;
+
+    const invalidReplacements = [
+      { size: 0 },
+      { size: 1.5 },
+      { size: Number.MAX_SAFE_INTEGER + 1 },
+      { size: null },
+      { paymentMethod: "   " },
+      { paymentMethod: "x".repeat(10_001) },
+      { unknown: true },
+    ];
+    for (const config of invalidReplacements) {
+      const response = await dispatch(path, testEnv, jsonBody("PUT", config, await authHeaders()));
+      expect(response.status).toBe(400);
+    }
+
+    for (const patch of [{ size: 0 }, { paymentMethod: " " }, { unknown: true }]) {
+      const response = await dispatch(path, testEnv, jsonBody("PATCH", patch, await authHeaders()));
+      expect(response.status).toBe(400);
+    }
+  });
+
+  it("requires authenticated project access to read config and owner or self access to write", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+    const bob = await createMember(testEnv, project.id, "Bob");
+    const path = `/project/${project.id}/members/${bob.id}/config`;
+
+    const guestConfig = await dispatch(path, testEnv);
+    expect(guestConfig.status).toBe(401);
+
+    const guestProject = await dispatch(`/project/${project.id}`, testEnv);
+    expect(guestProject.status).toBe(200);
+    const guestBody = (await guestProject.json()) as ProjectResponse;
+    expect(guestBody.members.every((member) => member.config === undefined)).toBe(true);
+
+    const outsiderRead = await dispatch(path, testEnv, {
+      headers: await authHeaders("outsider@example.com"),
+    });
+    expect(outsiderRead.status).toBe(200);
+    expect(await outsiderRead.json()).toEqual({});
+
+    const outsiderWrite = await dispatch(
+      path,
+      testEnv,
+      jsonBody("PATCH", { size: 2 }, await authHeaders("outsider@example.com")),
+    );
+    expect(outsiderWrite.status).toBe(403);
+
+    const restricted = await createProject(testEnv, {
+      acl: { type: "restricted", emails: ["viewer@example.com"] },
+    });
+    const restrictedPath = `/project/${restricted.id}/members/1/config`;
+    const allowedRead = await dispatch(restrictedPath, testEnv, {
+      headers: await authHeaders("viewer@example.com"),
+    });
+    expect(allowedRead.status).toBe(200);
+
+    const deniedRead = await dispatch(restrictedPath, testEnv, {
+      headers: await authHeaders("outsider@example.com"),
+    });
+    expect(deniedRead.status).toBe(403);
+  });
+
+  it("isolates invalid stored member config and permits reads after soft deletion", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv);
+    const bob = await createMember(testEnv, project.id, "Bob");
+    const carol = await createMember(testEnv, project.id, "Carol");
+    const store = await getProjectStoreStub(testEnv, project.id);
+
+    await runInDurableObject(store, async (_instance, state) => {
+      state.storage.sql.exec(
+        "UPDATE members SET config = ? WHERE id = ?",
+        '{"size":2,"unknown":true}',
+        bob.id,
+      );
+      state.storage.sql.exec("UPDATE members SET config = ? WHERE id = ?", '{"size":3}', carol.id);
+    });
+
+    const projectView = await getProject(testEnv, project.id);
+    expect(projectView.members.find((member) => member.id === bob.id)?.config).toEqual({});
+    expect(projectView.members.find((member) => member.id === carol.id)?.config).toEqual({
+      size: 3,
+    });
+
+    await runInDurableObject(store, async (_instance, state) => {
+      state.storage.sql.exec("UPDATE members SET config = ? WHERE id = ?", "not-json", bob.id);
+    });
+    const invalidRead = await dispatch(`/project/${project.id}/members/${bob.id}/config`, testEnv, {
+      headers: await authHeaders(),
+    });
+    expect(invalidRead.status).toBe(200);
+    expect(await invalidRead.json()).toEqual({});
+
+    const recover = await dispatch(
+      `/project/${project.id}/members/${bob.id}/config`,
+      testEnv,
+      jsonBody("PATCH", { paymentMethod: " zelle: 123456789 " }, await authHeaders()),
+    );
+    expect(recover.status).toBe(200);
+    expect(await recover.json()).toEqual({ paymentMethod: "zelle: 123456789" });
+
+    const deleteBob = await dispatch(`/project/${project.id}/members/${bob.id}`, testEnv, {
+      method: "DELETE",
+      headers: await authHeaders(),
+    });
+    expect(deleteBob.status).toBe(204);
+
+    const deletedRead = await dispatch(`/project/${project.id}/members/${bob.id}/config`, testEnv, {
+      headers: await authHeaders(),
+    });
+    expect(deletedRead.status).toBe(200);
+    expect(await deletedRead.json()).toEqual({ paymentMethod: "zelle: 123456789" });
+
+    const deletedWrite = await dispatch(
+      `/project/${project.id}/members/${bob.id}/config`,
+      testEnv,
+      jsonBody("PUT", { size: 2 }, await authHeaders()),
+    );
+    expect(deletedWrite.status).toBe(409);
+    expect(await deletedWrite.json()).toEqual({ error: "already_deleted" });
+  });
+
   it("forbids owner member self-removal through generic member routes", async () => {
     const { env: testEnv } = makeEnv();
     const project = await createProject(testEnv);
@@ -1943,7 +2197,7 @@ describe("project routes", () => {
 
     const ownerView = await getProject(testEnv, project.id);
     expect(ownerView.members).toEqual([
-      { id: 1, name: "owner", deleted: false, linkedEmail: "owner@example.com" },
+      { id: 1, name: "owner", deleted: false, linkedEmail: "owner@example.com", config: {} },
     ]);
 
     const postAfterBlockedRemoval = await dispatch(
@@ -2010,8 +2264,8 @@ describe("project routes", () => {
     const bobView = await getProject(testEnv, project.id, memberEmail);
     expect(bobView.acl).toEqual({ type: "restricted", emails: [memberEmail] });
     expect(bobView.members).toEqual([
-      { id: 1, name: "owner", deleted: false, linkedEmail: "owner@example.com" },
-      { id: 2, name: "Bob", deleted: false },
+      { id: 1, name: "owner", deleted: false, linkedEmail: "owner@example.com", config: {} },
+      { id: 2, name: "Bob", deleted: false, config: {} },
     ]);
 
     const postAfterLeave = await dispatch(
@@ -2073,8 +2327,8 @@ describe("project routes", () => {
 
     const ownerView = await getProject(testEnv, project.id);
     expect(ownerView.members).toEqual([
-      { id: 1, name: "owner", deleted: false, linkedEmail: "owner@example.com" },
-      { id: 2, name: "Bob", deleted: false },
+      { id: 1, name: "owner", deleted: false, linkedEmail: "owner@example.com", config: {} },
+      { id: 2, name: "Bob", deleted: false, config: {} },
     ]);
 
     expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
@@ -2140,8 +2394,8 @@ describe("project routes", () => {
 
     const afterDelete = await getProject(testEnv, project.id);
     expect(afterDelete.members).toEqual([
-      { id: 1, name: "owner", deleted: false, linkedEmail: "owner@example.com" },
-      { id: 2, name: "Bob", deleted: true },
+      { id: 1, name: "owner", deleted: false, linkedEmail: "owner@example.com", config: {} },
+      { id: 2, name: "Bob", deleted: true, config: {} },
     ]);
     expect(afterDelete.records).toMatchObject([{ id: 1 }]);
 

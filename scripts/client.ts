@@ -13,6 +13,8 @@ export const DEFAULT_API_BASE_URL = "http://localhost:5173";
 export const DEV_API_BASE_URL = "https://dev.seisan.waga.me";
 export const PRODUCTION_API_BASE_URL = "https://seisan.waga.me";
 
+// TODO(schema-source): publish a canonical API-key wire schema for both the Worker and Node client
+// instead of maintaining this format separately from worker/apiKey.ts.
 const API_KEY_PATTERN = /^seisan_v1_[A-Za-z0-9_-]{16}_[A-Za-z0-9_-]{32}$/u;
 
 export type ApiTargetEnv = "local" | "dev" | "production";
@@ -35,6 +37,8 @@ export interface SeisanClientOptions {
   cloudflareAccessTokenProvider?: CloudflareAccessTokenProvider;
 }
 
+// TODO(schema-source): import category operation types from canonical shared schemas instead of
+// duplicating worker/category, OpenAPI, and frontend declarations.
 export interface Category {
   id: string;
   name: string;

@@ -20,6 +20,10 @@ interface SqliteCatalogRow extends Record<string, SqlStorageValue> {
   sql: string | null;
 }
 
+interface MemberConfigRow extends Record<string, SqlStorageValue> {
+  config: string;
+}
+
 describe("durable objects", () => {
   afterEach(cleanupWorkerTestState);
 
@@ -69,8 +73,13 @@ describe("durable objects", () => {
     await runInDurableObject(
       testEnv.PROJECT_STORE.get(testEnv.PROJECT_STORE.idFromString(cachedProject?.doId ?? "")),
       async (_instance, state) => {
-        await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(3);
+        await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(4);
         await expect(state.storage.get<boolean>("initialized")).resolves.toBe(true);
+        expect(
+          state.storage.sql
+            .exec<MemberConfigRow>("SELECT config FROM members WHERE id = 1")
+            .toArray()[0]?.config,
+        ).toBe("{}");
       },
     );
   });

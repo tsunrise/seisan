@@ -43,4 +43,5 @@ export const projectStoreMigrations: SqlMigration[] = [
   ],
   [`ALTER TABLE project_meta ADD COLUMN public_id TEXT`],
   [`DROP TABLE IF EXISTS acl_allowed_list`, `DROP TABLE IF EXISTS project_meta`],
+  [`ALTER TABLE members ADD COLUMN config TEXT NOT NULL DEFAULT '{}'`],
 ];

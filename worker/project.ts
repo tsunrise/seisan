@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-import { normalizeEmail } from "./email";
-import { ABSOLUTE_LIST_LIMIT } from "./limits";
+import { normalizeEmail, normalizedEmailSchema } from "./email";
+import { ABSOLUTE_LIST_LIMIT, ABSOLUTE_TEXT_LIMIT } from "./limits";
 
 export const PROJECTS_REGISTRY_NAME = "projects";
 export const PROJECT_SUMMARY_SYNC_DELAY_MS = 10_000;
@@ -16,11 +16,50 @@ export const ProjectId = z
   .transform((id) => id.toLowerCase());
 export type ProjectId = z.infer<typeof ProjectId>;
 
+// TODO(schema-source): replace these project primitive aliases with canonical zod schemas shared by
+// route validation and OpenAPI instead of maintaining their constraints in multiple files.
 export type Cents = number;
 export type MemberId = number;
 export type MemberName = string;
 export type ProjectName = string;
 export type MoneyByMemberId = Record<string, number>;
+
+const ProjectMemberSize = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+const ProjectMemberPaymentMethod = z.string().trim().min(1).max(ABSOLUTE_TEXT_LIMIT);
+
+export const ProjectMemberConfig = z
+  .object({
+    size: ProjectMemberSize.optional().meta({
+      description: "Number of people represented by this project member.",
+      examples: [2],
+    }),
+    paymentMethod: ProjectMemberPaymentMethod.optional().meta({
+      description: "Opaque instructions for transferring money to this project member.",
+      examples: ["venmo: mika@example.com"],
+    }),
+  })
+  .strict()
+  .meta({ description: "Optional metadata for a project member." });
+export type ProjectMemberConfig = z.infer<typeof ProjectMemberConfig>;
+
+export const ProjectMemberConfigPatch = z
+  .object({
+    size: ProjectMemberSize.nullable()
+      .optional()
+      .meta({
+        description: "Replacement represented group size, or null to remove it.",
+        examples: [3, null],
+      }),
+    paymentMethod: ProjectMemberPaymentMethod.nullable()
+      .optional()
+      .meta({
+        description: "Replacement payment instructions, or null to remove them.",
+        examples: ["zelle: 123456789", null],
+      }),
+  })
+  .strict()
+  .meta({ description: "A shallow member-config patch." });
+export type ProjectMemberConfigPatch = z.infer<typeof ProjectMemberConfigPatch>;
 
 export class ProjectNameUtils {
   static normalizeMember(name: string): string {
@@ -102,6 +141,8 @@ export class MoneyByMemberIdUtils {
   }
 }
 
+// TODO(schema-source): replace the record-description type declarations with canonical zod schemas
+// reused by project routes and OpenAPI, then infer these types from those schemas.
 export type ExpenseDescription = {
   type: "expense";
   name: string;
@@ -364,18 +405,40 @@ export type RecordDescription =
   | PromiseDescription
   | RevertDescription;
 
+// TODO(schema-source): canonicalize the remaining project ACL, mutation, record, and summary shapes
+// so their route, OpenAPI, registry, and frontend declarations can import one source of truth.
 export type ProjectAcl = { type: "public" } | { type: "restricted"; emails: string[] };
 export type ProjectAclType = ProjectAcl["type"];
 
 export type ProjectMemberPatch = { name: MemberName } | { email: "" };
 export type ProjectJoin = { memberId: MemberId } | { name: MemberName };
 
-export interface ProjectMember {
-  id: number;
-  name: string;
-  deleted: boolean;
-  linkedEmail?: string;
-}
+export const ProjectMember = z
+  .object({
+    id: PositiveSafeInteger.meta({ description: "Project-local member ID.", examples: [1] }),
+    name: z.string().meta({ description: "Member display name.", examples: ["Mika"] }),
+    deleted: z
+      .boolean()
+      .meta({ description: "Whether the member has been soft-deleted.", examples: [false] }),
+    linkedEmail: normalizedEmailSchema.optional().meta({
+      description: "Account currently linked to this member, when present.",
+      examples: ["mika@example.com"],
+    }),
+  })
+  .strict()
+  .meta({ description: "A person participating in a project." });
+export type ProjectMember = z.infer<typeof ProjectMember>;
+
+export const ProjectMemberFull = ProjectMember.extend({
+  config: ProjectMemberConfig.optional().meta({
+    description: "Member metadata, omitted from logged-out public-project responses.",
+  }),
+})
+  .strict()
+  .meta({
+    description: "A project member with metadata included for authenticated full project reads.",
+  });
+export type ProjectMemberFull = z.infer<typeof ProjectMemberFull>;
 
 export interface ProjectRecord {
   id: number;

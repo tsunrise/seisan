@@ -9,3 +9,5 @@ Use this before changing `/api/registry`, project summaries, or project-list cac
 - Do not patch, delete, or carry custom expiry metadata for project-list Cache API entries.
 - The project summary `lastSyncAt` comes from `ProjectsRegistry` summary rows, not from Cache API write time.
 - Mutations that affect project-list summaries should queue a `ProjectStore` alarm rather than writing the Cache API directly.
+- Member config is not part of project-list summaries or `project_members.member_json`, so config
+  mutations do not queue a summary alarm or affect the per-email Cache API entry.

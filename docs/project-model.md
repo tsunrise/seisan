@@ -11,6 +11,19 @@ Use this before changing project, member, record, ACL, or balance behavior.
 - Owner identity is stored in `ProjectStore`.
 - Owner-only checks should happen in `ProjectStore` unless the operation only touches registry metadata.
 
+## Member Config
+
+- A member may have optional `size` and `paymentMethod` metadata in its JSON config. `size` is the
+  positive number of people represented by that member; it does not change balances, expense
+  splitting, settlement calculations, or membership limits.
+- `paymentMethod` is an opaque, trimmed payment instruction string. Seisan does not parse provider
+  names or account identifiers from it.
+- Authenticated full project reads include member configs. Logged-out public-project responses omit
+  config, while ordinary member responses and registry summaries never include it. The owner or the
+  account linked to a member may replace or shallow-patch that member's config.
+- Stored member config is parsed independently with zod. Malformed config falls back to an empty
+  object for that member so one bad row cannot break project or registry reads.
+
 ## Balances And Records
 
 - Balances are stored by member ID, in cents.

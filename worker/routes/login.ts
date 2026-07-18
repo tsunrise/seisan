@@ -37,6 +37,8 @@ type LocalDevLoginEnv = Env & {
   LOCAL_DEV_LOGIN_CODE?: string;
 };
 
+// TODO(schema-source): share login request schemas with worker/model.ts instead of duplicating the
+// runtime and OpenAPI definitions.
 const LoginAttempt = z.object({
   email: normalizedEmailSchema,
   turnstileToken: z.string().min(1).max(2048).optional(),

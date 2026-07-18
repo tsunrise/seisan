@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 
-import { type ProjectMember, type ProjectSummary, type WithSyncTime, ProjectId } from "../project";
+import { ProjectId, type ProjectMember, type ProjectSummary, type WithSyncTime } from "../project";
 import { LimitsPolicy, type Limits } from "../limits";
 import { backfill, runSqlMigrations, type SqlMigration } from "./migrations";
 
@@ -73,6 +73,8 @@ export interface ProjectSummarySyncInput {
   members: ProjectSummarySyncMember[];
 }
 
+// TODO(schema-source): move registry admin result shapes to canonical schemas shared with the
+// frontend API client instead of maintaining parallel interfaces.
 export interface AdminPage {
   limit: number;
   offset: number;
@@ -722,7 +724,9 @@ function parseProjectMember(value: string | null): ProjectMember | null {
     return null;
   }
   try {
-    return JSON.parse(value) as ProjectMember;
+    const member = JSON.parse(value) as ProjectMember & { config?: unknown };
+    delete member.config;
+    return member;
   } catch {
     return null;
   }

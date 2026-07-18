@@ -30,6 +30,8 @@ import {
   MoneyByMemberIdUtils,
   ProjectEmailsUtils,
   ProjectId,
+  ProjectMemberConfig,
+  ProjectMemberConfigPatch,
   ProjectNameUtils,
   TransferBatch,
   type ProjectRecord,
@@ -38,6 +40,8 @@ import {
 const PROJECT_REGISTRY_CACHE_TTL_SECONDS = 60;
 const memberIdParamRegex = /^[1-9]\d*$/u;
 
+// TODO(schema-source): move the project primitive, money-map, record-description, and ACL schemas
+// below into the project domain module and reuse them here and in OpenAPI.
 const Cents = z.number().int().min(-Number.MAX_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER);
 const MemberId = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 
@@ -209,6 +213,8 @@ type AppendRecordRateLimitResult =
 
 export const projectApp = new Hono<EnvWithIdentity>();
 
+// TODO(schema-source): share canonical request-body schemas between these project routes and
+// worker/model.ts instead of maintaining parallel route and OpenAPI definitions.
 const ProjectCreate = z.object({
   name: ProjectName,
   acl: ProjectAcl,
@@ -865,6 +871,144 @@ projectApp.patch(
       }
     }
     return context.json({ member: result.member });
+  },
+);
+
+projectApp.get(
+  "/project/:id/members/:memberId/config",
+  describeRoute({
+    tags: ["Project Members"],
+    summary: "Get a project member's config",
+    description:
+      "Returns optional metadata for a project member, including represented group size and payment instructions.",
+    security: OpenApiSecurity.ApiKeyBearer,
+    parameters: [OpenApiParameters.ProjectId, OpenApiParameters.MemberId],
+    responses: {
+      200: OpenApiResponses.ProjectMemberConfig,
+      ...errorResponses(400, 401, 403, 404),
+    },
+  }),
+  requireAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
+    }
+
+    const memberId = ProjectRouteParams.parseMemberId(context.req.param("memberId"));
+    if (memberId === null) {
+      return ErrorResponse.notFound();
+    }
+
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
+    const result = await projectLookup.store.getMemberConfig({
+      callerEmail: getRequiredIdentity(context).email,
+      memberId,
+    });
+    if (!result.ok) {
+      return mapProjectStoreError(result.error);
+    }
+    return context.json(result.config);
+  },
+);
+
+projectApp.put(
+  "/project/:id/members/:memberId/config",
+  describeRoute({
+    tags: ["Project Members"],
+    summary: "Replace a project member's config",
+    description:
+      "Replaces all optional metadata for a project member. An empty object clears the config.",
+    security: OpenApiSecurity.ApiKeyBearer,
+    parameters: [OpenApiParameters.ProjectId, OpenApiParameters.MemberId],
+    requestBody: OpenApiRequests.ProjectMemberConfigPut,
+    responses: {
+      200: OpenApiResponses.ProjectMemberConfig,
+      ...errorResponses(400, 401, 403, 404, 409),
+    },
+  }),
+  requireSameOriginWhenPresent,
+  requireAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
+    }
+
+    const memberId = ProjectRouteParams.parseMemberId(context.req.param("memberId"));
+    if (memberId === null) {
+      return ErrorResponse.notFound();
+    }
+
+    const parsed = await parseJson(context, ProjectMemberConfig);
+    if (!parsed.ok) {
+      return ErrorResponse.invalidRequest();
+    }
+
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
+    const result = await projectLookup.store.putMemberConfig({
+      callerEmail: getRequiredIdentity(context).email,
+      memberId,
+      config: parsed.data,
+      nowMs: Date.now(),
+    });
+    if (!result.ok) {
+      return mapProjectStoreError(result.error);
+    }
+    return context.json(result.config);
+  },
+);
+
+projectApp.patch(
+  "/project/:id/members/:memberId/config",
+  describeRoute({
+    tags: ["Project Members"],
+    summary: "Patch a project member's config",
+    description:
+      "Shallow-merges optional member metadata. A null field removes that field from the config.",
+    security: OpenApiSecurity.ApiKeyBearer,
+    parameters: [OpenApiParameters.ProjectId, OpenApiParameters.MemberId],
+    requestBody: OpenApiRequests.ProjectMemberConfigPatch,
+    responses: {
+      200: OpenApiResponses.ProjectMemberConfig,
+      ...errorResponses(400, 401, 403, 404, 409),
+    },
+  }),
+  requireSameOriginWhenPresent,
+  requireAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
+    }
+
+    const memberId = ProjectRouteParams.parseMemberId(context.req.param("memberId"));
+    if (memberId === null) {
+      return ErrorResponse.notFound();
+    }
+
+    const parsed = await parseJson(context, ProjectMemberConfigPatch);
+    if (!parsed.ok) {
+      return ErrorResponse.invalidRequest();
+    }
+
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
+    const result = await projectLookup.store.patchMemberConfig({
+      callerEmail: getRequiredIdentity(context).email,
+      memberId,
+      patch: parsed.data,
+      nowMs: Date.now(),
+    });
+    if (!result.ok) {
+      return mapProjectStoreError(result.error);
+    }
+    return context.json(result.config);
   },
 );
 

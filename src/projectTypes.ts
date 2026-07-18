@@ -11,11 +11,20 @@ export interface TransferBatch {
   dests: TransferDestination[];
 }
 
+export interface ProjectMemberConfig {
+  size?: number;
+  paymentMethod?: string;
+}
+
 export interface ProjectMember {
   id: number;
   name: string;
   deleted: boolean;
   linkedEmail?: string;
+}
+
+export interface ProjectMemberFull extends ProjectMember {
+  config?: ProjectMemberConfig;
 }
 
 export type RecordDescription =
@@ -67,6 +76,7 @@ export interface ProjectCreated {
 }
 
 export interface Project extends ProjectCreated {
+  members: ProjectMemberFull[];
   records: ProjectRecord[];
   balance: MoneyByMemberId;
   updatedAt: number;

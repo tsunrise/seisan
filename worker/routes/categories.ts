@@ -29,6 +29,8 @@ import type { ErrorResultOf } from "../result";
 
 const DEFAULT_CLASSIFY_TOP_K = 5;
 
+// TODO(schema-source): move category write and classification request schemas into the category
+// domain and reuse them here and in worker/model.ts.
 const CategoryWriteBody = z
   .object({
     name: CategoryName,

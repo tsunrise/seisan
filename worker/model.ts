@@ -5,6 +5,12 @@ import { z } from "zod";
 import { ICON_NAME_VALUES } from "../shared/icon-names";
 import { MAX_EMAIL_LENGTH } from "./email";
 import { ABSOLUTE_LIST_LIMIT, ABSOLUTE_TEXT_LIMIT } from "./limits";
+import {
+  ProjectMember,
+  ProjectMemberConfig,
+  ProjectMemberConfigPatch,
+  ProjectMemberFull,
+} from "./project";
 
 type OpenApiResponses = NonNullable<DescribeRouteOptions["responses"]>;
 type OpenApiResponse = OpenApiResponses[string];
@@ -19,6 +25,10 @@ const exampleCreatedAt = 1_767_225_600_000;
 const exampleUpdatedAt = 1_767_312_000_000;
 const exampleSessionExpiresAt = 1_767_312_000;
 
+const exampleMemberConfig = {
+  size: 2,
+  paymentMethod: "venmo: mika@example.com",
+};
 const exampleMember = {
   id: 1,
   name: "Mika",
@@ -31,6 +41,8 @@ const exampleSecondMember = {
   deleted: false,
   linkedEmail: "ren@example.com",
 };
+const exampleMemberFull = { ...exampleMember, config: exampleMemberConfig };
+const exampleSecondMemberFull = { ...exampleSecondMember, config: {} };
 const exampleAcl = {
   type: "restricted",
   emails: ["mika@example.com", "ren@example.com"],
@@ -112,6 +124,7 @@ const exampleProjectCreated = {
 };
 const exampleProject = {
   ...exampleProjectCreated,
+  members: [exampleMemberFull, exampleSecondMemberFull],
   records: exampleRecords,
   balance: { "1": 3_100, "2": -3_100 },
   updatedAt: exampleUpdatedAt,
@@ -150,6 +163,8 @@ const Email = z
   .email()
   .max(MAX_EMAIL_LENGTH)
   .meta({ description: "Normalized account email address.", examples: ["mika@example.com"] });
+// TODO(schema-source): import canonical project name, money-map, and ACL schemas once the route and
+// domain definitions are consolidated; these OpenAPI copies currently duplicate their constraints.
 const MemberName = z
   .string()
   .min(1)
@@ -170,6 +185,8 @@ const NonNegativeMoneyByMemberId = z
     description: "Non-negative integer-cent amounts keyed by project-local member ID.",
     examples: [{ "1": 6_200, "2": 6_200 }],
   });
+// TODO(schema-source): import category IDs, icons, category documents, and classification schemas
+// from worker/category/schema.ts instead of redefining their OpenAPI shapes here.
 const CategoryId = z
   .string()
   .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu)
@@ -202,20 +219,8 @@ const ProjectAcl = z
   ])
   .meta({ description: "Project access policy.", examples: [exampleAcl, { type: "public" }] });
 
-const ProjectMember = z
-  .object({
-    id: PositiveSafeInteger.meta({ description: "Project-local member ID.", examples: [1] }),
-    name: z.string().meta({ description: "Member display name.", examples: ["Mika"] }),
-    deleted: z
-      .boolean()
-      .meta({ description: "Whether the member has been soft-deleted.", examples: [false] }),
-    linkedEmail: Email.optional().meta({
-      description: "Account currently linked to this member, when present.",
-    }),
-  })
-  .strict()
-  .meta({ description: "A person participating in a project.", examples: [exampleMember] });
-
+// TODO(schema-source): replace these record-description OpenAPI schemas with canonical project
+// schemas shared with worker/project.ts and worker/routes/project.ts.
 const ExpenseDescription = z
   .object({
     type: z.literal("expense").meta({ description: "Expense record discriminator." }),
@@ -351,6 +356,8 @@ const RecordDescription = z
     ],
   });
 
+// TODO(schema-source): canonicalize project record, summary, created-project, and full-project
+// response schemas so OpenAPI, registry, Worker domain types, and frontend types share them.
 const ProjectRecord = z
   .object({
     id: PositiveSafeInteger.meta({ description: "Project-local record ID.", examples: [1] }),
@@ -427,6 +434,9 @@ const ProjectCreated = z
   .meta({ description: "Newly created project metadata.", examples: [exampleProjectCreated] });
 
 const Project = ProjectCreated.extend({
+  members: z
+    .array(ProjectMemberFull)
+    .meta({ description: "Current project members with authenticated-read metadata." }),
   records: z
     .array(ProjectRecord)
     .meta({ description: "Requested page of project ledger records, newest first." }),
@@ -558,6 +568,8 @@ const CategoryListBody = z
   })
   .strict();
 
+// TODO(schema-source): share canonical public request-body schemas with their route modules instead
+// of maintaining separate runtime and OpenAPI copies.
 const LoginAttemptRequest = z
   .object({
     email: Email,
@@ -783,6 +795,8 @@ export const OpenApiRequests = {
   ProjectAclEmails: jsonRequest(ProjectAclEmailsRequest, { emails: ["kai@example.com"] }),
   ProjectAclType: jsonRequest(ProjectAclTypeRequest, { type: "restricted" }),
   ProjectMemberCreate: jsonRequest(ProjectMemberCreateRequest, { name: "Kai" }),
+  ProjectMemberConfigPut: jsonRequest(ProjectMemberConfig, exampleMemberConfig),
+  ProjectMemberConfigPatch: jsonRequest(ProjectMemberConfigPatch, { size: 3 }),
   ProjectMemberEmailUnlink: jsonRequest(ProjectMemberEmailUnlinkRequest, {
     email: "ren@example.com",
   }),
@@ -838,6 +852,11 @@ export const OpenApiResponses = {
     name: "Japan trip 2026",
   }),
   Member: jsonResponse("Project member.", MemberBody, { member: exampleMember }),
+  ProjectMemberConfig: jsonResponse(
+    "Project member config.",
+    ProjectMemberConfig,
+    exampleMemberConfig,
+  ),
   RecordCreated: jsonResponse("Created project record.", RecordCreatedBody, { id: 5 }),
   SettlementPlan: jsonResponse("Current project settlement plan.", SettlementPlanBody, {
     transfers: [exampleTransferBatch],

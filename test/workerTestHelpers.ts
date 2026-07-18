@@ -14,7 +14,11 @@ import { signSessionToken } from "../worker/crypto";
 import { GLOBAL_CONFIG_STORE_NAME } from "../worker/globalConfig";
 import { LIMITS_STORE_NAME, LimitsKvStore, type LimitsDocument } from "../worker/limits";
 import worker, { type ProjectStore } from "../worker/index";
-import { PROJECTS_REGISTRY_NAME, type ProjectMember } from "../worker/project";
+import {
+  PROJECTS_REGISTRY_NAME,
+  type ProjectMember,
+  type ProjectMemberFull,
+} from "../worker/project";
 
 export const AUTH_SECRET = "test-auth-secret-at-least-32-bytes";
 export const LOGIN_EMAIL_FROM = "login@example.com";
@@ -25,14 +29,24 @@ export interface TestEnv {
   env: Env;
 }
 
+// TODO(schema-source): infer these test response shapes from canonical public API schemas once the
+// remaining project response schemas are consolidated.
 export interface ProjectResponse {
   id: string;
   name: string;
   owner: string;
   acl: { type: "public" } | { type: "restricted"; emails: string[] };
-  members: ProjectMember[];
+  members: ProjectMemberFull[];
   records: unknown[];
   balance: Record<string, number>;
+}
+
+export interface ProjectCreatedResponse {
+  id: string;
+  name: string;
+  owner: string;
+  acl: { type: "public" } | { type: "restricted"; emails: string[] };
+  members: ProjectMember[];
 }
 
 export interface ProjectSummaryResponse {
@@ -230,7 +244,7 @@ export async function createProject(
     ownerMemberName?: string;
     name?: string;
   } = {},
-): Promise<ProjectResponse> {
+): Promise<ProjectCreatedResponse> {
   const response = await dispatch(
     "/project",
     testEnv,
@@ -245,7 +259,7 @@ export async function createProject(
     ),
   );
   expect(response.status).toBe(201);
-  const body = (await response.json()) as ProjectResponse;
+  const body = (await response.json()) as ProjectCreatedResponse;
   await waitForProjectCache(testEnv, body.id);
   return body;
 }

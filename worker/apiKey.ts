@@ -39,6 +39,8 @@ export const ApiKeyVerificationProjection = z
   .strict();
 export type ApiKeyVerificationProjection = z.infer<typeof ApiKeyVerificationProjection>;
 
+// TODO(schema-source): define API-key metadata as a canonical schema shared with frontend API types
+// rather than maintaining a parallel interface in src/api.ts.
 export interface ApiKeyMetadata {
   id: string;
   label: string;

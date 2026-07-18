@@ -10,11 +10,14 @@ import {
   ProjectNameUtils,
   ProjectId,
   ProjectEmailsUtils,
+  ProjectMemberConfig,
+  ProjectMemberConfigPatch,
   TransferBatch,
   type ProjectAcl,
   type ProjectAclType,
   type ProjectJoin,
   type ProjectMember,
+  type ProjectMemberFull,
   type ProjectMemberPatch,
   type ProjectRecord,
   type ProjectSummary,
@@ -55,11 +58,30 @@ const SettlementPlanCache = z.object({
 });
 type SettlementPlanCache = z.infer<typeof SettlementPlanCache>;
 
+const MemberConfigTarget = z
+  .object({
+    callerEmail: normalizedEmailSchema,
+    memberId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  })
+  .strict();
+type MemberConfigTarget = z.infer<typeof MemberConfigTarget>;
+const MemberConfigPutInput = MemberConfigTarget.extend({
+  config: ProjectMemberConfig,
+  nowMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+}).strict();
+type MemberConfigPutInput = z.infer<typeof MemberConfigPutInput>;
+const MemberConfigPatchInput = MemberConfigTarget.extend({
+  patch: ProjectMemberConfigPatch,
+  nowMs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+}).strict();
+type MemberConfigPatchInput = z.infer<typeof MemberConfigPatchInput>;
+
 interface MemberRow extends Record<string, SqlStorageValue> {
   id: number;
   name: string;
   normalized_name: string;
   linked_email: string | null;
+  config: string;
   deleted_at: number | null;
   created_at: number;
   updated_at: number;
@@ -412,7 +434,7 @@ export class ProjectStore extends DurableObject<Env> {
         name: string;
         owner: string;
         acl: ProjectAcl;
-        members: ProjectMember[];
+        members: ProjectMemberFull[];
         records: ProjectRecord[];
         balance: Record<string, number>;
         updatedAt: number;
@@ -462,7 +484,7 @@ export class ProjectStore extends DurableObject<Env> {
       name: meta.name,
       owner: meta.owner_email,
       acl: this.getAcl(meta),
-      members: this.getMembersForResponse({ includeLinkedEmails: metadata.email !== null }),
+      members: this.getFullMembersForResponse({ includePrivateFields: metadata.email !== null }),
       records,
       balance,
       updatedAt: meta.updated_at,
@@ -779,6 +801,97 @@ export class ProjectStore extends DurableObject<Env> {
       member: memberForResponse(nextMember, { includeLinkedEmails: true }),
       ...(removedLinkedEmail ? { removedLinkedEmail } : {}),
     };
+  }
+
+  getMemberConfig(
+    input: MemberConfigTarget,
+  ):
+    | { ok: true; config: ProjectMemberConfig }
+    | { ok: false; error: "uninitialized" | "forbidden" | "invalid_input" | "not_found" } {
+    const parsed = MemberConfigTarget.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, error: "invalid_input" };
+    }
+
+    const metadata = this.getProjectMetadata(parsed.data.callerEmail);
+    if (!metadata.ok) {
+      return metadata;
+    }
+
+    const member = this.getMember(parsed.data.memberId);
+    if (!member) {
+      return { ok: false, error: "not_found" };
+    }
+    return { ok: true, config: memberConfigFromRow(member) };
+  }
+
+  putMemberConfig(input: MemberConfigPutInput):
+    | { ok: true; config: ProjectMemberConfig }
+    | {
+        ok: false;
+        error: "uninitialized" | "forbidden" | "invalid_input" | "not_found" | "already_deleted";
+      } {
+    const parsed = MemberConfigPutInput.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, error: "invalid_input" };
+    }
+
+    const access = this.getMemberConfigWriteAccess(parsed.data.callerEmail, parsed.data.memberId);
+    if (!access.ok) {
+      return access;
+    }
+
+    this.writeMemberConfig(access.member.id, parsed.data.config, parsed.data.nowMs);
+    return { ok: true, config: parsed.data.config };
+  }
+
+  patchMemberConfig(input: MemberConfigPatchInput):
+    | { ok: true; config: ProjectMemberConfig }
+    | {
+        ok: false;
+        error: "uninitialized" | "forbidden" | "invalid_input" | "not_found" | "already_deleted";
+      } {
+    const parsed = MemberConfigPatchInput.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, error: "invalid_input" };
+    }
+
+    const access = this.getMemberConfigWriteAccess(parsed.data.callerEmail, parsed.data.memberId);
+    if (!access.ok) {
+      return access;
+    }
+
+    const current = memberConfigFromRow(access.member);
+    if (Object.keys(parsed.data.patch).length === 0) {
+      return { ok: true, config: current };
+    }
+
+    const next: ProjectMemberConfig = { ...current };
+    if ("size" in parsed.data.patch) {
+      if (parsed.data.patch.size === null) {
+        delete next.size;
+      } else if (parsed.data.patch.size !== undefined) {
+        next.size = parsed.data.patch.size;
+      }
+    }
+    if ("paymentMethod" in parsed.data.patch) {
+      if (parsed.data.patch.paymentMethod === null) {
+        delete next.paymentMethod;
+      } else if (parsed.data.patch.paymentMethod !== undefined) {
+        next.paymentMethod = parsed.data.patch.paymentMethod;
+      }
+    }
+
+    const nextConfig = ProjectMemberConfig.safeParse(next);
+    if (!nextConfig.success) {
+      return { ok: false, error: "invalid_input" };
+    }
+    if (JSON.stringify(nextConfig.data) === JSON.stringify(current)) {
+      return { ok: true, config: current };
+    }
+
+    this.writeMemberConfig(access.member.id, nextConfig.data, parsed.data.nowMs);
+    return { ok: true, config: nextConfig.data };
   }
 
   deleteMember(input: {
@@ -1198,11 +1311,44 @@ export class ProjectStore extends DurableObject<Env> {
     return meta.acl_allowed_list.includes(email);
   }
 
+  private getMemberConfigWriteAccess(
+    callerEmail: string,
+    memberId: number,
+  ):
+    | { ok: true; member: MemberRow }
+    | { ok: false; error: "uninitialized" | "forbidden" | "not_found" | "already_deleted" } {
+    const metadata = this.getProjectMetadata(callerEmail);
+    if (!metadata.ok) {
+      return metadata;
+    }
+
+    const member = this.getMember(memberId);
+    if (!member) {
+      return { ok: false, error: "not_found" };
+    }
+    if (member.deleted_at !== null) {
+      return { ok: false, error: "already_deleted" };
+    }
+    if (!metadata.isOwner && member.linked_email !== metadata.email) {
+      return { ok: false, error: "forbidden" };
+    }
+    return { ok: true, member };
+  }
+
+  private writeMemberConfig(memberId: number, config: ProjectMemberConfig, nowMs: number): void {
+    this.ctx.storage.sql.exec(
+      "UPDATE members SET config = ?, updated_at = ? WHERE id = ?",
+      JSON.stringify(config),
+      nowMs,
+      memberId,
+    );
+  }
+
   private getMember(memberId: number): MemberRow | null {
     return (
       this.ctx.storage.sql
         .exec<MemberRow>(
-          `SELECT id, name, normalized_name, linked_email, deleted_at, created_at, updated_at
+          `SELECT id, name, normalized_name, linked_email, config, deleted_at, created_at, updated_at
            FROM members
            WHERE id = ?`,
           memberId,
@@ -1215,7 +1361,7 @@ export class ProjectStore extends DurableObject<Env> {
     return (
       this.ctx.storage.sql
         .exec<MemberRow>(
-          `SELECT id, name, normalized_name, linked_email, deleted_at, created_at, updated_at
+          `SELECT id, name, normalized_name, linked_email, config, deleted_at, created_at, updated_at
            FROM members
            WHERE linked_email = ?`,
           email,
@@ -1228,7 +1374,7 @@ export class ProjectStore extends DurableObject<Env> {
     return (
       this.ctx.storage.sql
         .exec<MemberRow>(
-          `SELECT id, name, normalized_name, linked_email, deleted_at, created_at, updated_at
+          `SELECT id, name, normalized_name, linked_email, config, deleted_at, created_at, updated_at
            FROM members
            WHERE linked_email = ? AND deleted_at IS NULL`,
           email,
@@ -1263,12 +1409,25 @@ export class ProjectStore extends DurableObject<Env> {
   private getMembersForResponse(options: { includeLinkedEmails: boolean }): ProjectMember[] {
     return this.ctx.storage.sql
       .exec<MemberRow>(
-        `SELECT id, name, normalized_name, linked_email, deleted_at, created_at, updated_at
+        `SELECT id, name, normalized_name, linked_email, config, deleted_at, created_at, updated_at
          FROM members
          ORDER BY id`,
       )
       .toArray()
       .map((member) => memberForResponse(member, options));
+  }
+
+  private getFullMembersForResponse(options: {
+    includePrivateFields: boolean;
+  }): ProjectMemberFull[] {
+    return this.ctx.storage.sql
+      .exec<MemberRow>(
+        `SELECT id, name, normalized_name, linked_email, config, deleted_at, created_at, updated_at
+         FROM members
+         ORDER BY id`,
+      )
+      .toArray()
+      .map((member) => memberFullForResponse(member, options));
   }
 
   private hasActiveMemberName(name: string, exceptMemberId?: number): boolean {
@@ -1383,8 +1542,8 @@ export class ProjectStore extends DurableObject<Env> {
   }): void {
     this.ctx.storage.sql.exec(
       `INSERT INTO members
-        (id, name, normalized_name, linked_email, deleted_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, NULL, ?, ?)`,
+        (id, name, normalized_name, linked_email, config, deleted_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, '{}', NULL, ?, ?)`,
       input.id,
       input.name,
       ProjectStore.normalizeMemberNameForUnique(input.name),
@@ -1465,7 +1624,7 @@ export class ProjectStore extends DurableObject<Env> {
 
     const members = this.ctx.storage.sql
       .exec<MemberRow>(
-        `SELECT id, name, normalized_name, linked_email, deleted_at, created_at, updated_at
+        `SELECT id, name, normalized_name, linked_email, config, deleted_at, created_at, updated_at
          FROM members
          WHERE linked_email IS NOT NULL
          ORDER BY id`,
@@ -1669,6 +1828,25 @@ function memberForResponse(
       ? { linkedEmail: member.linked_email }
       : {}),
   };
+}
+
+function memberFullForResponse(
+  member: MemberRow,
+  options: { includePrivateFields: boolean },
+): ProjectMemberFull {
+  return {
+    ...memberForResponse(member, { includeLinkedEmails: options.includePrivateFields }),
+    ...(options.includePrivateFields ? { config: memberConfigFromRow(member) } : {}),
+  };
+}
+
+function memberConfigFromRow(member: MemberRow): ProjectMemberConfig {
+  try {
+    const parsed = ProjectMemberConfig.safeParse(JSON.parse(member.config));
+    return parsed.success ? parsed.data : {};
+  } catch {
+    return {};
+  }
 }
 
 function recordFromRow(row: RecordRow): ProjectRecord {

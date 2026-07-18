@@ -170,21 +170,12 @@
                                     "type": "string",
                                     "maxLength": 255,
                                     "format": "email",
-                                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
-                                    "examples": ["mika@example.com"]
+                                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
                                   }
                                 },
                                 "required": ["id", "name", "deleted"],
                                 "additionalProperties": false,
-                                "description": "A person participating in a project.",
-                                "examples": [
-                                  {
-                                    "id": 1,
-                                    "name": "Mika",
-                                    "deleted": false,
-                                    "linkedEmail": "mika@example.com"
-                                  }
-                                ]
+                                "description": "A person participating in a project."
                               },
                               { "type": "null" }
                             ],
@@ -1206,53 +1197,19 @@
                             "type": "string",
                             "maxLength": 255,
                             "format": "email",
-                            "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
-                            "examples": ["mika@example.com"]
+                            "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
                           }
                         },
                         "required": ["id", "name", "deleted"],
                         "additionalProperties": false,
-                        "description": "A person participating in a project.",
-                        "examples": [
-                          {
-                            "id": 1,
-                            "name": "Mika",
-                            "deleted": false,
-                            "linkedEmail": "mika@example.com"
-                          }
-                        ]
+                        "description": "A person participating in a project."
                       },
                       "description": "Current project members."
                     }
                   },
                   "required": ["id", "name", "owner", "acl", "members"],
                   "additionalProperties": false,
-                  "description": "Newly created project metadata.",
-                  "examples": [
-                    {
-                      "id": "8d46d6c6-b970-4b2b-8d3e-47f57058f951",
-                      "name": "Japan trip",
-                      "owner": "mika@example.com",
-                      "acl": {
-                        "type": "restricted",
-                        "emails": ["mika@example.com", "ren@example.com"]
-                      },
-                      "members": [
-                        {
-                          "id": 1,
-                          "name": "Mika",
-                          "deleted": false,
-                          "linkedEmail": "mika@example.com"
-                        },
-                        {
-                          "id": 2,
-                          "name": "Ren",
-                          "deleted": false,
-                          "linkedEmail": "ren@example.com"
-                        }
-                      ]
-                    }
-                  ]
+                  "description": "Newly created project metadata."
                 },
                 "example": {
                   "id": "8d46d6c6-b970-4b2b-8d3e-47f57058f951",
@@ -1572,23 +1529,35 @@
                             "type": "string",
                             "maxLength": 255,
                             "format": "email",
-                            "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
-                            "examples": ["mika@example.com"]
+                            "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                          },
+                          "config": {
+                            "description": "Member metadata, omitted from logged-out public-project responses.",
+                            "type": "object",
+                            "properties": {
+                              "size": {
+                                "description": "Number of people represented by this project member.",
+                                "examples": [2],
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "paymentMethod": {
+                                "description": "Opaque instructions for transferring money to this project member.",
+                                "examples": ["venmo: mika@example.com"],
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 10000
+                              }
+                            },
+                            "additionalProperties": false
                           }
                         },
                         "required": ["id", "name", "deleted"],
                         "additionalProperties": false,
-                        "description": "A person participating in a project.",
-                        "examples": [
-                          {
-                            "id": 1,
-                            "name": "Mika",
-                            "deleted": false,
-                            "linkedEmail": "mika@example.com"
-                          }
-                        ]
+                        "description": "A project member with metadata included for authenticated full project reads."
                       },
-                      "description": "Current project members."
+                      "description": "Current project members with authenticated-read metadata."
                     },
                     "records": {
                       "type": "array",
@@ -1984,81 +1953,7 @@
                     "updatedAt"
                   ],
                   "additionalProperties": false,
-                  "description": "Complete project metadata, balances, and a page of records.",
-                  "examples": [
-                    {
-                      "id": "8d46d6c6-b970-4b2b-8d3e-47f57058f951",
-                      "name": "Japan trip",
-                      "owner": "mika@example.com",
-                      "acl": {
-                        "type": "restricted",
-                        "emails": ["mika@example.com", "ren@example.com"]
-                      },
-                      "members": [
-                        {
-                          "id": 1,
-                          "name": "Mika",
-                          "deleted": false,
-                          "linkedEmail": "mika@example.com"
-                        },
-                        {
-                          "id": 2,
-                          "name": "Ren",
-                          "deleted": false,
-                          "linkedEmail": "ren@example.com"
-                        }
-                      ],
-                      "records": [
-                        {
-                          "id": 1,
-                          "authorMemberId": 1,
-                          "delta": { "1": -6200, "2": 6200 },
-                          "description": {
-                            "type": "expense",
-                            "name": "Ramen dinner",
-                            "paid": { "1": 12400 },
-                            "liability": { "1": 6200, "2": 6200 },
-                            "categoryId": "4a6cc79a-51da-4e94-9d62-45ba3d853b1c"
-                          },
-                          "createdAt": 1767225600000,
-                          "reverted": {
-                            "recordId": 4,
-                            "authorMemberId": 1,
-                            "createdAt": 1767229200000
-                          }
-                        },
-                        {
-                          "id": 2,
-                          "authorMemberId": 2,
-                          "delta": { "1": 6200, "2": -6200 },
-                          "description": { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
-                          "createdAt": 1767226800000
-                        },
-                        {
-                          "id": 3,
-                          "authorMemberId": 1,
-                          "delta": { "1": -3100, "2": 3100 },
-                          "description": {
-                            "type": "promise",
-                            "debtorMemberId": 2,
-                            "creditorMemberId": 1,
-                            "amount": 3100,
-                            "reason": "Museum tickets"
-                          },
-                          "createdAt": 1767228000000
-                        },
-                        {
-                          "id": 4,
-                          "authorMemberId": 1,
-                          "delta": { "1": 6200, "2": -6200 },
-                          "description": { "type": "revert", "id": 1 },
-                          "createdAt": 1767229200000
-                        }
-                      ],
-                      "balance": { "1": 3100, "2": -3100 },
-                      "updatedAt": 1767312000000
-                    }
-                  ]
+                  "description": "Complete project metadata, balances, and a page of records."
                 },
                 "example": {
                   "id": "8d46d6c6-b970-4b2b-8d3e-47f57058f951",
@@ -2073,9 +1968,16 @@
                       "id": 1,
                       "name": "Mika",
                       "deleted": false,
-                      "linkedEmail": "mika@example.com"
+                      "linkedEmail": "mika@example.com",
+                      "config": { "size": 2, "paymentMethod": "venmo: mika@example.com" }
                     },
-                    { "id": 2, "name": "Ren", "deleted": false, "linkedEmail": "ren@example.com" }
+                    {
+                      "id": 2,
+                      "name": "Ren",
+                      "deleted": false,
+                      "linkedEmail": "ren@example.com",
+                      "config": {}
+                    }
                   ],
                   "records": [
                     {
@@ -4018,21 +3920,12 @@
                           "type": "string",
                           "maxLength": 255,
                           "format": "email",
-                          "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
-                          "examples": ["mika@example.com"]
+                          "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
                         }
                       },
                       "required": ["id", "name", "deleted"],
                       "additionalProperties": false,
-                      "description": "A person participating in a project.",
-                      "examples": [
-                        {
-                          "id": 1,
-                          "name": "Mika",
-                          "deleted": false,
-                          "linkedEmail": "mika@example.com"
-                        }
-                      ]
+                      "description": "A person participating in a project."
                     }
                   },
                   "required": ["member"],
@@ -4308,21 +4201,12 @@
                           "type": "string",
                           "maxLength": 255,
                           "format": "email",
-                          "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
-                          "examples": ["mika@example.com"]
+                          "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
                         }
                       },
                       "required": ["id", "name", "deleted"],
                       "additionalProperties": false,
-                      "description": "A person participating in a project.",
-                      "examples": [
-                        {
-                          "id": 1,
-                          "name": "Mika",
-                          "deleted": false,
-                          "linkedEmail": "mika@example.com"
-                        }
-                      ]
+                      "description": "A person participating in a project."
                     }
                   },
                   "required": ["member"],
@@ -5057,21 +4941,12 @@
                           "type": "string",
                           "maxLength": 255,
                           "format": "email",
-                          "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
-                          "examples": ["mika@example.com"]
+                          "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
                         }
                       },
                       "required": ["id", "name", "deleted"],
                       "additionalProperties": false,
-                      "description": "A person participating in a project.",
-                      "examples": [
-                        {
-                          "id": 1,
-                          "name": "Mika",
-                          "deleted": false,
-                          "linkedEmail": "mika@example.com"
-                        }
-                      ]
+                      "description": "A person participating in a project."
                     }
                   },
                   "required": ["member"],
@@ -5465,6 +5340,691 @@
                   ]
                 },
                 "example": { "error": "internal_server_error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/project/{id}/members/{memberId}/config": {
+      "get": {
+        "operationId": "getApiProjectByIdMembersByMemberIdConfig",
+        "tags": ["Project Members"],
+        "summary": "Get a project member's config",
+        "description": "Returns optional metadata for a project member, including represented group size and payment instructions.",
+        "security": [{ "apiKeyBearer": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Public project ID.",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "8d46d6c6-b970-4b2b-8d3e-47f57058f951"
+            }
+          },
+          {
+            "name": "memberId",
+            "in": "path",
+            "required": true,
+            "description": "Project-local member ID.",
+            "schema": { "type": "integer", "minimum": 1, "example": 2 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project member config.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "size": {
+                      "description": "Number of people represented by this project member.",
+                      "examples": [2],
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "paymentMethod": {
+                      "description": "Opaque instructions for transferring money to this project member.",
+                      "examples": ["venmo: mika@example.com"],
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 10000
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "Optional metadata for a project member."
+                },
+                "example": { "size": 2, "paymentMethod": "venmo: mika@example.com" }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": {
+                  "error": "invalid_request",
+                  "reason": "The request body did not match the documented schema."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "unauthorized" }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is not allowed to perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "forbidden" }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested resource was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "not_found" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiProjectByIdMembersByMemberIdConfig",
+        "tags": ["Project Members"],
+        "summary": "Replace a project member's config",
+        "description": "Replaces all optional metadata for a project member. An empty object clears the config.",
+        "security": [{ "apiKeyBearer": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Public project ID.",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "8d46d6c6-b970-4b2b-8d3e-47f57058f951"
+            }
+          },
+          {
+            "name": "memberId",
+            "in": "path",
+            "required": true,
+            "description": "Project-local member ID.",
+            "schema": { "type": "integer", "minimum": 1, "example": 2 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "size": {
+                    "description": "Number of people represented by this project member.",
+                    "examples": [2],
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "paymentMethod": {
+                    "description": "Opaque instructions for transferring money to this project member.",
+                    "examples": ["venmo: mika@example.com"],
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 10000
+                  }
+                },
+                "additionalProperties": false,
+                "description": "Optional metadata for a project member."
+              },
+              "example": { "size": 2, "paymentMethod": "venmo: mika@example.com" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Project member config.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "size": {
+                      "description": "Number of people represented by this project member.",
+                      "examples": [2],
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "paymentMethod": {
+                      "description": "Opaque instructions for transferring money to this project member.",
+                      "examples": ["venmo: mika@example.com"],
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 10000
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "Optional metadata for a project member."
+                },
+                "example": { "size": 2, "paymentMethod": "venmo: mika@example.com" }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": {
+                  "error": "invalid_request",
+                  "reason": "The request body did not match the documented schema."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "unauthorized" }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is not allowed to perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "forbidden" }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested resource was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "not_found" }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with project state or configured limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": {
+                  "error": "conflict",
+                  "reason": "The requested change conflicts with project state."
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiProjectByIdMembersByMemberIdConfig",
+        "tags": ["Project Members"],
+        "summary": "Patch a project member's config",
+        "description": "Shallow-merges optional member metadata. A null field removes that field from the config.",
+        "security": [{ "apiKeyBearer": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Public project ID.",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "8d46d6c6-b970-4b2b-8d3e-47f57058f951"
+            }
+          },
+          {
+            "name": "memberId",
+            "in": "path",
+            "required": true,
+            "description": "Project-local member ID.",
+            "schema": { "type": "integer", "minimum": 1, "example": 2 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "size": {
+                    "description": "Replacement represented group size, or null to remove it.",
+                    "examples": [3, null],
+                    "anyOf": [
+                      { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+                      { "type": "null" }
+                    ]
+                  },
+                  "paymentMethod": {
+                    "description": "Replacement payment instructions, or null to remove them.",
+                    "examples": ["zelle: 123456789", null],
+                    "anyOf": [
+                      { "type": "string", "minLength": 1, "maxLength": 10000 },
+                      { "type": "null" }
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "description": "A shallow member-config patch."
+              },
+              "example": { "size": 3 }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Project member config.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "size": {
+                      "description": "Number of people represented by this project member.",
+                      "examples": [2],
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "paymentMethod": {
+                      "description": "Opaque instructions for transferring money to this project member.",
+                      "examples": ["venmo: mika@example.com"],
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 10000
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "Optional metadata for a project member."
+                },
+                "example": { "size": 2, "paymentMethod": "venmo: mika@example.com" }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": {
+                  "error": "invalid_request",
+                  "reason": "The request body did not match the documented schema."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "unauthorized" }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is not allowed to perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "forbidden" }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested resource was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "not_found" }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with project state or configured limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": {
+                  "error": "conflict",
+                  "reason": "The requested change conflicts with project state."
+                }
               }
             }
           }

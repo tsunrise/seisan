@@ -27,6 +27,8 @@ export {
 
 export type CategoryCandidate = CategoryVectorCandidate;
 
+// TODO(schema-source): replace these category operation interfaces with canonical zod schemas used
+// by routes, OpenAPI, frontend API types, and the Node client.
 export interface CategoryClassification {
   category: CategoryValue;
   score: number;

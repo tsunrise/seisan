@@ -15,7 +15,19 @@ Use this for Worker production code in `worker/`, especially route modules and s
 
 - Validate JSON request bodies with `parseJson(context, schema)` and zod schemas.
 - Use `safeParse()` inside Durable Object RPC methods for public RPC inputs, even if the route already validated the request.
-- Keep schemas near the boundary they validate: route request schemas live with their route handlers, OpenAPI mirror schemas live in `worker/model.ts`, and shared project IDs/types/normalization helpers live in `worker/project.ts`.
+- Define one canonical zod schema for each logical data shape. When the same shape crosses storage,
+  Durable Object RPC, HTTP, or OpenAPI boundaries, export it from the owning domain module and
+  import it everywhere else; never repeat its fields in parallel schemas.
+- Compose boundary-specific envelopes from canonical schemas with `extend`, `pick`, `omit`, or
+  nested fields. An RPC input that adds caller identity or timestamps is a distinct envelope, but
+  its domain payload must still use the canonical schema.
+- Keep boundary-only schemas near the boundary they validate: route-only request schemas live with
+  their route handlers and OpenAPI-only response envelopes live in `worker/model.ts`. Put schemas
+  reused across boundaries with their owning domain types, such as project schemas in
+  `worker/project.ts`, and keep their OpenAPI metadata on that canonical definition.
+- If two boundaries intentionally use different shapes, give each schema a precise name and add an
+  explicit conversion between them. Do not maintain look-alike schemas that are expected to stay in
+  sync by convention.
 - Name zod schema values in PascalCase without a `Schema` suffix.
 - Export the inferred type beside the schema with the same identifier, for example `export const MoneyMap = ...; export type MoneyMap = z.infer<typeof MoneyMap>;`.
 - If an existing domain type would conflict with a different schema shape, choose a precise schema name instead of using a `*Schema` suffix.
