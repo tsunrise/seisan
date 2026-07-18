@@ -1,27 +1,17 @@
 import AddIcon from "@mui/icons-material/Add";
-import {
-  Box,
-  Button,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Paper,
-  Select,
-  Stack,
-  TextField,
-  Typography,
-} from "@mui/material";
+import { Box, Button, Paper, Stack, TextField, Typography } from "@mui/material";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router";
 
 import * as api from "../api";
 import { getApiErrorMessage } from "../apiErrorMessages";
-import { AllowedEmailList } from "../components/AllowedEmailList";
 import { BackLink } from "../components/BackLink";
+import { MemberConfigFields } from "../components/MemberConfigFields";
 import { panelFrameSx } from "../components/styles";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { useAppSnackbar } from "../hooks/useAppSnackbar";
+import { memberConfigDraft, memberConfigFromDraft } from "../memberConfig";
 import { loginPath } from "../utils";
 
 export function CreateProjectPage() {
@@ -31,8 +21,8 @@ export function CreateProjectPage() {
   const user = useCurrentUser({ required: true });
   const [name, setName] = useState("");
   const [ownerMemberName, setOwnerMemberName] = useState("");
-  const [visibility, setVisibility] = useState<api.ProjectAcl["type"]>("public");
-  const [allowedEmails, setAllowedEmails] = useState<string[]>([]);
+  const [memberConfig, setMemberConfig] = useState(() => memberConfigDraft());
+  const [creating, setCreating] = useState(false);
 
   if (user.status === "error") {
     return <Navigate to={loginPath(location)} replace />;
@@ -40,20 +30,43 @@ export function CreateProjectPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const acl =
-      visibility === "public"
-        ? ({ type: "public" } as const)
-        : ({ type: "restricted", emails: allowedEmails } as const);
+    const config = memberConfigFromDraft(memberConfig);
+    if (!config) {
+      showError("Enter a whole number of at least 2 for the people you represent.");
+      return;
+    }
+    if (Object.keys(config).length > 0 && !ownerMemberName.trim()) {
+      showError("Enter your member name to save your transfer and group details.");
+      return;
+    }
+    setCreating(true);
     try {
       const project = await api.createProject({
         name,
-        ownerMemberName: ownerMemberName || undefined,
-        acl,
+        ownerMemberName: ownerMemberName.trim() || undefined,
+        acl: { type: "public" },
       });
+      const ownerMember = project.members.find((member) => member.linkedEmail === project.owner);
+      try {
+        if (Object.keys(config).length > 0 && !ownerMember) {
+          throw new Error("The created project did not return its owner member.");
+        }
+        if (ownerMember && Object.keys(config).length > 0) {
+          await api.putMemberConfig(project.id, ownerMember.id, config);
+        }
+      } catch (error) {
+        showError(
+          `Project created, but profile details were not saved. Update them from Project info. ${getApiErrorMessage(error)}`,
+        );
+        navigate(`/project/${project.id}`);
+        return;
+      }
       showSuccess("Project created.");
       navigate(`/project/${project.id}`);
     } catch (error) {
       showError(getApiErrorMessage(error));
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -70,34 +83,17 @@ export function CreateProjectPage() {
               onChange={(event) => setName(event.target.value)}
               required
             />
-            <TextField
-              label="Your member name"
-              placeholder="Your name in this project"
-              value={ownerMemberName}
-              onChange={(event) => setOwnerMemberName(event.target.value)}
-            />
-            <FormControl>
-              <InputLabel id="visibility-label">Visibility</InputLabel>
-              <Select
-                labelId="visibility-label"
-                label="Visibility"
-                value={visibility}
-                onChange={(event) => setVisibility(event.target.value as api.ProjectAcl["type"])}
-              >
-                <MenuItem value="public">Public</MenuItem>
-                <MenuItem value="restricted">Restricted</MenuItem>
-              </Select>
-            </FormControl>
-            {visibility === "restricted" ? (
-              <AllowedEmailList
-                emails={allowedEmails}
-                description="Joined members always have access."
-                emptyMessage="No extra emails will be allowed yet."
-                onListChange={setAllowedEmails}
+            <Stack spacing={1.25}>
+              <Typography variant="h2">Your profile</Typography>
+              <TextField
+                label="Your name in project"
+                value={ownerMemberName}
+                onChange={(event) => setOwnerMemberName(event.target.value)}
               />
-            ) : null}
-            <Button type="submit" variant="contained" startIcon={<AddIcon />}>
-              Create
+              <MemberConfigFields draft={memberConfig} onChange={setMemberConfig} />
+            </Stack>
+            <Button type="submit" variant="contained" startIcon={<AddIcon />} disabled={creating}>
+              {creating ? "Creating…" : "Create"}
             </Button>
           </Stack>
         </Paper>

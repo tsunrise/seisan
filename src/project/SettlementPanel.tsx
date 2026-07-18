@@ -8,6 +8,7 @@ import { Link, useNavigate } from "react-router";
 import * as api from "../api";
 import { getApiErrorMessage } from "../apiErrorMessages";
 import { InlineAlert } from "../components/InlineAlert";
+import { MemberPaymentMethod } from "../components/MemberPaymentMethod";
 import { PanelFrame } from "../components/PanelFrame";
 import { deriveDelta, memberName } from "../domain";
 import { useAppSnackbar } from "../hooks/useAppSnackbar";
@@ -63,7 +64,7 @@ export function SettlementPanel({
   onPosted,
 }: {
   project: api.Project;
-  currentMember: api.ProjectMember;
+  currentMember: api.ProjectMemberFull;
   onPosted: () => void;
 }) {
   const navigate = useNavigate();
@@ -136,10 +137,13 @@ export function SettlementPanel({
           </Typography>
         ) : null}
         {state.status === "ready" && incomingPayments.length > 0 ? (
-          <Typography color="text.secondary">
-            The following members should transfer money to you. This plan is generated to minimize
-            the total number of transfers across the project.
-          </Typography>
+          <Stack spacing={0.75}>
+            <Typography color="text.secondary">
+              The following members should transfer money to you. This plan is generated to minimize
+              the total number of transfers across the project.
+            </Typography>
+            <MemberPaymentMethod member={currentMember} prefix="Your transfer method" />
+          </Stack>
         ) : null}
         {state.status === "loading" ? (
           <Stack sx={{ alignItems: "center", minHeight: 180, justifyContent: "center" }}>

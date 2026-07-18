@@ -14,8 +14,10 @@ Use this before changing project, member, record, ACL, or balance behavior.
 ## Member Config
 
 - A member may have optional `size` and `paymentMethod` metadata in its JSON config. `size` is the
-  positive number of people represented by that member; it does not change balances, expense
-  splitting, settlement calculations, or membership limits.
+  positive number of people represented by that member. The backend does not weight balances,
+  settlement calculations, or membership limits by size; the frontend uses it as the default weight
+  when composing equal and ratio expense splits, and the posted liability remains explicit cents by
+  member ID.
 - `paymentMethod` is an opaque, trimmed payment instruction string. Seisan does not parse provider
   names or account identifiers from it.
 - Authenticated full project reads include member configs. Logged-out public-project responses omit
@@ -23,6 +25,10 @@ Use this before changing project, member, record, ACL, or balance behavior.
   account linked to a member may replace or shallow-patch that member's config.
 - Stored member config is parsed independently with zod. Malformed config falls back to an empty
   object for that member so one bad row cannot break project or registry reads.
+- Member-config creation is a follow-up write after project creation, joining, or placeholder-member
+  creation because those existing mutation payloads remain unchanged. UI flows should use the
+  returned member ID and surface any follow-up failure without assuming the first mutation rolled
+  back.
 
 ## Balances And Records
 

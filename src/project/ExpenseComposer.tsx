@@ -26,7 +26,14 @@ import {
   OTHERS_CATEGORY,
   type CategoryOption,
 } from "../categories";
-import { activeMembers, allocateEqual, allocateRatio, deriveDelta, parseCents } from "../domain";
+import {
+  activeMembers,
+  allocateEqualByMemberSize,
+  allocateRatio,
+  deriveDelta,
+  memberSize,
+  parseCents,
+} from "../domain";
 import { useAppSnackbar } from "../hooks/useAppSnackbar";
 import { useExpenseCategoryClassification } from "../hooks/useExpenseCategoryClassification";
 import type { SplitMode } from "../types";
@@ -49,7 +56,7 @@ export function ExpenseComposer({
 }) {
   const navigate = useNavigate();
   const { showError, showSuccess } = useAppSnackbar();
-  const members = activeMembers(project.members);
+  const members = useMemo(() => activeMembers(project.members), [project.members]);
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [paidBy, setPaidBy] = useState(currentMember.id);
@@ -71,14 +78,14 @@ export function ExpenseComposer({
       return {};
     }
     if (splitMode === "equal") {
-      return allocateEqual(total, selectedIds);
+      return allocateEqualByMemberSize(total, members, selectedIds);
     }
     if (splitMode === "ratio") {
       return allocateRatio(
         total,
         selectedIds.map((memberId) => ({
           memberId,
-          ratio: Number(ratios[memberId] || "1"),
+          ratio: Number(ratios[memberId] || memberSizeForId(members, memberId)),
         })),
       );
     }
@@ -90,7 +97,7 @@ export function ExpenseComposer({
       }
     }
     return custom;
-  }, [customAmounts, ratios, selectedIds, splitMode, total]);
+  }, [customAmounts, members, ratios, selectedIds, splitMode, total]);
   const paid = total === null ? {} : { [String(paidBy)]: total };
   const description: api.RecordDescription = {
     type: "expense",
@@ -301,7 +308,7 @@ export function ExpenseComposer({
                 splitMode={splitMode}
                 value={
                   splitMode === "ratio"
-                    ? (ratios[member.id] ?? "1")
+                    ? (ratios[member.id] ?? String(memberSize(member)))
                     : (customAmounts[member.id] ?? "")
                 }
                 amount={liability[String(member.id)] ?? 0}
@@ -334,6 +341,11 @@ export function ExpenseComposer({
       </Stack>
     </PanelFrame>
   );
+}
+
+function memberSizeForId(members: api.ProjectMemberFull[], memberId: number): number {
+  const member = members.find((candidate) => candidate.id === memberId);
+  return member ? memberSize(member) : 1;
 }
 
 function CategoryOptionContent({ category }: { category: CategoryOption }) {

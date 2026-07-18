@@ -56,6 +56,18 @@ export default function App() {
           element={<ProjectPage panel="recordDetail" />}
         />
         <Route path="/project/:projectId/settings" element={<ProjectPage panel="settings" />} />
+        <Route
+          path="/project/:projectId/settings/profile"
+          element={<ProjectPage panel="settingsProfile" />}
+        />
+        <Route
+          path="/project/:projectId/settings/members"
+          element={<ProjectPage panel="settingsMembers" />}
+        />
+        <Route
+          path="/project/:projectId/settings/access"
+          element={<ProjectPage panel="settingsAccess" />}
+        />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </AppSnackbarProvider>

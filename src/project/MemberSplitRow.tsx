@@ -13,7 +13,7 @@ export function MemberSplitRow({
   onSelected,
   onValue,
 }: {
-  member: api.ProjectMember;
+  member: api.ProjectMemberFull;
   selected: boolean;
   splitMode: SplitMode;
   value: string;
@@ -38,16 +38,22 @@ export function MemberSplitRow({
         onChange={(event) => onSelected(event.target.checked)}
         sx={{ p: 0.5 }}
       />
-      <Typography
-        sx={{
-          minWidth: 0,
-          flex: "1 1 auto",
-          color: selected ? "text.primary" : "text.secondary",
-          fontWeight: selected ? 500 : 450,
-        }}
-      >
-        {member.name}
-      </Typography>
+      <Stack sx={{ minWidth: 0, flex: "1 1 auto" }}>
+        <Typography
+          sx={{
+            minWidth: 0,
+            color: selected ? "text.primary" : "text.secondary",
+            fontWeight: selected ? 500 : 450,
+          }}
+        >
+          {member.name}
+        </Typography>
+        {member.config?.size && member.config.size > 1 ? (
+          <Typography color="text.secondary" sx={{ fontSize: 12.5 }}>
+            {member.config.size} people
+          </Typography>
+        ) : null}
+      </Stack>
       <Stack
         direction="row"
         sx={{ alignItems: "center", justifyContent: "flex-end", gap: 1.25, minWidth: 0 }}
@@ -58,7 +64,7 @@ export function MemberSplitRow({
             value={value}
             inputMode="decimal"
             onChange={(event) => onValue(event.target.value)}
-            placeholder={splitMode === "ratio" ? "1" : "0.00"}
+            placeholder={splitMode === "ratio" ? String(member.config?.size ?? 1) : "0.00"}
             sx={{ width: 76 }}
           />
         ) : null}

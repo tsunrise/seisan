@@ -5,6 +5,7 @@ import type {
   ProjectAcl,
   ProjectCreated,
   ProjectMember,
+  ProjectMemberConfig,
   ProjectSummary,
   RecordDescription,
   TransferBatch,
@@ -17,6 +18,8 @@ export type {
   ProjectAcl,
   ProjectCreated,
   ProjectMember,
+  ProjectMemberConfig,
+  ProjectMemberFull,
   ProjectRecord,
   ProjectSummary,
   RecordDescription,
@@ -396,6 +399,28 @@ export async function deleteMember(projectId: string, memberId: number): Promise
   await requestEmpty(`/api/project/${projectId}/members/${memberId}`, {
     method: "DELETE",
     expectedStatus: 204,
+  });
+}
+
+export async function putMemberConfig(
+  projectId: string,
+  memberId: number,
+  config: ProjectMemberConfig,
+): Promise<ProjectMemberConfig> {
+  return requestJson(`/api/project/${projectId}/members/${memberId}/config`, {
+    method: "PUT",
+    body: config,
+  });
+}
+
+export async function patchMemberConfig(
+  projectId: string,
+  memberId: number,
+  patch: { size?: number | null; paymentMethod?: string | null },
+): Promise<ProjectMemberConfig> {
+  return requestJson(`/api/project/${projectId}/members/${memberId}/config`, {
+    method: "PATCH",
+    body: patch,
   });
 }
 

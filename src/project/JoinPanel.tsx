@@ -14,8 +14,10 @@ import { Link, useLocation, useNavigate } from "react-router";
 import * as api from "../api";
 import { getApiErrorMessage } from "../apiErrorMessages";
 import { InlineAlert } from "../components/InlineAlert";
+import { MemberConfigFields } from "../components/MemberConfigFields";
 import { PanelFrame } from "../components/PanelFrame";
 import { useAppSnackbar } from "../hooks/useAppSnackbar";
+import { memberConfigDraft, memberConfigFromDraft } from "../memberConfig";
 import { loginPath } from "../utils";
 
 export function JoinPanel({
@@ -26,7 +28,7 @@ export function JoinPanel({
 }: {
   project: api.Project;
   currentEmail: string | null;
-  currentMember: api.ProjectMember | null;
+  currentMember: api.ProjectMemberFull | null;
   onReload: () => void;
 }) {
   const location = useLocation();
@@ -39,6 +41,10 @@ export function JoinPanel({
     unlinkedMembers[0] ? `member:${unlinkedMembers[0].id}` : "new",
   );
   const [name, setName] = useState("");
+  const [memberConfig, setMemberConfig] = useState(() =>
+    memberConfigDraft(unlinkedMembers[0]?.config),
+  );
+  const [joining, setJoining] = useState(false);
 
   if (currentMember) {
     return (
@@ -65,17 +71,38 @@ export function JoinPanel({
   }
 
   async function join() {
+    const config = memberConfigFromDraft(memberConfig);
+    if (!config) {
+      showError("Enter a whole number of at least 2 for the people you represent.");
+      return;
+    }
+    setJoining(true);
     try {
+      let joined: { member: api.ProjectMember };
       if (selection.startsWith("member:")) {
-        await api.joinProject(project.id, { memberId: Number(selection.slice("member:".length)) });
+        joined = await api.joinProject(project.id, {
+          memberId: Number(selection.slice("member:".length)),
+        });
       } else {
-        await api.joinProject(project.id, { name });
+        joined = await api.joinProject(project.id, { name });
+      }
+      try {
+        await api.putMemberConfig(project.id, joined.member.id, config);
+      } catch (error) {
+        showError(
+          `You joined, but profile details were not saved. Update them from Project info. ${getApiErrorMessage(error)}`,
+        );
+        onReload();
+        navigate(`/project/${project.id}`, { replace: true });
+        return;
       }
       showSuccess("Joined project.");
       onReload();
       navigate(`/project/${project.id}`, { replace: true });
     } catch (error) {
       showError(getApiErrorMessage(error));
+    } finally {
+      setJoining(false);
     }
   }
 
@@ -89,7 +116,16 @@ export function JoinPanel({
           <RadioGroup
             aria-label="Join this project as"
             value={selection}
-            onChange={(event) => setSelection(event.target.value)}
+            onChange={(event) => {
+              const nextSelection = event.target.value;
+              setSelection(nextSelection);
+              const selectedMember = nextSelection.startsWith("member:")
+                ? unlinkedMembers.find(
+                    (member) => member.id === Number(nextSelection.slice("member:".length)),
+                  )
+                : undefined;
+              setMemberConfig(memberConfigDraft(selectedMember?.config));
+            }}
           >
             <Stack spacing={0.75}>
               {unlinkedMembers.map((member) => (
@@ -110,24 +146,36 @@ export function JoinPanel({
                   placeholder="New Member"
                   value={name}
                   onChange={(event) => {
+                    if (selection !== "new") {
+                      setMemberConfig(memberConfigDraft());
+                    }
                     setSelection("new");
                     setName(event.target.value);
                   }}
-                  onFocus={() => setSelection("new")}
+                  onFocus={() => {
+                    if (selection !== "new") {
+                      setSelection("new");
+                      setMemberConfig(memberConfigDraft());
+                    }
+                  }}
                   fullWidth
                 />
               </Stack>
             </Stack>
           </RadioGroup>
         </FormControl>
+        <Stack spacing={1.25}>
+          <Typography variant="h3">Your details</Typography>
+          <MemberConfigFields draft={memberConfig} onChange={setMemberConfig} disabled={joining} />
+        </Stack>
         <Button
           variant="contained"
           startIcon={<CheckIcon />}
           onClick={() => void join()}
-          disabled={!canJoin}
+          disabled={!canJoin || joining}
           fullWidth
         >
-          Join
+          {joining ? "Joining…" : "Join"}
         </Button>
       </Stack>
     </PanelFrame>

@@ -2,6 +2,7 @@ import { Stack, Typography } from "@mui/material";
 
 import type * as api from "../api";
 import { Amount } from "./Amount";
+import { MemberPaymentMethod } from "./MemberPaymentMethod";
 
 export function MemberBalanceList({
   project,
@@ -27,17 +28,20 @@ export function MemberBalanceList({
             py: 0.25,
           }}
         >
-          <Typography
-            sx={{
-              minWidth: 0,
-              fontWeight: member.id === currentMember?.id ? 900 : 400,
-              overflowWrap: "anywhere",
-              textDecoration: member.id === currentMember?.id ? "underline" : "none",
-              textUnderlineOffset: "4px",
-            }}
-          >
-            {member.name}
-          </Typography>
+          <Stack sx={{ minWidth: 0 }}>
+            <Typography
+              sx={{
+                minWidth: 0,
+                fontWeight: member.id === currentMember?.id ? 900 : 400,
+                overflowWrap: "anywhere",
+                textDecoration: member.id === currentMember?.id ? "underline" : "none",
+                textUnderlineOffset: "4px",
+              }}
+            >
+              {member.name}
+            </Typography>
+            <MemberPaymentMethod member={member} prefix="" />
+          </Stack>
           <Amount amount={project.balance[String(member.id)] ?? 0} />
         </Stack>
       ))}

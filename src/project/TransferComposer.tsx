@@ -9,6 +9,7 @@ import { useNavigate } from "react-router";
 import * as api from "../api";
 import { getApiErrorMessage } from "../apiErrorMessages";
 import { InlineAlert } from "../components/InlineAlert";
+import { MemberPaymentMethod } from "../components/MemberPaymentMethod";
 import { MoneyTable } from "../components/MoneyTable";
 import { PanelFrame } from "../components/PanelFrame";
 import { activeMembers, deriveDelta } from "../domain";
@@ -124,71 +125,74 @@ export function TransferComposer({
             const selectedMember =
               members.find((member) => member.id === destination.memberId) ?? null;
             return (
-              <RecordSentenceRow key={destination.key}>
-                {index === 0 ? (
-                  <>
-                    <RecordSentenceField minWidth={138}>
-                      <TextField
-                        select
-                        label="From"
-                        value={String(from)}
-                        onChange={(event) => changeSource(Number(event.target.value))}
-                      >
-                        {members.map((member) => (
-                          <MenuItem key={member.id} value={String(member.id)}>
-                            {member.name}
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                    </RecordSentenceField>
-                    <RecordFormBridge>paid</RecordFormBridge>
-                  </>
-                ) : (
-                  <RecordFormBridge>and</RecordFormBridge>
-                )}
-                <RecordSentenceField minWidth={138} grow>
-                  <Autocomplete
-                    autoHighlight
-                    openOnFocus
-                    options={options}
-                    value={selectedMember}
-                    getOptionLabel={(member) => member.name}
-                    isOptionEqualToValue={(left, right) => left.id === right.id}
-                    filterOptions={(available, state) =>
-                      prefixMatchingMembers(available, state.inputValue)
-                    }
-                    onChange={(_event, member) =>
-                      updateDestination(destination.key, { memberId: member?.id ?? null })
-                    }
-                    renderInput={(params) => <TextField {...params} label="To" required />}
-                  />
-                </RecordSentenceField>
-                <RecordSentenceField minWidth={116}>
-                  <TextField
-                    label="Amount"
-                    inputMode="decimal"
-                    value={destination.amount}
-                    onChange={(event) =>
-                      updateDestination(destination.key, { amount: event.target.value })
-                    }
-                    placeholder="12.34"
-                    required
-                  />
-                </RecordSentenceField>
-                {destinations.length > 1 ? (
-                  <IconButton
-                    type="button"
-                    aria-label={`Remove recipient ${index + 1}`}
-                    onClick={() =>
-                      setDestinations((current) =>
-                        current.filter((candidate) => candidate.key !== destination.key),
-                      )
-                    }
-                  >
-                    <DeleteOutlineIcon />
-                  </IconButton>
-                ) : null}
-              </RecordSentenceRow>
+              <Stack key={destination.key} spacing={0.5}>
+                <RecordSentenceRow>
+                  {index === 0 ? (
+                    <>
+                      <RecordSentenceField minWidth={138}>
+                        <TextField
+                          select
+                          label="From"
+                          value={String(from)}
+                          onChange={(event) => changeSource(Number(event.target.value))}
+                        >
+                          {members.map((member) => (
+                            <MenuItem key={member.id} value={String(member.id)}>
+                              {member.name}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      </RecordSentenceField>
+                      <RecordFormBridge>paid</RecordFormBridge>
+                    </>
+                  ) : (
+                    <RecordFormBridge>and</RecordFormBridge>
+                  )}
+                  <RecordSentenceField minWidth={138} grow>
+                    <Autocomplete
+                      autoHighlight
+                      openOnFocus
+                      options={options}
+                      value={selectedMember}
+                      getOptionLabel={(member) => member.name}
+                      isOptionEqualToValue={(left, right) => left.id === right.id}
+                      filterOptions={(available, state) =>
+                        prefixMatchingMembers(available, state.inputValue)
+                      }
+                      onChange={(_event, member) =>
+                        updateDestination(destination.key, { memberId: member?.id ?? null })
+                      }
+                      renderInput={(params) => <TextField {...params} label="To" required />}
+                    />
+                  </RecordSentenceField>
+                  <RecordSentenceField minWidth={116}>
+                    <TextField
+                      label="Amount"
+                      inputMode="decimal"
+                      value={destination.amount}
+                      onChange={(event) =>
+                        updateDestination(destination.key, { amount: event.target.value })
+                      }
+                      placeholder="12.34"
+                      required
+                    />
+                  </RecordSentenceField>
+                  {destinations.length > 1 ? (
+                    <IconButton
+                      type="button"
+                      aria-label={`Remove recipient ${index + 1}`}
+                      onClick={() =>
+                        setDestinations((current) =>
+                          current.filter((candidate) => candidate.key !== destination.key),
+                        )
+                      }
+                    >
+                      <DeleteOutlineIcon />
+                    </IconButton>
+                  ) : null}
+                </RecordSentenceRow>
+                <MemberPaymentMethod member={selectedMember} />
+              </Stack>
             );
           })}
           <Button

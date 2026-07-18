@@ -14,6 +14,9 @@ import { JoinPromptPanel } from "../project/JoinPromptPanel";
 import { NewRecordPanel } from "../project/NewRecordPanel";
 import { ProjectHeader } from "../project/ProjectHeader";
 import { ProjectRail } from "../project/ProjectRail";
+import { ProjectAccessSettings } from "../project/ProjectAccessSettings";
+import { ProjectMembersSettings } from "../project/ProjectMembersSettings";
+import { ProjectProfileSettings } from "../project/ProjectProfileSettings";
 import { ProjectSettings } from "../project/ProjectSettings";
 import { RecordDetail } from "../project/RecordDetail";
 import { RecordTimeline } from "../project/RecordTimeline";
@@ -171,7 +174,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
         <ProjectHeader
           project={project.data}
           currentMember={currentMember}
-          showAccount={currentEmail !== null}
+          currentEmail={currentEmail}
           onSettings={() => navigate(`/project/${projectId}/settings`)}
         />
         <RecordTimeline
@@ -291,6 +294,34 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
             project={project.data}
             currentEmail={currentEmail}
             currentMember={currentMember}
+            onReload={reload}
+          />
+        ) : null}
+        {panel === "settingsProfile" ? (
+          currentMember ? (
+            <ProjectProfileSettings
+              key={`${project.data.id}:${currentMember.id}:${JSON.stringify(currentMember.config ?? {})}`}
+              project={project.data}
+              currentMember={currentMember}
+              onReload={reload}
+            />
+          ) : (
+            <JoinPromptPanel project={project.data} currentEmail={currentEmail} />
+          )
+        ) : null}
+        {panel === "settingsMembers" ? (
+          <ProjectMembersSettings
+            project={project.data}
+            currentEmail={currentEmail}
+            currentMember={currentMember}
+            onReload={reload}
+          />
+        ) : null}
+        {panel === "settingsAccess" ? (
+          <ProjectAccessSettings
+            key={`${project.data.id}:${project.data.acl.type}`}
+            project={project.data}
+            currentEmail={currentEmail}
             onReload={reload}
           />
         ) : null}

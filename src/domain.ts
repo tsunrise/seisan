@@ -1,6 +1,7 @@
 import type {
   MoneyByMemberId,
   ProjectMember,
+  ProjectMemberFull,
   ProjectRecord,
   RecordDescription,
 } from "./projectTypes";
@@ -72,18 +73,37 @@ export function memberName(members: ProjectMember[], memberId: number): string {
   return members.find((member) => member.id === memberId)?.name ?? `#${memberId}`;
 }
 
-export function activeMembers(members: ProjectMember[]): ProjectMember[] {
+export function activeMembers<T extends ProjectMember>(members: T[]): T[] {
   return members.filter((member) => !member.deleted);
 }
 
 export function findLinkedMember(
-  members: ProjectMember[],
+  members: ProjectMemberFull[],
   email: string | null,
-): ProjectMember | null {
+): ProjectMemberFull | null {
   if (!email) {
     return null;
   }
   return members.find((member) => member.linkedEmail === email && !member.deleted) ?? null;
+}
+
+export function memberSize(member: ProjectMemberFull): number {
+  const size = member.config?.size;
+  return size && Number.isSafeInteger(size) && size > 0 ? size : 1;
+}
+
+export function allocateEqualByMemberSize(
+  total: number,
+  members: ProjectMemberFull[],
+  selectedMemberIds: number[],
+): MoneyByMemberId {
+  const selected = new Set(selectedMemberIds);
+  return allocateRatio(
+    total,
+    members
+      .filter((member) => selected.has(member.id))
+      .map((member) => ({ memberId: member.id, ratio: memberSize(member) })),
+  );
 }
 
 export function recordTitle(record: ProjectRecord, members: ProjectMember[]): string {

@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  allocateEqualByMemberSize,
   deriveDelta,
   isMultiRecipientTransfer,
+  memberSize,
   recordDetailTitle,
   recordTitle,
 } from "../src/domain";
 import { recordActorMemberId } from "../src/project/recordActor";
-import type { ProjectMember, ProjectRecord } from "../src/projectTypes";
+import type { ProjectMember, ProjectMemberFull, ProjectRecord } from "../src/projectTypes";
 import { formatRelativeTime } from "../src/relativeTime";
 
 const transferMembers: ProjectMember[] = [
@@ -117,5 +119,27 @@ describe("multi-recipient transfer helpers", () => {
         dests: [{ id: 2, amount: 300 }],
       }),
     ).toBe(false);
+  });
+});
+
+describe("member-size split defaults", () => {
+  const members: ProjectMemberFull[] = [
+    { id: 1, name: "Alice", deleted: false, config: {} },
+    { id: 2, name: "Family", deleted: false, config: { size: 2 } },
+    { id: 3, name: "Carol", deleted: false },
+  ];
+
+  it("weights equal splits by the people represented by selected members", () => {
+    expect(allocateEqualByMemberSize(1000, members, [1, 2])).toEqual({
+      "1": 333,
+      "2": 667,
+    });
+    expect(allocateEqualByMemberSize(1000, members, [2])).toEqual({ "2": 1000 });
+  });
+
+  it("uses one as the ratio default when size metadata is absent", () => {
+    expect(memberSize(members[0])).toBe(1);
+    expect(memberSize(members[1])).toBe(2);
+    expect(memberSize(members[2])).toBe(1);
   });
 });

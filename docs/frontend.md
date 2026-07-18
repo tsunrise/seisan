@@ -23,6 +23,35 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 - Mobile uses a single active panel.
 - Tablet-width layouts show the main timeline plus right panel.
 - Wider desktop layouts show left rail, center timeline, and right panel.
+- Below the wide-desktop breakpoint, place the signed-in account email opposite the Seisan brand
+  in the project header and link it to the account page. The wide layout uses the account entry in
+  the left rail instead. Public project views omit the email link.
+
+## Project Member Metadata
+
+- Authenticated project reads expose `ProjectMemberFull` entries. Keep `ProjectMember` for registry
+  summaries and mutation responses, which intentionally do not carry config.
+- Member profile fields use the shared `MemberConfigFields` control. The represented-group checkbox
+  reveals an integer input of at least two and reminds the user that represented people should not
+  join independently.
+- The frontend project-creation flow always creates a public project. Owners can change visibility
+  and manage restricted-project emails afterward from Access control.
+- Project creation, joining, and placeholder-member creation save config with a follow-up member
+  config request using the member ID returned by the first mutation.
+- Equal expense splits weight selected members by `config.size ?? 1`. Ratio splits show the same
+  value as each member's editable default, while custom splits remain explicit amounts.
+- Show payment methods where someone is deciding how to pay: member lists, selected recipients in
+  the transfer composer, and outgoing settlement payments.
+
+## Project Settings
+
+- `/project/:id/settings` is a compact settings menu rather than a single long form. It links to the
+  current member's profile, settlement plan, members, and access control.
+- Profile, members, and access control use nested settings routes and return to the settings menu.
+  Keep profile name editing inline. Non-owners edit only their linked profile; owners get an
+  elevated "Update on behalf of" selector that can load and save any active member's profile.
+- Follow the warm-ledger interpretation of an iOS settings list: full-width rows, restrained leading
+  icons, thin grouped dividers, clear chevrons, and no nested decorative cards.
 
 ## Timeline Behavior
 

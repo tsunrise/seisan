@@ -16,7 +16,10 @@ export type ProjectPanel =
   | "newRecord"
   | "settle"
   | "recordDetail"
-  | "settings";
+  | "settings"
+  | "settingsProfile"
+  | "settingsMembers"
+  | "settingsAccess";
 
 export type SplitMode = "equal" | "ratio" | "custom";
 

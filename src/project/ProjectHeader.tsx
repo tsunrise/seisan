@@ -1,4 +1,3 @@
-import AccountCircleOutlinedIcon from "@mui/icons-material/AccountCircleOutlined";
 import BalanceOutlinedIcon from "@mui/icons-material/BalanceOutlined";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import { Box, Button, IconButton, Stack, Typography } from "@mui/material";
@@ -13,12 +12,12 @@ import { ledgerColors, ledgerFonts } from "../theme";
 export function ProjectHeader({
   project,
   currentMember,
-  showAccount,
+  currentEmail,
   onSettings,
 }: {
   project: api.Project;
   currentMember: api.ProjectMember | null;
-  showAccount: boolean;
+  currentEmail: string | null;
   onSettings: () => void;
 }) {
   const balance = currentMember ? (project.balance[String(currentMember.id)] ?? 0) : null;
@@ -39,7 +38,52 @@ export function ProjectHeader({
         borderBottom: `1px solid ${ledgerColors.line}`,
       }}
     >
-      <BrandLink size="compact" sx={{ display: { xs: "flex", lg: "none" } }} />
+      <Stack
+        direction="row"
+        sx={{
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 2,
+          display: { xs: "flex", lg: "none" },
+        }}
+      >
+        <BrandLink size="compact" />
+        {currentEmail ? (
+          <Typography
+            component={Link}
+            to="/account"
+            state={accountLinkState(project.name)}
+            aria-label={`Open account for ${currentEmail}`}
+            title={currentEmail}
+            sx={{
+              minWidth: 0,
+              maxWidth: { xs: "58%", sm: "64%" },
+              overflow: "hidden",
+              color: "text.secondary",
+              fontSize: 11,
+              fontWeight: 560,
+              lineHeight: 1.2,
+              textDecoration: "none",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              transition: "color 160ms ease",
+              "&:hover": {
+                color: "text.primary",
+                textDecoration: "underline",
+                textDecorationColor: ledgerColors.lineStrong,
+                textUnderlineOffset: "0.25em",
+              },
+              "&:focus-visible": {
+                borderRadius: 0.5,
+                outline: `2px solid ${ledgerColors.blue}`,
+                outlineOffset: 3,
+              },
+            }}
+          >
+            {currentEmail}
+          </Typography>
+        ) : null}
+      </Stack>
       <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2 }}>
         <Box sx={{ minWidth: 0 }}>
           <Typography
@@ -88,17 +132,6 @@ export function ProjectHeader({
           ) : null}
         </Box>
         <Stack direction="row" spacing={1}>
-          {showAccount ? (
-            <IconButton
-              component={Link}
-              to="/account"
-              state={accountLinkState(project.name)}
-              aria-label="Account"
-              sx={{ display: { xs: "inline-flex", lg: "none" } }}
-            >
-              <AccountCircleOutlinedIcon />
-            </IconButton>
-          ) : null}
           <IconButton onClick={onSettings} aria-label="Project settings">
             <MoreHorizIcon />
           </IconButton>
