@@ -40,9 +40,28 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
   timeline. Missing category metadata renders as `Others` with the default expense icon.
 - Expense markers use category icons; transfer and promise markers use their hardcoded record-type
   icons. Expense rows show the resolved category name directly below the record title.
-- Transfer readers support both legacy single-recipient records and multi-recipient records. For a
-  multi-recipient transfer, summaries show the recipient list and total while details show each
-  recipient's amount; the source member remains the timeline actor.
+- Transfer readers support both legacy single-recipient records and multi-recipient records. A
+  single-recipient summary remains `Transferred <member> <amount>`; a multi-recipient summary is
+  `Transferred <amount> in total` and uses the branching transfer icon. Details show every
+  recipient's amount, and the source member remains the timeline actor.
+- The transfer composer has one sender and repeatable destination rows. Destination autocomplete is
+  a case-insensitive name-prefix match, excludes the sender and recipients already chosen in other
+  rows, and always posts the multi-recipient transfer shape. Show the aggregate sent amount and the
+  sender's resulting balance alongside the delta preview.
+- `/project/:id/settle` is available only to linked active members. Show the current member's
+  outgoing batch first in a settlement-specific payment list, without transfer-form inputs, past
+  tense, or balance-total previews. Follow it with the primary confirmation action, full-width
+  secondary customization buttons back to an ordinary prefilled transfer, and a default-collapsed
+  full-plan control. Confirming posts the complete current-member batch; ordinary transactions can
+  cause the plan to be recomputed. For a member who is owed money, replace the outgoing instructions
+  with an incoming-payment list that identifies every sender and amount; do not render the outgoing
+  confirmation or customization actions. When the current member has a zero balance while other
+  members remain unsettled, show a member-specific completion state while retaining the collapsed
+  full-plan control.
+- Keep the linked member's `Settle up` entry beside their balance in the project header at every
+  breakpoint when their balance is nonzero. Hide it for a zero balance, and do not duplicate it
+  below the desktop rail's full member-balance list. Project info provides linked members with an
+  always-visible `View settlement plan` action regardless of their balance.
 - `shared/icon-names.ts` is the backend/frontend icon contract, and `NamedIcon` is the only frontend
   name-to-MUI mapping. Keep category icons semantically distinct; unknown names use the expense icon.
 

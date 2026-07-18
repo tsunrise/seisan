@@ -3,6 +3,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { SettlementPlanUtils, type MoneyByMemberId, type TransferBatch } from "../worker/project";
 import {
+  incomingSettlementPaymentsForMember,
+  settlementBatchForMember,
+} from "../src/project/settlementPlan";
+import {
   authHeaders,
   cleanupWorkerTestState,
   createMember,
@@ -97,6 +101,84 @@ function noOpRecordBody(name: string) {
   };
 }
 
+const stablePlanBalance = { "1": 100, "2": 100, "3": 300, "4": -200, "5": -200, "6": -100 };
+const stablePlan = [
+  { src: 1, dests: [{ id: 6, amount: 100 }] },
+  { src: 2, dests: [{ id: 5, amount: 100 }] },
+  {
+    src: 3,
+    dests: [
+      { id: 4, amount: 200 },
+      { id: 5, amount: 100 },
+    ],
+  },
+] satisfies TransferBatch[];
+const stablePlanAfterSenderTwo = [stablePlan[0], stablePlan[2]];
+const recomputedPlanAfterSenderTwo = [
+  { src: 1, dests: [{ id: 5, amount: 100 }] },
+  {
+    src: 3,
+    dests: [
+      { id: 4, amount: 200 },
+      { id: 6, amount: 100 },
+    ],
+  },
+] satisfies TransferBatch[];
+
+async function createStablePlanProject(testEnv: Env): Promise<{
+  projectId: string;
+  senderEmail: string;
+}> {
+  const project = await createProject(testEnv, { ownerMemberName: "Sender one" });
+  const senderTwo = await createMember(testEnv, project.id, "Sender two");
+  await createMember(testEnv, project.id, "Sender three");
+  await createMember(testEnv, project.id, "Recipient four");
+  await createMember(testEnv, project.id, "Recipient five");
+  await createMember(testEnv, project.id, "Recipient six");
+  const senderEmail = `sender-${crypto.randomUUID()}@example.com`;
+  const joined = await dispatch(
+    `/project/${project.id}/join`,
+    testEnv,
+    jsonBody("POST", { memberId: senderTwo.id }, await authHeaders(senderEmail)),
+  );
+  expect(joined.status).toBe(201);
+
+  const posted = await dispatch(
+    `/project/${project.id}`,
+    testEnv,
+    jsonBody(
+      "POST",
+      {
+        delta: stablePlanBalance,
+        description: {
+          type: "expense",
+          name: "Stable plan fixture",
+          paid: { "4": 200, "5": 200, "6": 100 },
+          liability: { "1": 100, "2": 100, "3": 300 },
+        },
+      },
+      await authHeaders(),
+    ),
+  );
+  expect(posted.status).toBe(201);
+  expect(await (await dispatch(`/project/${project.id}/settle`, testEnv)).json()).toEqual({
+    transfers: stablePlan,
+  });
+  return { projectId: project.id, senderEmail };
+}
+
+function senderTwoSettlementBody(settle: boolean | "omit" = true) {
+  return {
+    delta: { "2": -100, "5": 100 },
+    description: {
+      type: "transfer" as const,
+      src: 2,
+      dests: [{ id: 5, amount: 100 }],
+    },
+    ...(settle === "omit" ? {} : { settle }),
+  };
+}
+
 class SeededRandom {
   private state: number;
 
@@ -148,6 +230,19 @@ describe("settlement edge and adversarial cases", () => {
         "2": -Number.MAX_SAFE_INTEGER,
       }),
     ).toEqual([{ src: 1, dests: [{ id: 2, amount: Number.MAX_SAFE_INTEGER }] }]);
+  });
+
+  it("selects only the current member's sender batch for settlement confirmation", () => {
+    expect(settlementBatchForMember(stablePlan, 2)).toEqual(stablePlan[1]);
+    expect(settlementBatchForMember(stablePlan, 4)).toBeNull();
+  });
+
+  it("collects every incoming payment for a settlement recipient", () => {
+    expect(incomingSettlementPaymentsForMember(stablePlan, 5)).toEqual([
+      { memberId: 2, amount: 100 },
+      { memberId: 3, amount: 100 },
+    ]);
+    expect(incomingSettlementPaymentsForMember(stablePlan, 1)).toEqual([]);
   });
 
   it("settles one-to-many and many-to-one balances", () => {
@@ -341,6 +436,175 @@ describe("settlement edge and adversarial cases", () => {
     expect(await (await dispatch(`/project/${project.id}/settle`, testEnv)).json()).toEqual(
       expectedPlan,
     );
+  });
+
+  it("advances a matching cached sender batch without changing the remaining plan", async () => {
+    const { env: testEnv } = makeEnv();
+    const { projectId, senderEmail } = await createStablePlanProject(testEnv);
+
+    expect(
+      SettlementPlanUtils.create({
+        "1": 100,
+        "3": 300,
+        "4": -200,
+        "5": -100,
+        "6": -100,
+      }),
+    ).toEqual(recomputedPlanAfterSenderTwo);
+    expect(recomputedPlanAfterSenderTwo).not.toEqual(stablePlanAfterSenderTwo);
+
+    const posted = await dispatch(
+      `/project/${projectId}`,
+      testEnv,
+      jsonBody("POST", senderTwoSettlementBody(), await authHeaders(senderEmail)),
+    );
+    expect(posted.status).toBe(201);
+    expect(await posted.json()).toEqual({ id: 2 });
+
+    const stub = await getProjectStoreStub(testEnv, projectId);
+    await runInDurableObject(stub, async (_instance, state) => {
+      const raw = await state.storage.get<string>("settlementPlanCache");
+      expect(JSON.parse(raw ?? "")).toEqual({
+        latestRecordId: 2,
+        transfers: stablePlanAfterSenderTwo,
+      });
+    });
+    expect(await (await dispatch(`/project/${projectId}/settle`, testEnv)).json()).toEqual({
+      transfers: stablePlanAfterSenderTwo,
+    });
+    const project = (await (
+      await dispatch(`/project/${projectId}`, testEnv, { headers: await authHeaders(senderEmail) })
+    ).json()) as { balance: MoneyByMemberId };
+    expect(project.balance).toEqual({
+      "1": 100,
+      "3": 300,
+      "4": -200,
+      "5": -100,
+      "6": -100,
+    });
+  });
+
+  it("falls back to normal invalidation for missing, stale, or malformed settlement caches", async () => {
+    for (const cacheState of ["missing", "stale", "malformed"] as const) {
+      const { env: testEnv } = makeEnv();
+      const { projectId, senderEmail } = await createStablePlanProject(testEnv);
+      const stub = await getProjectStoreStub(testEnv, projectId);
+      await runInDurableObject(stub, async (_instance, state) => {
+        if (cacheState === "missing") {
+          await state.storage.delete("settlementPlanCache");
+        } else if (cacheState === "stale") {
+          await state.storage.put(
+            "settlementPlanCache",
+            JSON.stringify({ latestRecordId: 0, transfers: stablePlan }),
+          );
+        } else {
+          await state.storage.put("settlementPlanCache", "not-json");
+        }
+      });
+
+      const posted = await dispatch(
+        `/project/${projectId}`,
+        testEnv,
+        jsonBody("POST", senderTwoSettlementBody(), await authHeaders(senderEmail)),
+      );
+      expect(posted.status, cacheState).toBe(201);
+      expect(await (await dispatch(`/project/${projectId}/settle`, testEnv)).json()).toEqual({
+        transfers: recomputedPlanAfterSenderTwo,
+      });
+    }
+  });
+
+  it("posts mismatched settlement transfers but recomputes instead of patching the cache", async () => {
+    const { env: testEnv } = makeEnv();
+    const { projectId, senderEmail } = await createStablePlanProject(testEnv);
+    const posted = await dispatch(
+      `/project/${projectId}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        {
+          delta: { "2": -50, "5": 50 },
+          description: {
+            type: "transfer",
+            src: 2,
+            dests: [{ id: 5, amount: 50 }],
+          },
+          settle: true,
+        },
+        await authHeaders(senderEmail),
+      ),
+    );
+    expect(posted.status).toBe(201);
+
+    const expected = requirePlan({
+      "1": 100,
+      "2": 50,
+      "3": 300,
+      "4": -200,
+      "5": -150,
+      "6": -100,
+    });
+    expect(await (await dispatch(`/project/${projectId}/settle`, testEnv)).json()).toEqual({
+      transfers: expected,
+    });
+  });
+
+  it("keeps ordinary and settle-false transfers on the normal recomputation path", async () => {
+    for (const settle of ["omit", false] as const) {
+      const { env: testEnv } = makeEnv();
+      const { projectId, senderEmail } = await createStablePlanProject(testEnv);
+      const posted = await dispatch(
+        `/project/${projectId}`,
+        testEnv,
+        jsonBody("POST", senderTwoSettlementBody(settle), await authHeaders(senderEmail)),
+      );
+      expect(posted.status).toBe(201);
+      expect(await (await dispatch(`/project/${projectId}/settle`, testEnv)).json()).toEqual({
+        transfers: recomputedPlanAfterSenderTwo,
+      });
+    }
+  });
+
+  it("requires the settlement transfer source to be the caller's linked member", async () => {
+    const { env: testEnv } = makeEnv();
+    const { projectId } = await createStablePlanProject(testEnv);
+    const response = await dispatch(
+      `/project/${projectId}`,
+      testEnv,
+      jsonBody("POST", senderTwoSettlementBody(), await authHeaders()),
+    );
+    expect(response.status).toBe(403);
+
+    const project = (await (
+      await dispatch(`/project/${projectId}`, testEnv, { headers: await authHeaders() })
+    ).json()) as { records: unknown[] };
+    expect(project.records).toHaveLength(1);
+  });
+
+  it("rejects the settlement flag on non-transfer records", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv);
+    const response = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody("POST", { ...noOpRecordBody("Not a transfer"), settle: true }, await authHeaders()),
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("treats settle false as an ordinary non-transfer record", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv);
+    const response = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody(
+        "POST",
+        { ...noOpRecordBody("Ordinary record"), settle: false },
+        await authHeaders(),
+      ),
+    );
+    expect(response.status).toBe(201);
   });
 
   it("caches an empty plan at record ID zero and enforces project read access", async () => {

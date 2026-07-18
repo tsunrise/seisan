@@ -20,6 +20,7 @@ import {
   type ProjectSummary,
   type RecordDescription,
   type MoneyByMemberId,
+  type TransferDescription,
 } from "../project";
 import {
   ABSOLUTE_LIST_LIMIT,
@@ -234,6 +235,7 @@ export class ProjectStore extends DurableObject<Env> {
     callerEmail: string;
     delta: Record<string, number>;
     description: RecordDescription;
+    settle?: boolean;
     nowMs: number;
   }): Promise<
     | { ok: true; id: number }
@@ -274,6 +276,17 @@ export class ProjectStore extends DurableObject<Env> {
       delta = MoneyByMemberIdUtils.normalize(input.delta);
     } catch {
       return { ok: false, error: "invalid_record" };
+    }
+
+    if (input.settle && description.type !== "transfer") {
+      return { ok: false, error: "invalid_record" };
+    }
+    if (
+      input.settle &&
+      description.type === "transfer" &&
+      ProjectStore.transferSource(description) !== authorMember.id
+    ) {
+      return { ok: false, error: "forbidden" };
     }
 
     const limitExceededError = this.getDescriptionLimitExceededError(description, policy);
@@ -343,6 +356,10 @@ export class ProjectStore extends DurableObject<Env> {
       return { ok: false, error: "money_limit_exceeded" };
     }
 
+    const settlementCachePatch =
+      input.settle && description.type === "transfer"
+        ? this.createSettlementCachePatch(description)
+        : null;
     const id = this.getNextRecordId(metadata.meta);
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec(
@@ -365,6 +382,19 @@ export class ProjectStore extends DurableObject<Env> {
       next_record_id: id + 1,
       updated_at: input.nowMs,
     });
+
+    if (settlementCachePatch) {
+      try {
+        this.writeSettlementPlanCache({
+          latestRecordId: id,
+          transfers: settlementCachePatch,
+        });
+      } catch (error) {
+        // Settlement cache advancement is best-effort. The record ID mismatch makes a failed
+        // patch a normal cache miss on the next settlement read.
+        console.error("failed to advance settlement plan cache", error);
+      }
+    }
 
     this.queueProjectSummarySync();
     return { ok: true, id };
@@ -1002,6 +1032,46 @@ export class ProjectStore extends DurableObject<Env> {
       throw new Error("invalid settlement plan cache");
     }
     this.ctx.storage.kv.put(SETTLEMENT_PLAN_CACHE_KEY, JSON.stringify(parsed.data));
+  }
+
+  private createSettlementCachePatch(description: TransferDescription): TransferBatch[] | null {
+    const cached = this.readSettlementPlanCache();
+    if (!cached || cached.latestRecordId !== this.getMaxRecordId()) {
+      return null;
+    }
+
+    const submitted = ProjectStore.transferBatch(description);
+    const matchingIndex = cached.transfers.findIndex((transfer) =>
+      ProjectStore.transferBatchesEqual(transfer, submitted),
+    );
+    if (matchingIndex === -1) {
+      return null;
+    }
+
+    return cached.transfers.filter((_, index) => index !== matchingIndex);
+  }
+
+  private static transferSource(description: TransferDescription): number {
+    return "from" in description ? description.from : description.src;
+  }
+
+  private static transferBatch(description: TransferDescription): TransferBatch {
+    return "from" in description
+      ? { src: description.from, dests: [{ id: description.to, amount: description.amount }] }
+      : description;
+  }
+
+  private static transferBatchesEqual(left: TransferBatch, right: TransferBatch): boolean {
+    if (left.src !== right.src || left.dests.length !== right.dests.length) {
+      return false;
+    }
+
+    const rightByDestination = new Map(
+      right.dests.map((destination) => [destination.id, destination.amount]),
+    );
+    return left.dests.every(
+      (destination) => rightByDestination.get(destination.id) === destination.amount,
+    );
   }
 
   private async loadOwnerLimitsPolicy(): Promise<LimitsPolicy> {

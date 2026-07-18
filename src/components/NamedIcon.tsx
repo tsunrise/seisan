@@ -24,6 +24,7 @@ import ShoppingBasketOutlinedIcon from "@mui/icons-material/ShoppingBasketOutlin
 import SpaOutlinedIcon from "@mui/icons-material/SpaOutlined";
 import SubscriptionsOutlinedIcon from "@mui/icons-material/SubscriptionsOutlined";
 import SwapHorizOutlinedIcon from "@mui/icons-material/SwapHorizOutlined";
+import CallSplitOutlinedIcon from "@mui/icons-material/CallSplitOutlined";
 import WifiOutlinedIcon from "@mui/icons-material/WifiOutlined";
 import type { SvgIconProps } from "@mui/material";
 
@@ -32,6 +33,7 @@ import { isIconName, type IconName } from "../../shared/icon-names";
 const iconComponents = {
   expense: ReceiptLongOutlinedIcon,
   transfer: SwapHorizOutlinedIcon,
+  "transfer-multiple": CallSplitOutlinedIcon,
   promise: HandshakeOutlinedIcon,
   restaurant: RestaurantOutlinedIcon,
   grocery: ShoppingBasketOutlinedIcon,

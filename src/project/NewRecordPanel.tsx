@@ -1,10 +1,12 @@
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import HandshakeIcon from "@mui/icons-material/Handshake";
+import BalanceOutlinedIcon from "@mui/icons-material/BalanceOutlined";
 import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
 import { ButtonBase, Stack, Typography } from "@mui/material";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { useNavigate, useSearchParams } from "react-router";
 
 import type * as api from "../api";
 import { InlineAlert } from "../components/InlineAlert";
@@ -13,6 +15,7 @@ import { ledgerColors } from "../theme";
 import { ExpenseComposer } from "./ExpenseComposer";
 import { PromiseComposer } from "./PromiseComposer";
 import { TransferComposer } from "./TransferComposer";
+import { transferPrefillFromSearch } from "./transferForm";
 
 export function NewRecordPanel({
   project,
@@ -25,7 +28,19 @@ export function NewRecordPanel({
   categories: api.Category[];
   onPosted: () => void;
 }) {
-  const [mode, setMode] = useState<"choice" | "expense" | "transfer" | "promise">("choice");
+  const navigate = useNavigate();
+  const [search] = useSearchParams();
+  const transferPrefill = transferPrefillFromSearch(search, project.members);
+  const [mode, setMode] = useState<"choice" | "expense" | "transfer" | "promise">(
+    transferPrefill ? "transfer" : "choice",
+  );
+
+  function returnToChoice() {
+    setMode("choice");
+    if (search.size > 0) {
+      navigate(`/project/${project.id}/records/new`, { replace: true });
+    }
+  }
 
   if (!currentMember) {
     return (
@@ -42,7 +57,7 @@ export function NewRecordPanel({
         currentMember={currentMember}
         categories={categories}
         onPosted={onPosted}
-        onBack={() => setMode("choice")}
+        onBack={returnToChoice}
       />
     );
   }
@@ -52,8 +67,9 @@ export function NewRecordPanel({
       <TransferComposer
         project={project}
         currentMember={currentMember}
+        prefill={transferPrefill}
         onPosted={onPosted}
-        onBack={() => setMode("choice")}
+        onBack={returnToChoice}
       />
     );
   }
@@ -64,7 +80,7 @@ export function NewRecordPanel({
         project={project}
         currentMember={currentMember}
         onPosted={onPosted}
-        onBack={() => setMode("choice")}
+        onBack={returnToChoice}
       />
     );
   }
@@ -89,6 +105,12 @@ export function NewRecordPanel({
           title="Promise"
           description="Record money one member should pay another."
           onClick={() => setMode("promise")}
+        />
+        <RecordTypeButton
+          icon={<BalanceOutlinedIcon />}
+          title="Settle up"
+          description="Review the transfers that settle the current balances."
+          onClick={() => navigate(`/project/${project.id}/settle`)}
         />
       </Stack>
     </PanelFrame>

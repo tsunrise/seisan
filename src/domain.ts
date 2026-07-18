@@ -94,10 +94,14 @@ export function recordTitle(record: ProjectRecord, members: ProjectMember[]): st
   }
   if (description.type === "transfer") {
     const destinations = transferDestinations(description);
+    const total = destinations.reduce((sum, destination) => sum + destination.amount, 0);
+    if (destinations.length > 1) {
+      return `Transferred ${formatCents(total)} in total`;
+    }
     return `Transferred ${formatMemberList(
       members,
       destinations.map((destination) => destination.id),
-    )} ${formatCents(destinations.reduce((total, destination) => total + destination.amount, 0))}`;
+    )} ${formatCents(total)}`;
   }
   if (description.type === "promise") {
     return promiseCardTitle(description, members);
@@ -207,6 +211,10 @@ type TransferRecordDescription = Extract<RecordDescription, { type: "transfer" }
 
 export function transferSourceMemberId(description: TransferRecordDescription): number {
   return "from" in description ? description.from : description.src;
+}
+
+export function isMultiRecipientTransfer(description: TransferRecordDescription): boolean {
+  return "dests" in description && description.dests.length > 1;
 }
 
 function transferDestinations(

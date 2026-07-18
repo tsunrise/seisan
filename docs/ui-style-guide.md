@@ -68,6 +68,8 @@ Panels should feel related, not like separate products:
 - Same warm surface, same thin dividers, same restrained selection blue.
 - Detail and rail panels should use the same title hierarchy and spacing rhythm as the timeline.
 - Avoid nested cards. Use full-width bands, dividers, and unframed groups unless the content is a repeated item, modal, or actual framed tool.
+- Put the linked member's full-width `View settlement plan` action near the top of Project info so
+  it remains discoverable even when their zero balance hides the project-header shortcut.
 
 ## Timeline
 
@@ -133,7 +135,20 @@ Use shared domain helpers from `src/domain.ts`.
 Use the sentence-style composer pattern for new records:
 
 - Expense: `[payer] paid [amount] for [expense]`.
-- Transfer: `[from] paid [to] [amount]`.
+- Transfer: keep one `[from]`, then use repeatable `[to] [amount]` rows with quiet add/remove
+  controls. Use prefix-search autocomplete for recipients and keep the aggregate sent amount and
+  sender's resulting balance visible below the rows.
+- Settlement: use a dedicated payment-plan display rather than transfer form controls. Lead with a
+  concise explanation, show present-tense `Transfer to` rows with prominent amounts, then place
+  the primary confirmation, full-width secondary customization buttons, and the default-collapsed
+  full project plan in that order. Do not repeat total-sent or resulting-balance previews in this
+  view. Do not place dividers between recipients in one sender batch; use a single divider between
+  sender groups in the expanded plan. When the project has no outstanding transfers, replace the
+  explanation and alert treatment with a centered, positive completion state. When the current
+  member is owed money, use symmetric `Receive from` rows with a reversed direction icon and a
+  restrained success color so incoming payments remain distinct from outgoing payments. Reuse the
+  positive completion treatment with member-specific wording when only the current member has a
+  zero balance, and keep the full-plan control available beneath it.
 - Promise: `[debtor] should pay [creditor] [amount] for [reason]`.
 
 Form rules:

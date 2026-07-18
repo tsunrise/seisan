@@ -335,7 +335,7 @@ export async function renameProject(projectId: string, name: string): Promise<{ 
 
 export async function appendRecord(
   projectId: string,
-  input: { delta: MoneyByMemberId; description: RecordDescription },
+  input: { delta: MoneyByMemberId; description: RecordDescription; settle?: boolean },
 ): Promise<{ id: number }> {
   return requestJson(`/api/project/${projectId}`, {
     method: "POST",

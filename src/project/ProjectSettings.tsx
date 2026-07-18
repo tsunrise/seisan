@@ -1,4 +1,5 @@
 import AddIcon from "@mui/icons-material/Add";
+import BalanceOutlinedIcon from "@mui/icons-material/BalanceOutlined";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import LinkOffIcon from "@mui/icons-material/LinkOff";
@@ -19,6 +20,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useState } from "react";
+import { Link } from "react-router";
 
 import * as api from "../api";
 import { getApiErrorMessage } from "../apiErrorMessages";
@@ -191,6 +193,17 @@ export function ProjectSettings({
   return (
     <PanelFrame title="Project info" backTo={`/project/${project.id}`}>
       <Stack spacing={2}>
+        {currentMember ? (
+          <Button
+            component={Link}
+            to={`/project/${project.id}/settle`}
+            variant="outlined"
+            startIcon={<BalanceOutlinedIcon />}
+            fullWidth
+          >
+            View settlement plan
+          </Button>
+        ) : null}
         <TextField
           select
           label="Visibility"

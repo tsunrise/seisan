@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveDelta, recordDetailTitle, recordTitle } from "../src/domain";
+import {
+  deriveDelta,
+  isMultiRecipientTransfer,
+  recordDetailTitle,
+  recordTitle,
+} from "../src/domain";
 import { recordActorMemberId } from "../src/project/recordActor";
 import type { ProjectMember, ProjectRecord } from "../src/projectTypes";
 import { formatRelativeTime } from "../src/relativeTime";
@@ -75,6 +80,7 @@ describe("multi-recipient transfer helpers", () => {
 
     expect(deriveDelta(description)).toEqual({ "1": -500, "2": 300, "3": 200 });
     expect(recordActorMemberId(record)).toBe(1);
+    expect(isMultiRecipientTransfer(description)).toBe(true);
   });
 
   it("renders one or multiple destinations without legacy-only fields", () => {
@@ -98,11 +104,18 @@ describe("multi-recipient transfer helpers", () => {
       description: { type: "transfer", src: 1, dests: [{ id: 2, amount: 300 }] },
     };
 
-    expect(recordTitle(multiRecord, transferMembers)).toBe("Transferred Bob and Carol $5.00");
+    expect(recordTitle(multiRecord, transferMembers)).toBe("Transferred $5.00 in total");
     expect(recordDetailTitle(multiRecord, transferMembers)).toBe(
       "Alice transferred Bob $3.00 and Carol $2.00",
     );
     expect(recordTitle(singleRecord, transferMembers)).toBe("Transferred Bob $3.00");
     expect(recordDetailTitle(singleRecord, transferMembers)).toBe("Alice transferred Bob $3.00");
+    expect(
+      isMultiRecipientTransfer({
+        type: "transfer",
+        src: 1,
+        dests: [{ id: 2, amount: 300 }],
+      }),
+    ).toBe(false);
   });
 });

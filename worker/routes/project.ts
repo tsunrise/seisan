@@ -921,10 +921,21 @@ projectApp.delete(
   },
 );
 
-const ProjectAppendRecord = z.object({
-  delta: MoneyMap,
-  description: RecordDescription,
-});
+const ProjectAppendRecord = z
+  .object({
+    delta: MoneyMap,
+    description: RecordDescription,
+    settle: z.boolean().optional(),
+  })
+  .superRefine((record, context) => {
+    if (record.settle === true && record.description.type !== "transfer") {
+      context.addIssue({
+        code: "custom",
+        message: "Settlement cache advancement is only supported for transfers.",
+        path: ["settle"],
+      });
+    }
+  });
 
 projectApp.post(
   "/project/:id",
@@ -932,7 +943,7 @@ projectApp.post(
     tags: ["Project Records"],
     summary: "Append a record to a project",
     description:
-      "Appends an immutable expense, transfer, promise, or revert entry. The supplied cent-denominated delta must match the server-derived effect and sum to zero.",
+      "Appends an immutable expense, transfer, promise, or revert entry. The supplied cent-denominated delta must match the server-derived effect and sum to zero. A transfer may set settle=true to best-effort advance an already-viewed settlement plan when the caller confirms their complete cached sender batch; the flag is not persisted in the record.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectAppendRecord,
@@ -984,6 +995,7 @@ projectApp.post(
       callerEmail,
       delta: parsed.data.delta,
       description: parsed.data.description,
+      settle: parsed.data.settle,
       nowMs: Date.now(),
     });
     if (!result.ok) {

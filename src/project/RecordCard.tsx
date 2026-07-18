@@ -6,7 +6,7 @@ import type * as api from "../api";
 import { Amount } from "../components/Amount";
 import { NamedIcon } from "../components/NamedIcon";
 import { resolveRecordCategory } from "../categories";
-import { formatRelativeTime, memberName, recordTitle } from "../domain";
+import { formatRelativeTime, isMultiRecipientTransfer, memberName, recordTitle } from "../domain";
 import { ledgerColors } from "../theme";
 import { timelineLayout } from "./timelineLayout";
 import { recordActorMemberId } from "./recordActor";
@@ -54,7 +54,9 @@ export function RecordCard({
     record.description.type === "expense"
       ? expenseCategory?.icon
       : record.description.type === "transfer"
-        ? "transfer"
+        ? isMultiRecipientTransfer(record.description)
+          ? "transfer-multiple"
+          : "transfer"
         : "promise";
 
   return (

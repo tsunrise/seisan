@@ -17,6 +17,7 @@ import { ProjectRail } from "../project/ProjectRail";
 import { ProjectSettings } from "../project/ProjectSettings";
 import { RecordDetail } from "../project/RecordDetail";
 import { RecordTimeline } from "../project/RecordTimeline";
+import { SettlementPanel } from "../project/SettlementPanel";
 import type { ProjectPanel } from "../types";
 import { findLinkedMember } from "../domain";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -259,6 +260,17 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
             categories={categoryData}
             onPosted={reload}
           />
+        ) : null}
+        {panel === "settle" ? (
+          currentMember ? (
+            <SettlementPanel
+              project={project.data}
+              currentMember={currentMember}
+              onPosted={reload}
+            />
+          ) : (
+            <JoinPromptPanel project={project.data} currentEmail={currentEmail} />
+          )
         ) : null}
         {panel === "recordDetail" && selectedRecord ? (
           <RecordDetail

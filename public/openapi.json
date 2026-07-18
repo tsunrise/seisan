@@ -369,6 +369,7 @@
                             "enum": [
                               "expense",
                               "transfer",
+                              "transfer-multiple",
                               "promise",
                               "restaurant",
                               "grocery",
@@ -589,6 +590,7 @@
                           "enum": [
                             "expense",
                             "transfer",
+                            "transfer-multiple",
                             "promise",
                             "restaurant",
                             "grocery",
@@ -706,6 +708,7 @@
                                 "enum": [
                                   "expense",
                                   "transfer",
+                                  "transfer-multiple",
                                   "promise",
                                   "restaurant",
                                   "grocery",
@@ -2486,7 +2489,7 @@
         "operationId": "postApiProjectById",
         "tags": ["Project Records"],
         "summary": "Append a record to a project",
-        "description": "Appends an immutable expense, transfer, promise, or revert entry. The supplied cent-denominated delta must match the server-derived effect and sum to zero.",
+        "description": "Appends an immutable expense, transfer, promise, or revert entry. The supplied cent-denominated delta must match the server-derived effect and sum to zero. A transfer may set settle=true to best-effort advance an already-viewed settlement plan when the caller confirms their complete cached sender batch; the flag is not persisted in the record.",
         "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
@@ -2782,6 +2785,10 @@
                       },
                       { "type": "revert", "id": 1 }
                     ]
+                  },
+                  "settle": {
+                    "description": "For a transfer sent by the caller's linked member, best-effort advances an already-cached settlement plan by removing the matching sender batch instead of recomputing it. This preserves plan stability but may keep a less efficient remaining plan. Any non-settlement record invalidates the cached plan normally.",
+                    "type": "boolean"
                   }
                 },
                 "required": ["delta", "description"],
@@ -2810,7 +2817,8 @@
                         { "id": 1, "amount": 3100 },
                         { "id": 3, "amount": 3100 }
                       ]
-                    }
+                    },
+                    "settle": true
                   },
                   {
                     "delta": { "1": -3100, "2": 3100 },

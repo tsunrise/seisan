@@ -19,6 +19,8 @@ Use this before changing project, member, record, ACL, or balance behavior.
 - Transfer records accept both the legacy single-recipient `{ from, to, amount }` shape and the
   multi-recipient `{ src, dests: [{ id, amount }] }` shape. Multi-recipient destinations must be
   unique, positive, and different from the source; their amounts are summed into the source delta.
+- Record writes may include a top-level `settle: true` intent for a transfer. This flag is not part
+  of the description and is not persisted in the immutable record.
 - Expense category IDs are validated against published categories when records are posted. Project
   reads omit malformed, deleted, or otherwise unresolvable stored category IDs so historical records
   degrade to the general expense category.
@@ -30,6 +32,13 @@ Use this before changing project, member, record, ACL, or balance behavior.
   sender and recipient. Amount and member-ID tie breakers keep the plan deterministic.
 - Plans group destinations by source and are advisory reads; requesting a plan does not post records
   or change balances.
+- When a linked member confirms their complete cached sender batch with `settle: true`, the store
+  may advance that exact cached plan by removing only the confirmed batch. This keeps an
+  already-viewed plan stable for the other senders, although recomputing could find a more efficient
+  remaining plan.
+- Cache advancement is best effort. Missing, stale, malformed, partial, or nonmatching cached
+  batches do not reject an otherwise valid transfer; the new record ID makes the old cache stale and
+  the next settlement read recomputes. Any ordinary record may therefore generate a new plan.
 
 ## Access
 

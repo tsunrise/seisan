@@ -1,6 +1,7 @@
 export const ICON_NAME_VALUES = [
   "expense",
   "transfer",
+  "transfer-multiple",
   "promise",
   "restaurant",
   "grocery",

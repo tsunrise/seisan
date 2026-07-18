@@ -34,6 +34,14 @@ Use this before changing Durable Object classes, storage schemas, migrations, or
   authoritative even if project metadata KV lags a completed record transaction.
 - Record changes invalidate the cache lazily through the ID mismatch. The cache has no TTL and does
   not need eager deletion when a record is posted.
+- A `settle: true` transfer may patch a valid cache that matches the pre-insert `MAX(records.id)`.
+  The submitted transfer must semantically equal the caller-linked member's complete cached sender
+  batch. On a match, remove only that batch, preserve the remaining batches byte-for-byte and
+  order-for-order, and store them with the inserted record ID.
+- Cache patching is deliberately best effort: a missing, stale, malformed, partial, or nonmatching
+  cache must not reject a valid transfer. Leave the prior value stale so the next read recomputes.
+  Preserving an already-viewed plan favors stability and may retain a less efficient plan than a
+  fresh computation; ordinary records continue to use lazy record-ID invalidation.
 - Treat malformed cached JSON as a miss. Do not cache a computed plan when stored balances fail the
   safe-integer or zero-sum invariants.
 

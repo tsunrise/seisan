@@ -50,6 +50,7 @@ export default function App() {
         <Route path="/project/:projectId" element={<ProjectPage panel="timeline" />} />
         <Route path="/project/:projectId/join" element={<ProjectPage panel="join" />} />
         <Route path="/project/:projectId/records/new" element={<ProjectPage panel="newRecord" />} />
+        <Route path="/project/:projectId/settle" element={<ProjectPage panel="settle" />} />
         <Route
           path="/project/:projectId/records/:recordId"
           element={<ProjectPage panel="recordDetail" />}

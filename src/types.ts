@@ -10,7 +10,13 @@ export interface User {
   sessionExpiresAt?: number;
 }
 
-export type ProjectPanel = "timeline" | "join" | "newRecord" | "recordDetail" | "settings";
+export type ProjectPanel =
+  | "timeline"
+  | "join"
+  | "newRecord"
+  | "settle"
+  | "recordDetail"
+  | "settings";
 
 export type SplitMode = "equal" | "ratio" | "custom";
 

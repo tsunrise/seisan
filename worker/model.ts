@@ -647,6 +647,10 @@ const ProjectAppendRecordRequest = z
   .object({
     delta: MoneyByMemberId,
     description: RecordDescription,
+    settle: z.boolean().optional().meta({
+      description:
+        "For a transfer sent by the caller's linked member, best-effort advances an already-cached settlement plan by removing the matching sender batch instead of recomputing it. This preserves plan stability but may keep a less efficient remaining plan. Any non-settlement record invalidates the cached plan normally.",
+    }),
   })
   .strict()
   .meta({
@@ -656,6 +660,7 @@ const ProjectAppendRecordRequest = z
       {
         delta: { "1": 3_100, "2": -6_200, "3": 3_100 },
         description: exampleMultiTransferDescription,
+        settle: true,
       },
       { delta: { "1": -3_100, "2": 3_100 }, description: examplePromiseDescription },
       { delta: { "1": 6_200, "2": -6_200 }, description: exampleRevertDescription },
