@@ -177,7 +177,7 @@ export function LoginPage() {
           textAlign: "center",
         }}
       >
-        © Conghao Shen |{" "}
+        tsunrise |{" "}
         <Box
           component={Link}
           to="/privacy"
