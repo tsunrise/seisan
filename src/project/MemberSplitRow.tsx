@@ -1,7 +1,8 @@
-import { Checkbox, Stack, TextField, Typography } from "@mui/material";
+import { Checkbox, Stack, TextField } from "@mui/material";
 
 import type * as api from "../api";
 import { Amount } from "../components/Amount";
+import { MemberNameWithRepresentation } from "../components/MemberNameWithRepresentation";
 import type { SplitMode } from "../types";
 
 export function MemberSplitRow({
@@ -39,20 +40,14 @@ export function MemberSplitRow({
         sx={{ p: 0.5 }}
       />
       <Stack sx={{ minWidth: 0, flex: "1 1 auto" }}>
-        <Typography
-          sx={{
+        <MemberNameWithRepresentation
+          member={member}
+          nameSx={{
             minWidth: 0,
             color: selected ? "text.primary" : "text.secondary",
             fontWeight: selected ? 500 : 450,
           }}
-        >
-          {member.name}
-        </Typography>
-        {member.config?.size && member.config.size > 1 ? (
-          <Typography color="text.secondary" sx={{ fontSize: 12.5 }}>
-            {member.config.size} people
-          </Typography>
-        ) : null}
+        />
       </Stack>
       <Stack
         direction="row"

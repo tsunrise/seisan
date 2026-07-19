@@ -1,8 +1,8 @@
 import { Stack, Typography } from "@mui/material";
 
 import type * as api from "../api";
-import { memberName } from "../domain";
 import { Amount, type AmountColorMode } from "./Amount";
+import { MemberNameWithRepresentation } from "./MemberNameWithRepresentation";
 
 export function MoneyTable({
   title,
@@ -27,23 +27,29 @@ export function MoneyTable({
       <Typography variant="h3" sx={{ mb: 0.75 }}>
         {title}
       </Typography>
-      {entries.map(([memberId, amount]) => (
-        <Stack
-          key={memberId}
-          direction="row"
-          sx={{
-            alignItems: "center",
-            justifyContent: "space-between",
-            minHeight: 32,
-            py: 0.25,
-          }}
-        >
-          <Typography sx={{ color: "text.secondary", fontWeight: 500 }}>
-            {memberName(project.members, Number(memberId))}
-          </Typography>
-          <Amount amount={amount} muted={muted} colorMode={amountColorMode} />
-        </Stack>
-      ))}
+      {entries.map(([memberId, amount]) => {
+        const member = project.members.find((candidate) => candidate.id === Number(memberId));
+
+        return (
+          <Stack
+            key={memberId}
+            direction="row"
+            sx={{
+              alignItems: "center",
+              justifyContent: "space-between",
+              minHeight: 32,
+              py: 0.25,
+            }}
+          >
+            <MemberNameWithRepresentation
+              member={member}
+              fallback={`#${memberId}`}
+              nameSx={{ color: "text.secondary", fontWeight: 500 }}
+            />
+            <Amount amount={amount} muted={muted} colorMode={amountColorMode} />
+          </Stack>
+        );
+      })}
     </Stack>
   );
 }

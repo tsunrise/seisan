@@ -22,6 +22,7 @@ import * as api from "../api";
 import { getApiErrorMessage } from "../apiErrorMessages";
 import { Amount } from "../components/Amount";
 import { MemberConfigFields } from "../components/MemberConfigFields";
+import { MemberNameWithRepresentation } from "../components/MemberNameWithRepresentation";
 import { PanelFrame } from "../components/PanelFrame";
 import { useAppSnackbar } from "../hooks/useAppSnackbar";
 import {
@@ -140,18 +141,22 @@ export function ProjectMembersSettings({
 
   return (
     <PanelFrame title="Members" backTo={`/project/${project.id}/settings`}>
-      <Stack spacing={2}>
+      <Stack spacing={2.25}>
         {isOwner ? (
           <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between" }}>
             <Typography color="text.secondary" sx={{ fontSize: 14 }}>
               {activeMembers.length} active {activeMembers.length === 1 ? "member" : "members"}
             </Typography>
-            <Button variant="text" onClick={() => setManage((value) => !value)}>
+            <Button
+              variant="text"
+              onClick={() => setManage((value) => !value)}
+              sx={{ minHeight: 32, p: 0 }}
+            >
               {manage ? "Done" : "Manage"}
             </Button>
           </Stack>
         ) : null}
-        <Stack spacing={1}>
+        <Stack spacing={1.25}>
           {activeMembers.map((member) => {
             const balance = project.balance[String(member.id)] ?? 0;
             const isCurrentMember = member.id === currentMember?.id;
@@ -164,22 +169,20 @@ export function ProjectMembersSettings({
                 key={member.id}
                 direction="row"
                 sx={{
-                  alignItems: "center",
+                  alignItems: "flex-start",
                   gap: 1.25,
-                  minHeight: 64,
                   py: 0.5,
                 }}
               >
-                <Stack sx={{ minWidth: 0, flex: "1 1 auto" }}>
+                <Stack sx={{ minWidth: 0, flex: "1 1 auto", gap: 0.2 }}>
                   <Stack direction="row" sx={{ alignItems: "center", gap: 0.75, minWidth: 0 }}>
-                    <Typography
-                      sx={{
+                    <MemberNameWithRepresentation
+                      member={member}
+                      nameSx={{
                         fontWeight: isCurrentMember ? 850 : 600,
                         overflowWrap: "anywhere",
                       }}
-                    >
-                      {member.name}
-                    </Typography>
+                    />
                     {isOwnerMember ? (
                       <Tooltip title="Owner">
                         <SecurityIcon
@@ -191,18 +194,13 @@ export function ProjectMembersSettings({
                     ) : null}
                   </Stack>
                   {currentEmail ? (
-                    <Typography color="text.secondary" sx={{ fontSize: 12.5 }}>
+                    <Typography color="text.secondary" sx={{ fontSize: 12.5, lineHeight: 1.3 }}>
                       {member.linkedEmail ?? "Not yet joined"}
                     </Typography>
                   ) : null}
                   {member.config?.paymentMethod ? (
-                    <Typography sx={{ color: "text.secondary", fontSize: 12.5 }}>
+                    <Typography sx={{ color: "text.secondary", fontSize: 12.5, lineHeight: 1.3 }}>
                       Transfer method: {member.config.paymentMethod}
-                    </Typography>
-                  ) : null}
-                  {member.config?.size && member.config.size > 1 ? (
-                    <Typography sx={{ color: "text.secondary", fontSize: 12.5 }}>
-                      Represents {member.config.size} people
                     </Typography>
                   ) : null}
                 </Stack>

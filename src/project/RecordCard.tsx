@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import type * as api from "../api";
 import { Amount } from "../components/Amount";
+import { MemberNameWithRepresentation } from "../components/MemberNameWithRepresentation";
 import { NamedIcon } from "../components/NamedIcon";
 import { resolveRecordCategory } from "../categories";
 import { formatRelativeTime, isMultiRecipientTransfer, memberName, recordTitle } from "../domain";
@@ -135,17 +136,16 @@ export function RecordCard({
               minWidth: 0,
             }}
           >
-            <Typography
-              sx={{
+            <MemberNameWithRepresentation
+              member={actor}
+              nameSx={{
                 minWidth: 0,
                 color: "text.secondary",
                 fontSize: 15,
                 fontWeight: 500,
                 overflowWrap: "anywhere",
               }}
-            >
-              {actor?.name ?? "Unknown member"}
-            </Typography>
+            />
             <Typography
               sx={{
                 display: { xs: "block", sm: "none" },

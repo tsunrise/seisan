@@ -42,6 +42,10 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
   value as each member's editable default, while custom splits remain explicit amounts.
 - Show payment methods where someone is deciding how to pay: member lists, selected recipients in
   the transfer composer, and outgoing settlement payments.
+- Show represented group size as `+N` beside member names in compact balance lists, member settings
+  rows, expense split rows, timeline actor labels, and record-detail money tables, where `N` is
+  `config.size - 1`; omit the marker when size is one or absent. Use the shared member-name
+  component so the calculation and alignment stay consistent.
 
 ## Project Settings
 
