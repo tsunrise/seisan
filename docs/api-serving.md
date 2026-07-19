@@ -104,8 +104,9 @@ Routes should treat bindings as edges to owned state:
 - `PUBLISHED_GLOBAL_CONFIG` is the eventually consistent KV projection for hot-path global config reads.
 - Known GlobalConfig keys and published value codecs are documented in `docs/global-config.md`.
 - Category classification owns the `categories` global config key and is documented in `docs/category-classification.md`.
-- Rate-limit bindings protect record posting at 10 requests per minute per account and 120 requests
-  per minute per project, and category classification at 30 requests per minute per account.
+- Rate-limit bindings protect record creation, replacement, and deletion at 10 requests per minute
+  per account and 120 requests per minute per project, and category classification at 30 requests
+  per minute per account.
 - `SEND_EMAIL` sends login-code email after an attempt is stored.
 
 For project reads, `worker/routes/project.ts` looks up the ProjectStore reference through `ProjectRefFetcher`. A `PROJECT_REGISTRY_CACHE` hit is used without consulting the registry, a KV miss is treated as a terminal negative lookup, and `ProjectsRegistry.lookupProject()` is only used when the cache read is unavailable/invalid or a cached Durable Object ID cannot be converted.

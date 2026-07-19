@@ -20,7 +20,7 @@ const CATEGORY_DOCUMENT_TEXT_MAX_LENGTH =
 export const CategoryId = z
   .string()
   .regex(UUID_PATTERN)
-  .transform((id) => id.toLowerCase());
+  .overwrite((id) => id.toLowerCase());
 export type CategoryId = z.infer<typeof CategoryId>;
 
 export const CategoryName = z

@@ -12,7 +12,9 @@ import {
   ProjectEmailsUtils,
   ProjectMemberConfig,
   ProjectMemberConfigPatch,
+  MoneyByMemberId,
   TransferBatch,
+  WritableRecordDescription,
   type ProjectAcl,
   type ProjectAclType,
   type ProjectJoin,
@@ -22,7 +24,6 @@ import {
   type ProjectRecord,
   type ProjectSummary,
   type RecordDescription,
-  type MoneyByMemberId,
   type TransferDescription,
 } from "../project";
 import {
@@ -93,14 +94,9 @@ interface RecordRow extends Record<string, SqlStorageValue> {
   description_type: string;
   description_json: string;
   delta_json: string;
-  reverts_record_id: number | null;
   created_at: number;
-}
-
-interface RecordResponseRow extends RecordRow {
-  reverted_record_id: number | null;
-  reverted_author_member_id: number | null;
-  reverted_created_at: number | null;
+  updated_at: number | null;
+  updated_by_member_id: number | null;
 }
 
 interface BalanceRow extends Record<string, SqlStorageValue> {
@@ -127,7 +123,6 @@ type ProjectStoreError =
   | "invalid_input"
   | "invalid_record"
   | "not_found"
-  | "already_reverted"
   | "already_linked"
   | "already_deleted"
   | "nonzero_balance"
@@ -256,7 +251,7 @@ export class ProjectStore extends DurableObject<Env> {
   async postRecord(input: {
     callerEmail: string;
     delta: Record<string, number>;
-    description: RecordDescription;
+    description: WritableRecordDescription;
     settle?: boolean;
     nowMs: number;
   }): Promise<
@@ -267,8 +262,6 @@ export class ProjectStore extends DurableObject<Env> {
           | "uninitialized"
           | "forbidden"
           | "invalid_record"
-          | "not_found"
-          | "already_reverted"
           | "record_limit_exceeded"
           | "money_limit_exceeded";
       }
@@ -288,17 +281,11 @@ export class ProjectStore extends DurableObject<Env> {
       return { ok: false, error: "forbidden" };
     }
 
-    let description: RecordDescription;
-    let delta: MoneyByMemberId;
-    try {
-      if (ProjectStore.hasOversizedRecordMoneyMap(input.delta, input.description)) {
-        return { ok: false, error: "invalid_record" };
-      }
-      description = ProjectStore.normalizeRecordDescription(input.description);
-      delta = MoneyByMemberIdUtils.normalize(input.delta);
-    } catch {
-      return { ok: false, error: "invalid_record" };
+    const prepared = this.prepareWritableRecord(input, policy);
+    if (!prepared.ok) {
+      return prepared;
     }
+    const { description, delta } = prepared;
 
     if (input.settle && description.type !== "transfer") {
       return { ok: false, error: "invalid_record" };
@@ -311,70 +298,11 @@ export class ProjectStore extends DurableObject<Env> {
       return { ok: false, error: "forbidden" };
     }
 
-    const limitExceededError = this.getDescriptionLimitExceededError(description, policy);
-    if (limitExceededError) {
-      return { ok: false, error: limitExceededError };
-    }
-    if (!policy.allowsMoneyMap(delta)) {
-      return { ok: false, error: "money_limit_exceeded" };
-    }
     if (!policy.allowsAdditionalOwnedProjectRecord(this.countRecords())) {
       return { ok: false, error: "record_limit_exceeded" };
     }
 
-    const resolvedDelta = this.resolveDelta(description);
-    if (!resolvedDelta.ok) {
-      return resolvedDelta;
-    }
-    if (ProjectStore.hasOversizedMoneyMap(resolvedDelta.delta)) {
-      return { ok: false, error: "invalid_record" };
-    }
-
-    if (
-      !MoneyByMemberIdUtils.equals(delta, resolvedDelta.delta) ||
-      MoneyByMemberIdUtils.sum(resolvedDelta.delta) !== 0
-    ) {
-      return { ok: false, error: "invalid_record" };
-    }
-
-    // Require every member referenced by either the description or delta to be active.
-    const referencedMemberIds = new Set<number>();
-    for (const memberId of MoneyByMemberIdUtils.members(resolvedDelta.delta)) {
-      referencedMemberIds.add(Number(memberId));
-    }
-    if (description.type === "expense") {
-      for (const memberId of MoneyByMemberIdUtils.members(description.paid)) {
-        referencedMemberIds.add(Number(memberId));
-      }
-      for (const memberId of MoneyByMemberIdUtils.members(description.liability)) {
-        referencedMemberIds.add(Number(memberId));
-      }
-    }
-    if (description.type === "transfer") {
-      if ("from" in description) {
-        referencedMemberIds.add(description.from);
-        referencedMemberIds.add(description.to);
-      } else {
-        referencedMemberIds.add(description.src);
-        for (const destination of description.dests) {
-          referencedMemberIds.add(destination.id);
-        }
-      }
-    }
-    if (description.type === "promise") {
-      referencedMemberIds.add(description.debtorMemberId);
-      referencedMemberIds.add(description.creditorMemberId);
-    }
-    if (referencedMemberIds.size > 0) {
-      const activeMemberIds = this.getActiveMemberIds();
-      for (const memberId of referencedMemberIds) {
-        if (!activeMemberIds.has(memberId)) {
-          return { ok: false, error: "invalid_record" };
-        }
-      }
-    }
-
-    if (!this.canApplyBalanceDelta(resolvedDelta.delta, policy)) {
+    if (!this.canApplyBalanceDelta(delta, policy)) {
       return { ok: false, error: "money_limit_exceeded" };
     }
 
@@ -383,22 +311,21 @@ export class ProjectStore extends DurableObject<Env> {
         ? this.createSettlementCachePatch(description)
         : null;
     const id = this.getNextRecordId(metadata.meta);
-    this.ctx.storage.transactionSync(() => {
-      this.ctx.storage.sql.exec(
+    this.ctx.storage.sql
+      .exec(
         `INSERT INTO records
-          (id, author_member_id, description_type, description_json, delta_json, reverts_record_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        (id, author_member_id, description_type, description_json, delta_json, created_at,
+         updated_at, updated_by_member_id)
+       VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)`,
         id,
         authorMember.id,
         description.type,
         JSON.stringify(description),
-        JSON.stringify(resolvedDelta.delta),
-        description.type === "revert" ? description.id : null,
+        JSON.stringify(delta),
         input.nowMs,
-      );
-
-      this.applyBalanceDelta(resolvedDelta.delta);
-    });
+      )
+      .toArray();
+    this.applyBalanceDelta(delta);
     this.saveProjectMetadata({
       ...metadata.meta,
       next_record_id: id + 1,
@@ -420,6 +347,72 @@ export class ProjectStore extends DurableObject<Env> {
 
     this.queueProjectSummarySync();
     return { ok: true, id };
+  }
+
+  getRecord(input: {
+    publicId?: string;
+    callerEmail?: string | null;
+    recordId: number;
+  }):
+    | { ok: true; record: ProjectRecord }
+    | { ok: false; error: "uninitialized" | "forbidden" | "not_found" } {
+    const metadata = this.getProjectMetadata(input.callerEmail);
+    if (!metadata.ok) {
+      return metadata;
+    }
+    this.persistPublicIdIfMissing(metadata.meta, input.publicId);
+
+    const row = this.getLiveRecordRow(input.recordId);
+    return row ? { ok: true, record: recordFromRow(row) } : { ok: false, error: "not_found" };
+  }
+
+  async putRecord(input: {
+    callerEmail: string;
+    recordId: number;
+    delta: Record<string, number>;
+    description: WritableRecordDescription;
+    nowMs: number;
+  }): Promise<
+    | { ok: true; record: ProjectRecord }
+    | {
+        ok: false;
+        error:
+          | "uninitialized"
+          | "forbidden"
+          | "not_found"
+          | "invalid_record"
+          | "record_limit_exceeded"
+          | "money_limit_exceeded"
+          | "nonzero_balance";
+      }
+  > {
+    const policy = await this.loadOwnerLimitsPolicy();
+    const result = this.putRecordSync(input, policy);
+    if (result.ok) {
+      this.queueProjectSummarySync();
+    }
+    return result;
+  }
+
+  async deleteRecord(input: { callerEmail: string; recordId: number; nowMs: number }): Promise<
+    | { ok: true }
+    | {
+        ok: false;
+        error:
+          | "uninitialized"
+          | "forbidden"
+          | "not_found"
+          | "invalid_record"
+          | "money_limit_exceeded"
+          | "nonzero_balance";
+      }
+  > {
+    const policy = await this.loadOwnerLimitsPolicy();
+    const result = this.deleteRecordSync(input, policy);
+    if (result.ok) {
+      this.queueProjectSummarySync();
+    }
+    return result;
   }
 
   // Return the biggest `limit` ids smaller than offset
@@ -449,28 +442,25 @@ export class ProjectStore extends DurableObject<Env> {
     const limit = input.limit;
     const offset = Math.min(Number.MAX_SAFE_INTEGER, Math.max(1, Math.floor(input.offset)));
     const records = this.ctx.storage.sql
-      .exec<RecordResponseRow>(
+      .exec<RecordRow>(
         `SELECT
-            record.id,
-            record.author_member_id,
-            record.description_type,
-            record.description_json,
-            record.delta_json,
-            record.reverts_record_id,
-            record.created_at,
-            reverter.id AS reverted_record_id,
-            reverter.author_member_id AS reverted_author_member_id,
-            reverter.created_at AS reverted_created_at
-         FROM records AS record
-         LEFT JOIN records AS reverter ON reverter.reverts_record_id = record.id
-         WHERE record.id < ?
-         ORDER BY record.id DESC
+            id,
+            author_member_id,
+            description_type,
+            description_json,
+            delta_json,
+            created_at,
+            updated_at,
+            updated_by_member_id
+         FROM records
+         WHERE id < ? AND description_type != 'deleted'
+         ORDER BY id DESC
          LIMIT ?`,
         offset,
         limit,
       )
       .toArray()
-      .map(recordFromResponseRow);
+      .map(recordFromRow);
 
     const balance = Object.fromEntries(
       this.ctx.storage.sql
@@ -1187,6 +1177,344 @@ export class ProjectStore extends DurableObject<Env> {
     );
   }
 
+  /**
+   * Replaces a live record, applies its normalized net balance delta, updates audit metadata, and
+   * invalidates the settlement cache when balances change.
+   *
+   * The helper is atomic because every authoritative read and SQL/KV write is synchronous and every
+   * SQL cursor is consumed immediately, allowing Cloudflare to submit the sequence as one implicit
+   * transaction.
+   */
+  private putRecordSync(
+    input: {
+      callerEmail: string;
+      recordId: number;
+      delta: Record<string, number>;
+      description: WritableRecordDescription;
+      nowMs: number;
+    },
+    policy: LimitsPolicy,
+  ):
+    | { ok: true; record: ProjectRecord }
+    | {
+        ok: false;
+        error:
+          | "uninitialized"
+          | "forbidden"
+          | "not_found"
+          | "invalid_record"
+          | "record_limit_exceeded"
+          | "money_limit_exceeded"
+          | "nonzero_balance";
+      } {
+    const metadata = this.getProjectMetadata(input.callerEmail);
+    if (!metadata.ok) {
+      return metadata;
+    }
+    if (!metadata.email) {
+      return { ok: false, error: "forbidden" };
+    }
+
+    const editorMember = this.getActiveLinkedMember(metadata.email);
+    if (!editorMember) {
+      return { ok: false, error: "forbidden" };
+    }
+
+    const stored = this.getLiveRecordRow(input.recordId);
+    if (!stored) {
+      return { ok: false, error: "not_found" };
+    }
+
+    const prepared = this.prepareWritableRecord(input, policy);
+    if (!prepared.ok) {
+      return prepared;
+    }
+
+    const storedDelta = ProjectStore.parseStoredMoneyMap(stored.delta_json);
+    if (!storedDelta) {
+      return { ok: false, error: "invalid_record" };
+    }
+    const netDelta = ProjectStore.subtractMoneyMaps(prepared.delta, storedDelta);
+    if (!netDelta) {
+      return { ok: false, error: "invalid_record" };
+    }
+    const deletedMemberError = this.getDeletedMemberBalanceError(netDelta);
+    if (deletedMemberError) {
+      return { ok: false, error: deletedMemberError };
+    }
+    if (!this.canApplyBalanceDelta(netDelta, policy)) {
+      return { ok: false, error: "money_limit_exceeded" };
+    }
+
+    // Cloudflare submits this synchronous read/write tail as one implicit transaction. Keep every
+    // storage operation through saveProjectMetadata free of asynchronous boundaries.
+    this.ctx.storage.sql
+      .exec(
+        `UPDATE records
+       SET description_type = ?, description_json = ?, delta_json = ?,
+           updated_at = ?, updated_by_member_id = ?
+       WHERE id = ? AND description_type != 'deleted'`,
+        prepared.description.type,
+        JSON.stringify(prepared.description),
+        JSON.stringify(prepared.delta),
+        input.nowMs,
+        editorMember.id,
+        input.recordId,
+      )
+      .toArray();
+    this.applyBalanceDelta(netDelta);
+    if (MoneyByMemberIdUtils.entries(netDelta).length > 0) {
+      this.ctx.storage.kv.delete(SETTLEMENT_PLAN_CACHE_KEY);
+    }
+    this.saveProjectMetadata({ ...metadata.meta, updated_at: input.nowMs });
+
+    return {
+      ok: true,
+      record: {
+        id: stored.id,
+        authorMemberId: stored.author_member_id,
+        delta: prepared.delta,
+        description: prepared.description,
+        createdAt: stored.created_at,
+        updatedAt: input.nowMs,
+        updatedByMemberId: editorMember.id,
+      },
+    };
+  }
+
+  /**
+   * Tombstones a live record, reverses its stored balance delta, updates project metadata, and
+   * invalidates the settlement cache when balances change.
+   *
+   * The helper is atomic because every authoritative read and SQL/KV write is synchronous and every
+   * SQL cursor is consumed immediately, allowing Cloudflare to submit the sequence as one implicit
+   * transaction.
+   */
+  private deleteRecordSync(
+    input: { callerEmail: string; recordId: number; nowMs: number },
+    policy: LimitsPolicy,
+  ):
+    | { ok: true }
+    | {
+        ok: false;
+        error:
+          | "uninitialized"
+          | "forbidden"
+          | "not_found"
+          | "invalid_record"
+          | "money_limit_exceeded"
+          | "nonzero_balance";
+      } {
+    const metadata = this.getProjectMetadata(input.callerEmail);
+    if (!metadata.ok) {
+      return metadata;
+    }
+    if (!metadata.email || !this.getActiveLinkedMember(metadata.email)) {
+      return { ok: false, error: "forbidden" };
+    }
+
+    const stored = this.getLiveRecordRow(input.recordId);
+    if (!stored) {
+      return { ok: false, error: "not_found" };
+    }
+    const storedDelta = ProjectStore.parseStoredMoneyMap(stored.delta_json);
+    if (!storedDelta) {
+      return { ok: false, error: "invalid_record" };
+    }
+    const inverseDelta = ProjectStore.subtractMoneyMaps({}, storedDelta);
+    if (!inverseDelta) {
+      return { ok: false, error: "invalid_record" };
+    }
+    const deletedMemberError = this.getDeletedMemberBalanceError(inverseDelta);
+    if (deletedMemberError) {
+      return { ok: false, error: deletedMemberError };
+    }
+    if (!this.canApplyBalanceDelta(inverseDelta, policy)) {
+      return { ok: false, error: "money_limit_exceeded" };
+    }
+
+    // As above, this mutation tail stays synchronous so the tombstone and balances cannot commit
+    // independently.
+    this.ctx.storage.sql
+      .exec(
+        `UPDATE records
+       SET description_type = 'deleted', description_json = '{}', delta_json = '{}'
+       WHERE id = ? AND description_type != 'deleted'`,
+        input.recordId,
+      )
+      .toArray();
+    this.applyBalanceDelta(inverseDelta);
+    if (MoneyByMemberIdUtils.entries(storedDelta).length > 0) {
+      this.ctx.storage.kv.delete(SETTLEMENT_PLAN_CACHE_KEY);
+    }
+    this.saveProjectMetadata({ ...metadata.meta, updated_at: input.nowMs });
+    return { ok: true };
+  }
+
+  /**
+   * Normalizes and validates a client-supplied writable record. It derives the authoritative delta
+   * from the normalized description and verifies that it matches the submitted delta, sums to
+   * zero, satisfies owner limits, and only references active project members.
+   */
+  private prepareWritableRecord(
+    input: { delta: Record<string, number>; description: WritableRecordDescription },
+    policy: LimitsPolicy,
+  ):
+    | { ok: true; description: WritableRecordDescription; delta: MoneyByMemberId }
+    | {
+        ok: false;
+        error: "invalid_record" | "record_limit_exceeded" | "money_limit_exceeded";
+      } {
+    const parsedDescription = WritableRecordDescription.safeParse(input.description);
+    const parsedDelta = MoneyByMemberId.safeParse(input.delta);
+    if (!parsedDescription.success || !parsedDelta.success) {
+      return { ok: false, error: "invalid_record" };
+    }
+    const description = ProjectStore.normalizeRecordDescription(parsedDescription.data);
+    const delta = parsedDelta.data;
+
+    const limitExceededError = this.getDescriptionLimitExceededError(description, policy);
+    if (limitExceededError) {
+      return { ok: false, error: limitExceededError };
+    }
+    if (!policy.allowsMoneyMap(delta)) {
+      return { ok: false, error: "money_limit_exceeded" };
+    }
+
+    const resolvedDelta = ProjectStore.deriveDescriptionDelta(description);
+    if (
+      !resolvedDelta ||
+      ProjectStore.hasOversizedMoneyMap(resolvedDelta) ||
+      !MoneyByMemberIdUtils.equals(delta, resolvedDelta) ||
+      MoneyByMemberIdUtils.sum(resolvedDelta) !== 0 ||
+      !this.referencesOnlyActiveMembers(description, resolvedDelta)
+    ) {
+      return { ok: false, error: "invalid_record" };
+    }
+    return { ok: true, description, delta: resolvedDelta };
+  }
+
+  /**
+   * Collects every member referenced by the description or derived delta and verifies that each is
+   * an active project member.
+   */
+  private referencesOnlyActiveMembers(
+    description: WritableRecordDescription,
+    delta: MoneyByMemberId,
+  ): boolean {
+    const referencedMemberIds = new Set(
+      MoneyByMemberIdUtils.members(delta).map((memberId) => Number(memberId)),
+    );
+    if (description.type === "expense") {
+      for (const memberId of MoneyByMemberIdUtils.members(description.paid)) {
+        referencedMemberIds.add(Number(memberId));
+      }
+      for (const memberId of MoneyByMemberIdUtils.members(description.liability)) {
+        referencedMemberIds.add(Number(memberId));
+      }
+    } else if (description.type === "transfer") {
+      if ("from" in description) {
+        referencedMemberIds.add(description.from);
+        referencedMemberIds.add(description.to);
+      } else {
+        referencedMemberIds.add(description.src);
+        for (const destination of description.dests) {
+          referencedMemberIds.add(destination.id);
+        }
+      }
+    } else {
+      referencedMemberIds.add(description.debtorMemberId);
+      referencedMemberIds.add(description.creditorMemberId);
+    }
+
+    const activeMemberIds = this.getActiveMemberIds();
+    return [...referencedMemberIds].every((memberId) => activeMemberIds.has(memberId));
+  }
+
+  private getLiveRecordRow(recordId: number): RecordRow | null {
+    return (
+      this.ctx.storage.sql
+        .exec<RecordRow>(
+          `SELECT id, author_member_id, description_type, description_json, delta_json,
+                  created_at, updated_at, updated_by_member_id
+           FROM records
+           WHERE id = ? AND description_type != 'deleted'`,
+          recordId,
+        )
+        .toArray()[0] ?? null
+    );
+  }
+
+  private getDeletedMemberBalanceError(
+    delta: MoneyByMemberId,
+  ): "invalid_record" | "nonzero_balance" | null {
+    for (const [memberId, amount] of MoneyByMemberIdUtils.entries(delta)) {
+      const member = this.getMember(Number(memberId));
+      if (!member) {
+        return "invalid_record";
+      }
+      if (member.deleted_at === null) {
+        continue;
+      }
+      const currentBalance =
+        this.ctx.storage.sql
+          .exec<BalanceRow>(
+            "SELECT amount_cents FROM balances WHERE member_id = ?",
+            Number(memberId),
+          )
+          .toArray()[0]?.amount_cents ?? 0;
+      if (currentBalance + amount !== 0) {
+        return "nonzero_balance";
+      }
+    }
+    return null;
+  }
+
+  private static parseStoredMoneyMap(raw: string): MoneyByMemberId | null {
+    try {
+      const parsed = MoneyByMemberId.safeParse(JSON.parse(raw) as unknown);
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Computes the normalized money map `a - b`, removing zero-valued entries and returning null if
+   * any intermediate sum exceeds JavaScript's safe-integer range.
+   */
+  private static subtractMoneyMaps(a: MoneyByMemberId, b: MoneyByMemberId): MoneyByMemberId | null {
+    const result: MoneyByMemberId = {};
+    for (const [memberId, amount] of MoneyByMemberIdUtils.entries(a)) {
+      if (!ProjectStore.addSafeMoneyAmount(result, memberId, amount)) {
+        return null;
+      }
+    }
+    for (const [memberId, amount] of MoneyByMemberIdUtils.entries(b)) {
+      if (!ProjectStore.addSafeMoneyAmount(result, memberId, -amount)) {
+        return null;
+      }
+    }
+    return result;
+  }
+
+  private static addSafeMoneyAmount(
+    map: MoneyByMemberId,
+    memberId: string,
+    amount: number,
+  ): boolean {
+    const next = (map[memberId] ?? 0) + amount;
+    if (!Number.isSafeInteger(next)) {
+      return false;
+    }
+    if (next === 0) {
+      delete map[memberId];
+    } else {
+      map[memberId] = next;
+    }
+    return true;
+  }
+
   private async loadOwnerLimitsPolicy(): Promise<LimitsPolicy> {
     const ownerEmail = this.getMeta()?.owner_email;
     if (!ownerEmail) {
@@ -1207,7 +1535,7 @@ export class ProjectStore extends DurableObject<Env> {
   }
 
   private getDescriptionLimitExceededError(
-    description: RecordDescription,
+    description: WritableRecordDescription,
     policy: LimitsPolicy,
   ): "record_limit_exceeded" | "money_limit_exceeded" | null {
     if (description.type === "expense") {
@@ -1231,13 +1559,10 @@ export class ProjectStore extends DurableObject<Env> {
         ? null
         : "money_limit_exceeded";
     }
-    if (description.type === "promise") {
-      if (description.reason !== undefined && !policy.allowsExpenseName(description.reason)) {
-        return "record_limit_exceeded";
-      }
-      return policy.allowsMoneyAmount(description.amount) ? null : "money_limit_exceeded";
+    if (description.reason !== undefined && !policy.allowsExpenseName(description.reason)) {
+      return "record_limit_exceeded";
     }
-    return null;
+    return policy.allowsMoneyAmount(description.amount) ? null : "money_limit_exceeded";
   }
 
   private getProjectMetadata(
@@ -1555,17 +1880,18 @@ export class ProjectStore extends DurableObject<Env> {
 
   private applyBalanceDelta(delta: MoneyByMemberId): void {
     for (const [memberId, amount] of MoneyByMemberIdUtils.entries(delta)) {
-      this.ctx.storage.sql.exec(
-        `INSERT INTO balances (member_id, amount_cents)
+      this.ctx.storage.sql
+        .exec(
+          `INSERT INTO balances (member_id, amount_cents)
          VALUES (?, ?)
          ON CONFLICT(member_id) DO UPDATE SET amount_cents = amount_cents + excluded.amount_cents`,
-        Number(memberId),
-        amount,
-      );
-      this.ctx.storage.sql.exec(
-        "DELETE FROM balances WHERE member_id = ? AND amount_cents = 0",
-        Number(memberId),
-      );
+          Number(memberId),
+          amount,
+        )
+        .toArray();
+      this.ctx.storage.sql
+        .exec("DELETE FROM balances WHERE member_id = ? AND amount_cents = 0", Number(memberId))
+        .toArray();
     }
   }
 
@@ -1645,47 +1971,8 @@ export class ProjectStore extends DurableObject<Env> {
       owner: meta.owner_email,
       updatedAt: meta.updated_at,
       lastSyncAt,
-      recordCount: Math.max(meta.next_record_id - 1, 0),
+      recordCount: this.countRecords(),
       members,
-    };
-  }
-
-  private resolveDelta(
-    description: RecordDescription,
-  ):
-    | { ok: true; delta: MoneyByMemberId }
-    | { ok: false; error: "invalid_record" | "not_found" | "already_reverted" } {
-    if (description.type !== "revert") {
-      const delta = ProjectStore.deriveDescriptionDelta(description);
-      if (!delta) {
-        return { ok: false, error: "invalid_record" };
-      }
-      return { ok: true, delta };
-    }
-
-    const target = this.ctx.storage.sql
-      .exec<RecordRow>(
-        "SELECT id, description_type, delta_json FROM records WHERE id = ?",
-        description.id,
-      )
-      .toArray()[0];
-    if (!target) {
-      return { ok: false, error: "not_found" };
-    }
-    if (target.description_type === "revert") {
-      return { ok: false, error: "invalid_record" };
-    }
-
-    const existingRevert = this.ctx.storage.sql
-      .exec<RecordRow>("SELECT id FROM records WHERE reverts_record_id = ?", description.id)
-      .toArray()[0];
-    if (existingRevert) {
-      return { ok: false, error: "already_reverted" };
-    }
-
-    return {
-      ok: true,
-      delta: MoneyByMemberIdUtils.negate(JSON.parse(target.delta_json) as MoneyByMemberId),
     };
   }
 
@@ -1699,8 +1986,7 @@ export class ProjectStore extends DurableObject<Env> {
   }
 
   private static deriveDescriptionDelta(
-    description: RecordDescription,
-    revertTargetDelta?: MoneyByMemberId,
+    description: WritableRecordDescription,
   ): MoneyByMemberId | null {
     if (description.type === "expense") {
       const delta: MoneyByMemberId = {};
@@ -1750,23 +2036,18 @@ export class ProjectStore extends DurableObject<Env> {
       return MoneyByMemberIdUtils.normalize(delta);
     }
 
-    if (description.type === "promise") {
-      if (description.debtorMemberId === description.creditorMemberId || description.amount <= 0) {
-        return null;
-      }
-      return MoneyByMemberIdUtils.normalize({
-        [String(description.debtorMemberId)]: description.amount,
-        [String(description.creditorMemberId)]: -description.amount,
-      });
-    }
-
-    if (!revertTargetDelta) {
+    if (description.debtorMemberId === description.creditorMemberId || description.amount <= 0) {
       return null;
     }
-    return MoneyByMemberIdUtils.negate(revertTargetDelta);
+    return MoneyByMemberIdUtils.normalize({
+      [String(description.debtorMemberId)]: description.amount,
+      [String(description.creditorMemberId)]: -description.amount,
+    });
   }
 
-  private static normalizeRecordDescription(description: RecordDescription): RecordDescription {
+  private static normalizeRecordDescription(
+    description: WritableRecordDescription,
+  ): WritableRecordDescription {
     if (description.type === "promise") {
       const { reason, ...promise } = description;
       const normalizedReason = reason?.trim();
@@ -1782,23 +2063,6 @@ export class ProjectStore extends DurableObject<Env> {
       paid: MoneyByMemberIdUtils.normalize(description.paid),
       liability: MoneyByMemberIdUtils.normalize(description.liability),
     };
-  }
-
-  private static hasOversizedRecordMoneyMap(
-    delta: Record<string, number>,
-    description: RecordDescription,
-  ): boolean {
-    if (ProjectStore.hasOversizedMoneyMap(delta)) {
-      return true;
-    }
-    return (
-      (description.type === "expense" &&
-        (ProjectStore.hasOversizedMoneyMap(description.paid) ||
-          ProjectStore.hasOversizedMoneyMap(description.liability))) ||
-      (description.type === "transfer" &&
-        "dests" in description &&
-        description.dests.length > ABSOLUTE_LIST_LIMIT)
-    );
   }
 
   private static hasOversizedMoneyMap(map: unknown): boolean {
@@ -1856,26 +2120,8 @@ function recordFromRow(row: RecordRow): ProjectRecord {
     delta: JSON.parse(row.delta_json) as MoneyByMemberId,
     description: JSON.parse(row.description_json) as RecordDescription,
     createdAt: row.created_at,
-  };
-}
-
-function recordFromResponseRow(row: RecordResponseRow): ProjectRecord {
-  const record = recordFromRow(row);
-  if (
-    record.description.type === "revert" ||
-    row.reverted_record_id === null ||
-    row.reverted_author_member_id === null ||
-    row.reverted_created_at === null
-  ) {
-    return record;
-  }
-
-  return {
-    ...record,
-    reverted: {
-      recordId: row.reverted_record_id,
-      authorMemberId: row.reverted_author_member_id,
-      createdAt: row.reverted_created_at,
-    },
+    ...(row.updated_at !== null && row.updated_by_member_id !== null
+      ? { updatedAt: row.updated_at, updatedByMemberId: row.updated_by_member_id }
+      : {}),
   };
 }

@@ -99,7 +99,7 @@ export function ExpenseComposer({
     return custom;
   }, [customAmounts, members, ratios, selectedIds, splitMode, total]);
   const paid = total === null ? {} : { [String(paidBy)]: total };
-  const description: api.RecordDescription = {
+  const description: api.WritableRecordDescription = {
     type: "expense",
     name: name || "Expense",
     paid,
@@ -140,7 +140,7 @@ export function ExpenseComposer({
         return;
       }
       const categoryId = categoryIdForRecord(classification.selectedCategoryId);
-      const submittedDescription: api.RecordDescription = {
+      const submittedDescription: api.WritableRecordDescription = {
         ...description,
         ...(categoryId ? { categoryId } : {}),
       };

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { CategoryId } from "./category/schema";
 import { normalizeEmail, normalizedEmailSchema } from "./email";
 import { ABSOLUTE_LIST_LIMIT, ABSOLUTE_TEXT_LIMIT } from "./limits";
 
@@ -16,13 +17,91 @@ export const ProjectId = z
   .transform((id) => id.toLowerCase());
 export type ProjectId = z.infer<typeof ProjectId>;
 
-// TODO(schema-source): replace these project primitive aliases with canonical zod schemas shared by
-// route validation and OpenAPI instead of maintaining their constraints in multiple files.
-export type Cents = number;
-export type MemberId = number;
+export const Cents = z
+  .number()
+  .int()
+  .min(-Number.MAX_SAFE_INTEGER)
+  .max(Number.MAX_SAFE_INTEGER)
+  .meta({ description: "Signed integer-cent amount." });
+export type Cents = z.infer<typeof Cents>;
+
+export const MemberId = z
+  .number()
+  .int()
+  .positive()
+  .max(Number.MAX_SAFE_INTEGER)
+  .meta({ description: "Project-local member ID.", examples: [1] });
+export type MemberId = z.infer<typeof MemberId>;
+
 export type MemberName = string;
 export type ProjectName = string;
-export type MoneyByMemberId = Record<string, number>;
+
+const memberIdKeyRegex = /^[1-9]\d*$/u;
+
+function normalizeMoneyByMemberId(input: Record<string, number>): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const [memberId, amount] of Object.entries(input)) {
+    if (amount === 0) {
+      continue;
+    }
+    const normalizedMemberId = String(Number(memberId));
+    const nextAmount = (result[normalizedMemberId] ?? 0) + amount;
+    if (nextAmount === 0) {
+      delete result[normalizedMemberId];
+    } else {
+      result[normalizedMemberId] = nextAmount;
+    }
+  }
+  return result;
+}
+
+function makeMoneyByMemberId(options: { nonNegative: boolean }) {
+  const value = options.nonNegative ? Cents.min(0) : Cents;
+  return z
+    .record(z.string().regex(memberIdKeyRegex), value)
+    .superRefine((input, context) => {
+      const memberIds = Object.keys(input);
+      if (memberIds.length > ABSOLUTE_LIST_LIMIT) {
+        context.addIssue({ code: "custom", message: "Money map has too many entries." });
+      }
+
+      const seen = new Set<string>();
+      for (const memberId of memberIds) {
+        const numericMemberId = Number(memberId);
+        if (!Number.isSafeInteger(numericMemberId) || numericMemberId <= 0) {
+          context.addIssue({
+            code: "custom",
+            message: "Invalid member ID key.",
+            path: [memberId],
+          });
+          continue;
+        }
+
+        const normalizedMemberId = String(numericMemberId);
+        if (seen.has(normalizedMemberId)) {
+          context.addIssue({
+            code: "custom",
+            message: "Duplicate member ID after normalization.",
+            path: [memberId],
+          });
+        }
+        seen.add(normalizedMemberId);
+      }
+    })
+    .overwrite(normalizeMoneyByMemberId);
+}
+
+export const MoneyByMemberId = makeMoneyByMemberId({ nonNegative: false }).meta({
+  description: "Signed integer-cent amounts keyed by project-local member ID.",
+  examples: [{ "1": -6_200, "2": 6_200 }],
+});
+export type MoneyByMemberId = z.infer<typeof MoneyByMemberId>;
+
+export const NonNegativeMoneyByMemberId = makeMoneyByMemberId({ nonNegative: true }).meta({
+  description: "Non-negative integer-cent amounts keyed by project-local member ID.",
+  examples: [{ "1": 6_200, "2": 6_200 }],
+});
+export type NonNegativeMoneyByMemberId = z.infer<typeof NonNegativeMoneyByMemberId>;
 
 const ProjectMemberSize = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const ProjectMemberPaymentMethod = z.string().trim().min(1).max(ABSOLUTE_TEXT_LIMIT);
@@ -79,11 +158,7 @@ export class ProjectEmailsUtils {
 
 export class MoneyByMemberIdUtils {
   static normalize(input: MoneyByMemberId): MoneyByMemberId {
-    const result: MoneyByMemberId = {};
-    for (const [memberId, amount] of Object.entries(input)) {
-      this.add(result, memberId, amount);
-    }
-    return result;
+    return normalizeMoneyByMemberId(input);
   }
 
   static add(map: MoneyByMemberId, memberId: string | number, amount: number): MoneyByMemberId {
@@ -141,29 +216,85 @@ export class MoneyByMemberIdUtils {
   }
 }
 
-// TODO(schema-source): replace the record-description type declarations with canonical zod schemas
-// reused by project routes and OpenAPI, then infer these types from those schemas.
-export type ExpenseDescription = {
-  type: "expense";
-  name: string;
-  paid: MoneyByMemberId;
-  liability: MoneyByMemberId;
-  categoryId?: string;
-};
+export const ExpenseDescription = z
+  .object({
+    type: z.literal("expense").meta({ description: "Expense record discriminator." }),
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(ABSOLUTE_TEXT_LIMIT)
+      .meta({ description: "Short description of the expense.", examples: ["Ramen dinner"] }),
+    paid: NonNegativeMoneyByMemberId,
+    liability: NonNegativeMoneyByMemberId,
+    categoryId: CategoryId.optional().meta({
+      description: "Classified spending category, when known.",
+      examples: ["4a6cc79a-51da-4e94-9d62-45ba3d853b1c"],
+    }),
+  })
+  .strict()
+  .superRefine((description, context) => {
+    const totalPaid = MoneyByMemberIdUtils.sum(description.paid);
+    const totalLiability = MoneyByMemberIdUtils.sum(description.liability);
+    if (totalPaid <= 0) {
+      context.addIssue({
+        code: "custom",
+        message: "Expense total must be positive.",
+        path: ["paid"],
+      });
+    }
+    if (totalPaid !== totalLiability) {
+      context.addIssue({
+        code: "custom",
+        message: "Paid total must equal liability total.",
+        path: ["liability"],
+      });
+    }
+  })
+  .meta({
+    description: "A shared expense and its payment/liability split.",
+    examples: [
+      {
+        type: "expense",
+        name: "Ramen dinner",
+        paid: { "1": 12_400 },
+        liability: { "1": 6_200, "2": 6_200 },
+        categoryId: "4a6cc79a-51da-4e94-9d62-45ba3d853b1c",
+      },
+    ],
+  });
+export type ExpenseDescription = z.infer<typeof ExpenseDescription>;
 
 const PositiveSafeInteger = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 
-export const TransferDestination = z.object({
-  id: PositiveSafeInteger,
-  amount: PositiveSafeInteger,
-});
+export const TransferDestination = z
+  .object({
+    id: PositiveSafeInteger.meta({
+      description: "Member ID receiving this portion of the transfer.",
+      examples: [1],
+    }),
+    amount: PositiveSafeInteger.meta({
+      description: "Amount sent to this member in integer cents.",
+      examples: [6_200],
+    }),
+  })
+  .strict()
+  .meta({ description: "One recipient and amount in a multi-recipient transfer." });
 export type TransferDestination = z.infer<typeof TransferDestination>;
 
 export const TransferBatch = z
   .object({
-    src: PositiveSafeInteger,
-    dests: z.array(TransferDestination).min(1).max(ABSOLUTE_LIST_LIMIT),
+    src: PositiveSafeInteger.meta({
+      description: "Member ID sending the money.",
+      examples: [2],
+    }),
+    dests: z
+      .array(TransferDestination)
+      .min(1)
+      .max(ABSOLUTE_LIST_LIMIT)
+      .meta({ description: "Unique recipients and their positive cent-denominated amounts." }),
   })
+  .strict()
   .superRefine((transfer, context) => {
     const seen = new Set<MemberId>();
     let total = 0;
@@ -193,19 +324,73 @@ export const TransferBatch = z
         break;
       }
     }
+  })
+  .meta({
+    description: "A grouped transfer from one member to one or more recipients.",
+    examples: [{ src: 2, dests: [{ id: 1, amount: 6_200 }] }],
   });
 export type TransferBatch = z.infer<typeof TransferBatch>;
 
-export type LegacyTransferDescription = {
-  type: "transfer";
-  from: MemberId;
-  to: MemberId;
-  amount: Cents;
-};
+export const LegacyTransferDescription = z
+  .object({
+    type: z.literal("transfer").meta({ description: "Transfer record discriminator." }),
+    from: MemberId.meta({ description: "Member ID sending the money.", examples: [2] }),
+    to: MemberId.meta({ description: "Member ID receiving the money.", examples: [1] }),
+    amount: Cents.positive().meta({
+      description: "Transferred amount in integer cents.",
+      examples: [6_200],
+    }),
+  })
+  .strict()
+  .superRefine((description, context) => {
+    if (description.from === description.to) {
+      context.addIssue({
+        code: "custom",
+        message: "Transfer endpoints must differ.",
+        path: ["to"],
+      });
+    }
+  })
+  .meta({
+    description: "A payment from one project member to another.",
+    examples: [{ type: "transfer", from: 2, to: 1, amount: 6_200 }],
+  });
+export type LegacyTransferDescription = z.infer<typeof LegacyTransferDescription>;
 
-export type TransferDescription =
-  | LegacyTransferDescription
-  | ({ type: "transfer" } & TransferBatch);
+export const MultiTransferDescription = TransferBatch.safeExtend({
+  type: z.literal("transfer").meta({ description: "Transfer record discriminator." }),
+}).meta({
+  description: "A payment from one project member to one or more project members.",
+  examples: [
+    {
+      type: "transfer",
+      src: 2,
+      dests: [
+        { id: 1, amount: 3_100 },
+        { id: 3, amount: 3_100 },
+      ],
+    },
+  ],
+});
+export type MultiTransferDescription = z.infer<typeof MultiTransferDescription>;
+
+export const TransferDescription = z
+  .union([LegacyTransferDescription, MultiTransferDescription])
+  .meta({
+    description: "A legacy single-recipient or multi-recipient transfer record.",
+    examples: [
+      { type: "transfer", from: 2, to: 1, amount: 6_200 },
+      {
+        type: "transfer",
+        src: 2,
+        dests: [
+          { id: 1, amount: 3_100 },
+          { id: 3, amount: 3_100 },
+        ],
+      },
+    ],
+  });
+export type TransferDescription = z.infer<typeof TransferDescription>;
 
 export class SettlementPlanUtils {
   static create(balance: MoneyByMemberId): TransferBatch[] | null {
@@ -386,24 +571,99 @@ class SettlementPartyMaxHeap {
   }
 }
 
-export type PromiseDescription = {
-  type: "promise";
-  debtorMemberId: MemberId;
-  creditorMemberId: MemberId;
-  amount: Cents;
-  reason?: string;
-};
+export const PromiseDescription = z
+  .object({
+    type: z.literal("promise").meta({ description: "Promise record discriminator." }),
+    debtorMemberId: MemberId.meta({
+      description: "Member ID that owes the money.",
+      examples: [2],
+    }),
+    creditorMemberId: MemberId.meta({
+      description: "Member ID that is owed the money.",
+      examples: [1],
+    }),
+    amount: Cents.positive().meta({
+      description: "Promised amount in integer cents.",
+      examples: [3_100],
+    }),
+    reason: z
+      .string()
+      .trim()
+      .min(1)
+      .max(ABSOLUTE_TEXT_LIMIT)
+      .optional()
+      .meta({ description: "Optional explanation for the promise.", examples: ["Museum tickets"] }),
+  })
+  .strict()
+  .superRefine((description, context) => {
+    if (description.debtorMemberId === description.creditorMemberId) {
+      context.addIssue({
+        code: "custom",
+        message: "Promise endpoints must differ.",
+        path: ["creditorMemberId"],
+      });
+    }
+  })
+  .meta({
+    description: "A debt acknowledged between two project members.",
+    examples: [
+      {
+        type: "promise",
+        debtorMemberId: 2,
+        creditorMemberId: 1,
+        amount: 3_100,
+        reason: "Museum tickets",
+      },
+    ],
+  });
+export type PromiseDescription = z.infer<typeof PromiseDescription>;
 
-export type RevertDescription = {
-  type: "revert";
-  id: number;
-};
+export const RevertDescription = z
+  .object({
+    type: z.literal("revert").meta({ description: "Revert record discriminator." }),
+    id: PositiveSafeInteger.meta({
+      description: "Record ID whose effect is reversed.",
+      examples: [1],
+    }),
+  })
+  .strict()
+  .meta({
+    description: "A deprecated legacy record that reverses an earlier project record.",
+    deprecated: true,
+    examples: [{ type: "revert", id: 1 }],
+  });
+export type RevertDescription = z.infer<typeof RevertDescription>;
 
-export type RecordDescription =
-  | ExpenseDescription
-  | TransferDescription
-  | PromiseDescription
-  | RevertDescription;
+export const WritableRecordDescription = z
+  .union([ExpenseDescription, TransferDescription, PromiseDescription])
+  .meta({
+    description: "Writable details for an expense, transfer, or promise record.",
+    examples: [
+      {
+        type: "expense",
+        name: "Ramen dinner",
+        paid: { "1": 12_400 },
+        liability: { "1": 6_200, "2": 6_200 },
+      },
+      { type: "transfer", from: 2, to: 1, amount: 6_200 },
+      {
+        type: "promise",
+        debtorMemberId: 2,
+        creditorMemberId: 1,
+        amount: 3_100,
+        reason: "Museum tickets",
+      },
+    ],
+  });
+export type WritableRecordDescription = z.infer<typeof WritableRecordDescription>;
+
+export const RecordDescription = z
+  .union([ExpenseDescription, TransferDescription, PromiseDescription, RevertDescription])
+  .meta({
+    description:
+      "Stored details for an expense, transfer, promise, or deprecated legacy revert record.",
+  });
+export type RecordDescription = z.infer<typeof RecordDescription>;
 
 // TODO(schema-source): canonicalize the remaining project ACL, mutation, record, and summary shapes
 // so their route, OpenAPI, registry, and frontend declarations can import one source of truth.
@@ -446,11 +706,8 @@ export interface ProjectRecord {
   delta: MoneyByMemberId;
   description: RecordDescription;
   createdAt: number;
-  reverted?: {
-    recordId: number;
-    authorMemberId: number;
-    createdAt: number;
-  };
+  updatedAt?: number;
+  updatedByMemberId?: number;
 }
 
 export interface ProjectSummary {

@@ -6,8 +6,13 @@ Use this before changing Durable Object classes, storage schemas, migrations, or
 
 - Durable Object classes belong in `worker/do/`, one class per file.
 - Use SQLite storage APIs for Durable Object state.
-- Keep mutations that must be atomic inside a transaction.
-- Be careful with shutdown behavior: if a method writes multiple related pieces of storage state, prefer a transaction or leave an inline TODO if a future transaction is needed.
+- [SQLite-backed Durable Object storage](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/#transaction)
+  automatically treats synchronous reads followed by synchronous writes with no intervening
+  `await` as one transaction. A non-async helper may use that guarantee for a bounded SQL/KV
+  mutation tail; consume cursors fully and schedule alarms or other asynchronous work only
+  afterward.
+- `transactionSync()` remains valid when its callback makes the boundary clearer, but is not
+  required for atomicity under the no-`await` rule.
 - Keep Durable Object helper methods private when they are internal implementation details.
 - Put pure row conversion helpers near the bottom of the file.
 
@@ -31,7 +36,8 @@ Use this before changing Durable Object classes, storage schemas, migrations, or
 - `ProjectStore` stores the settlement plan and its `latestRecordId` together in the
   `settlementPlanCache` Durable Object KV value.
 - Cache reads compare against `MAX(records.id)`, using zero for an empty ledger. This SQL value is
-  authoritative even if project metadata KV lags a completed record transaction.
+  authoritative even if project metadata KV lags a completed record transaction. Deleted record
+  tombstones remain in the table and continue contributing to this maximum.
 - Record changes invalidate the cache lazily through the ID mismatch. The cache has no TTL and does
   not need eager deletion when a record is posted.
 - A `settle: true` transfer may patch a valid cache that matches the pre-insert `MAX(records.id)`.
@@ -42,6 +48,9 @@ Use this before changing Durable Object classes, storage schemas, migrations, or
   cache must not reject a valid transfer. Leave the prior value stale so the next read recomputes.
   Preserving an already-viewed plan favors stability and may retain a less efficient plan than a
   fresh computation; ordinary records continue to use lazy record-ID invalidation.
+- Replacing a record does not change its ID, so a replacement with a nonempty normalized net delta
+  explicitly deletes the cache. Deleting a record does the same when its stored delta is nonempty.
+  Description-only replacements and zero-delta tombstones retain the cache.
 - Treat malformed cached JSON as a miss. Do not cache a computed plan when stored balances fail the
   safe-integer or zero-sum invariants.
 
@@ -63,8 +72,13 @@ Public Durable Object methods should follow the local pattern:
 - Use typed `sql.exec<Row>(...)` calls and parameter placeholders rather than string interpolation for values.
 - Prefer `.toArray()[0] ?? null` or explicit `undefined` checks for single-row reads.
 - Keep JSON parsing and serialization at the storage boundary.
-- Use `transactionSync()` for related SQL writes, especially records plus balances and registry summary/member-index rows.
-- `ProjectStore` metadata and initialized state live in Durable Object KV (`projectMetadata`, `initialized`), outside SQL transactions; when a mutation updates both SQL rows and metadata KV, do the SQL transaction first, update KV deliberately, and queue alarms/cache writes only after storage updates have succeeded.
+- For related SQL and synchronous KV writes, either use `transactionSync()` or keep the entire
+  authoritative read/write tail synchronous with no `await`. Record replacement and tombstoning
+  use the latter so their record row, balances, settlement cache, and project metadata cannot
+  commit independently.
+- `ProjectStore` metadata and initialized state live in synchronous Durable Object KV
+  (`projectMetadata`, `initialized`). The KV data is stored in the same SQLite-backed storage and
+  participates in the same explicit or implicit transaction when called within its boundary.
 - Store extensible record data as JSON (`description_json`, `delta_json`) and keep schema-specific validation in TypeScript/zod instead of adding schema columns for every future record type.
 
 ## SQL Migrations

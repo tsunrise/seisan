@@ -6,10 +6,14 @@ import { ICON_NAME_VALUES } from "../shared/icon-names";
 import { MAX_EMAIL_LENGTH } from "./email";
 import { ABSOLUTE_LIST_LIMIT, ABSOLUTE_TEXT_LIMIT } from "./limits";
 import {
+  MoneyByMemberId,
   ProjectMember,
   ProjectMemberConfig,
   ProjectMemberConfigPatch,
   ProjectMemberFull,
+  RecordDescription,
+  TransferBatch,
+  WritableRecordDescription,
 } from "./project";
 
 type OpenApiResponses = NonNullable<DescribeRouteOptions["responses"]>;
@@ -87,11 +91,6 @@ const exampleRecords = [
     delta: { "1": -6_200, "2": 6_200 },
     description: exampleExpenseDescription,
     createdAt: exampleCreatedAt,
-    reverted: {
-      recordId: 4,
-      authorMemberId: 1,
-      createdAt: exampleCreatedAt + 3_600_000,
-    },
   },
   {
     id: 2,
@@ -99,6 +98,8 @@ const exampleRecords = [
     delta: { "1": 6_200, "2": -6_200 },
     description: exampleTransferDescription,
     createdAt: exampleCreatedAt + 1_200_000,
+    updatedAt: exampleCreatedAt + 1_800_000,
+    updatedByMemberId: 1,
   },
   {
     id: 3,
@@ -175,16 +176,6 @@ const ProjectName = z
   .min(1)
   .max(ABSOLUTE_TEXT_LIMIT)
   .meta({ description: "Human-readable project name.", examples: ["Japan trip"] });
-const MoneyByMemberId = z.record(z.string().regex(/^[1-9]\d*$/u), SafeInteger).meta({
-  description: "Signed integer-cent amounts keyed by project-local member ID.",
-  examples: [{ "1": -6_200, "2": 6_200 }],
-});
-const NonNegativeMoneyByMemberId = z
-  .record(z.string().regex(/^[1-9]\d*$/u), SafeInteger.min(0))
-  .meta({
-    description: "Non-negative integer-cent amounts keyed by project-local member ID.",
-    examples: [{ "1": 6_200, "2": 6_200 }],
-  });
 // TODO(schema-source): import category IDs, icons, category documents, and classification schemas
 // from worker/category/schema.ts instead of redefining their OpenAPI shapes here.
 const CategoryId = z
@@ -219,143 +210,6 @@ const ProjectAcl = z
   ])
   .meta({ description: "Project access policy.", examples: [exampleAcl, { type: "public" }] });
 
-// TODO(schema-source): replace these record-description OpenAPI schemas with canonical project
-// schemas shared with worker/project.ts and worker/routes/project.ts.
-const ExpenseDescription = z
-  .object({
-    type: z.literal("expense").meta({ description: "Expense record discriminator." }),
-    name: z
-      .string()
-      .meta({ description: "Short description of the expense.", examples: ["Ramen dinner"] }),
-    paid: NonNegativeMoneyByMemberId,
-    liability: NonNegativeMoneyByMemberId,
-    categoryId: CategoryId.optional().meta({
-      description: "Classified spending category, when known.",
-    }),
-  })
-  .strict()
-  .meta({
-    description: "A shared expense and its payment/liability split.",
-    examples: [exampleExpenseDescription],
-  });
-
-const TransferDestination = z
-  .object({
-    id: PositiveSafeInteger.meta({
-      description: "Member ID receiving this portion of the transfer.",
-      examples: [1],
-    }),
-    amount: PositiveSafeInteger.meta({
-      description: "Amount sent to this member in integer cents.",
-      examples: [6_200],
-    }),
-  })
-  .strict()
-  .meta({ description: "One recipient and amount in a multi-recipient transfer." });
-
-const TransferBatch = z
-  .object({
-    src: PositiveSafeInteger.meta({
-      description: "Member ID sending the money.",
-      examples: [2],
-    }),
-    dests: z
-      .array(TransferDestination)
-      .min(1)
-      .max(ABSOLUTE_LIST_LIMIT)
-      .meta({ description: "Unique recipients and their positive cent-denominated amounts." }),
-  })
-  .strict()
-  .meta({
-    description: "A grouped transfer from one member to one or more recipients.",
-    examples: [exampleTransferBatch],
-  });
-
-const LegacyTransferDescription = z
-  .object({
-    type: z.literal("transfer").meta({ description: "Transfer record discriminator." }),
-    from: PositiveSafeInteger.meta({ description: "Member ID sending the money.", examples: [2] }),
-    to: PositiveSafeInteger.meta({ description: "Member ID receiving the money.", examples: [1] }),
-    amount: PositiveSafeInteger.meta({
-      description: "Transferred amount in integer cents.",
-      examples: [6_200],
-    }),
-  })
-  .strict()
-  .meta({
-    description: "A payment from one project member to another.",
-    examples: [exampleTransferDescription],
-  });
-
-const MultiTransferDescription = z
-  .object({
-    type: z.literal("transfer").meta({ description: "Transfer record discriminator." }),
-    ...TransferBatch.shape,
-  })
-  .strict()
-  .meta({
-    description: "A payment from one project member to one or more project members.",
-    examples: [exampleMultiTransferDescription],
-  });
-
-const TransferDescription = z.union([LegacyTransferDescription, MultiTransferDescription]).meta({
-  description: "A legacy single-recipient or multi-recipient transfer record.",
-  examples: [exampleTransferDescription, exampleMultiTransferDescription],
-});
-
-const PromiseDescription = z
-  .object({
-    type: z.literal("promise").meta({ description: "Promise record discriminator." }),
-    debtorMemberId: PositiveSafeInteger.meta({
-      description: "Member ID that owes the money.",
-      examples: [2],
-    }),
-    creditorMemberId: PositiveSafeInteger.meta({
-      description: "Member ID that is owed the money.",
-      examples: [1],
-    }),
-    amount: PositiveSafeInteger.meta({
-      description: "Promised amount in integer cents.",
-      examples: [3_100],
-    }),
-    reason: z
-      .string()
-      .optional()
-      .meta({ description: "Optional explanation for the promise.", examples: ["Museum tickets"] }),
-  })
-  .strict()
-  .meta({
-    description: "A debt acknowledged between two project members.",
-    examples: [examplePromiseDescription],
-  });
-
-const RevertDescription = z
-  .object({
-    type: z.literal("revert").meta({ description: "Revert record discriminator." }),
-    id: PositiveSafeInteger.meta({
-      description: "Record ID whose effect is reversed.",
-      examples: [1],
-    }),
-  })
-  .strict()
-  .meta({
-    description: "A record that reverses an earlier project record.",
-    examples: [exampleRevertDescription],
-  });
-
-const RecordDescription = z
-  .union([ExpenseDescription, TransferDescription, PromiseDescription, RevertDescription])
-  .meta({
-    description: "Typed details for an expense, transfer, promise, or revert record.",
-    examples: [
-      exampleExpenseDescription,
-      exampleTransferDescription,
-      exampleMultiTransferDescription,
-      examplePromiseDescription,
-      exampleRevertDescription,
-    ],
-  });
-
 // TODO(schema-source): canonicalize project record, summary, created-project, and full-project
 // response schemas so OpenAPI, registry, Worker domain types, and frontend types share them.
 const ProjectRecord = z
@@ -371,27 +225,17 @@ const ProjectRecord = z
       description: "Creation time as Unix milliseconds.",
       examples: [exampleCreatedAt],
     }),
-    reverted: z
-      .object({
-        recordId: PositiveSafeInteger.meta({
-          description: "Record ID of the reverting record.",
-          examples: [4],
-        }),
-        authorMemberId: PositiveSafeInteger.meta({
-          description: "Member ID that created the reverting record.",
-          examples: [1],
-        }),
-        createdAt: NonNegativeSafeInteger.meta({
-          description: "Revert creation time as Unix milliseconds.",
-          examples: [exampleCreatedAt + 3_600_000],
-        }),
-      })
-      .strict()
-      .optional()
-      .meta({ description: "Information about the later record that reverted this one." }),
+    updatedAt: NonNegativeSafeInteger.optional().meta({
+      description: "Latest replacement time as Unix milliseconds; omitted until first edited.",
+      examples: [exampleCreatedAt + 1_800_000],
+    }),
+    updatedByMemberId: PositiveSafeInteger.optional().meta({
+      description: "Member ID that made the latest replacement; omitted until first edited.",
+      examples: [1],
+    }),
   })
   .strict()
-  .meta({ description: "An immutable ledger entry in a project.", examples: [exampleRecords[0]] });
+  .meta({ description: "A live ledger entry in a project.", examples: [exampleRecords[1]] });
 
 const ProjectSummary = z
   .object({
@@ -655,15 +499,29 @@ const ProjectJoinRequest = z
     description: "Claim an existing member or create a new linked member.",
     examples: [{ memberId: 2 }, { name: "Kai" }],
   });
-const ProjectAppendRecordRequest = z
+const ProjectPutRecordRequest = z
   .object({
     delta: MoneyByMemberId,
-    description: RecordDescription,
-    settle: z.boolean().optional().meta({
-      description:
-        "For a transfer sent by the caller's linked member, best-effort advances an already-cached settlement plan by removing the matching sender batch instead of recomputing it. This preserves plan stability but may keep a less efficient remaining plan. Any non-settlement record invalidates the cached plan normally.",
-    }),
+    description: WritableRecordDescription,
   })
+  .strict()
+  .meta({
+    examples: [
+      { delta: { "1": -6_200, "2": 6_200 }, description: exampleExpenseDescription },
+      { delta: { "1": 6_200, "2": -6_200 }, description: exampleTransferDescription },
+      {
+        delta: { "1": 3_100, "2": -6_200, "3": 3_100 },
+        description: exampleMultiTransferDescription,
+      },
+      { delta: { "1": -3_100, "2": 3_100 }, description: examplePromiseDescription },
+    ],
+  });
+const ProjectAppendRecordRequest = ProjectPutRecordRequest.extend({
+  settle: z.boolean().optional().meta({
+    description:
+      "For a transfer sent by the caller's linked member, best-effort advances an already-cached settlement plan by removing the matching sender batch instead of recomputing it. This preserves plan stability but may keep a less efficient remaining plan. Any non-settlement record invalidates the cached plan normally.",
+  }),
+})
   .strict()
   .meta({
     examples: [
@@ -675,7 +533,6 @@ const ProjectAppendRecordRequest = z
         settle: true,
       },
       { delta: { "1": -3_100, "2": 3_100 }, description: examplePromiseDescription },
-      { delta: { "1": 6_200, "2": -6_200 }, description: exampleRevertDescription },
     ],
   });
 const CategoryClassifyRequest = z
@@ -726,7 +583,8 @@ export const OpenApiSpecOptions = {
       },
       {
         name: "Project Records",
-        description: "Append immutable expense, transfer, promise, and revert records.",
+        description:
+          "Create, read, replace, and tombstone expense, transfer, and promise records; legacy revert records remain readable.",
       },
     ],
   },
@@ -777,6 +635,13 @@ export const OpenApiParameters = {
     description: "Fetch records older than this project-local record ID.",
     schema: { type: "integer", minimum: 1, example: 4 },
   },
+  RecordId: {
+    name: "recordId",
+    in: "path",
+    required: true,
+    description: "Project-local record ID.",
+    schema: { type: "integer", minimum: 1, example: 2 },
+  },
 } satisfies Record<string, OpenAPIV3_1.ParameterObject>;
 
 export const OpenApiRequests = {
@@ -805,6 +670,10 @@ export const OpenApiRequests = {
   ProjectAppendRecord: jsonRequest(ProjectAppendRecordRequest, {
     delta: { "1": -6_200, "2": 6_200 },
     description: exampleExpenseDescription,
+  }),
+  ProjectPutRecord: jsonRequest(ProjectPutRecordRequest, {
+    delta: { "1": 6_200, "2": -6_200 },
+    description: exampleTransferDescription,
   }),
   CategoryClassify: jsonRequest(CategoryClassifyRequest, { name: "Ramen dinner", topK: 3 }),
 } satisfies Record<string, OpenAPIV3_1.RequestBodyObject>;
@@ -858,6 +727,7 @@ export const OpenApiResponses = {
     exampleMemberConfig,
   ),
   RecordCreated: jsonResponse("Created project record.", RecordCreatedBody, { id: 5 }),
+  ProjectRecord: jsonResponse("Project record.", ProjectRecord, exampleRecords[1]),
   SettlementPlan: jsonResponse("Current project settlement plan.", SettlementPlanBody, {
     transfers: [exampleTransferBatch],
   }),

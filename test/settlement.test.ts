@@ -144,7 +144,7 @@ async function createStablePlanProject(testEnv: Env): Promise<{
   expect(joined.status).toBe(201);
 
   const posted = await dispatch(
-    `/project/${project.id}`,
+    `/project/${project.id}/record`,
     testEnv,
     jsonBody(
       "POST",
@@ -350,7 +350,7 @@ describe("settlement edge and adversarial cases", () => {
     const balance = { "1": 800, "2": 500, "3": -500, "4": -400, "5": -400 };
 
     const posted = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -375,12 +375,12 @@ describe("settlement edge and adversarial cases", () => {
     expect(body.transfers.flatMap((batch) => batch.dests)).toHaveLength(3);
   });
 
-  it("uses the KV cache until a new record or revert changes the latest record ID", async () => {
+  it("invalidates settlement caches only when record mutations change balances", async () => {
     const { env: testEnv } = makeEnv();
     const project = await createProject(testEnv, { ownerMemberName: "Alice" });
     const bob = await createMember(testEnv, project.id, "Bob");
     const promise = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody("POST", promiseRecordBody(bob.id, 500), await authHeaders()),
     );
@@ -410,32 +410,107 @@ describe("settlement edge and adversarial cases", () => {
       transfers: [{ src: 999, dests: [{ id: 998, amount: 1 }] }],
     });
 
+    const descriptionOnly = await dispatch(
+      `/project/${project.id}/record/1`,
+      testEnv,
+      jsonBody(
+        "PUT",
+        {
+          ...promiseRecordBody(bob.id, 500),
+          description: {
+            type: "promise",
+            debtorMemberId: 1,
+            creditorMemberId: bob.id,
+            amount: 500,
+            reason: "Updated copy only",
+          },
+        },
+        await authHeaders(),
+      ),
+    );
+    expect(descriptionOnly.status).toBe(200);
+    expect(await (await dispatch(`/project/${project.id}/settle`, testEnv)).json()).toEqual({
+      transfers: [{ src: 999, dests: [{ id: 998, amount: 1 }] }],
+    });
+
+    const balanceChange = await dispatch(
+      `/project/${project.id}/record/1`,
+      testEnv,
+      jsonBody("PUT", promiseRecordBody(bob.id, 600), await authHeaders()),
+    );
+    expect(balanceChange.status).toBe(200);
+    await runInDurableObject(stub, async (_instance, state) => {
+      await expect(state.storage.get("settlementPlanCache")).resolves.toBeUndefined();
+    });
+    const updatedPlan = {
+      transfers: [{ src: 1, dests: [{ id: bob.id, amount: 600 }] }],
+    };
+    expect(await (await dispatch(`/project/${project.id}/settle`, testEnv)).json()).toEqual(
+      updatedPlan,
+    );
+
     const noOpRecord = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody("POST", noOpRecordBody("No-op"), await authHeaders()),
     );
     expect(await noOpRecord.json()).toEqual({ id: 2 });
-    expect(await (await dispatch(`/project/${project.id}/settle`, testEnv)).json()).toEqual(
-      expectedPlan,
-    );
-
-    const reverted = await dispatch(
-      `/project/${project.id}`,
-      testEnv,
-      jsonBody("POST", { delta: {}, description: { type: "revert", id: 2 } }, await authHeaders()),
-    );
-    expect(await reverted.json()).toEqual({ id: 3 });
     await dispatch(`/project/${project.id}/settle`, testEnv);
 
     await runInDurableObject(stub, async (_instance, state) => {
       const raw = await state.storage.get<string>("settlementPlanCache");
-      expect(JSON.parse(raw ?? "")).toEqual({ latestRecordId: 3, ...expectedPlan });
-      await state.storage.put("settlementPlanCache", "not-json");
+      expect(JSON.parse(raw ?? "")).toEqual({ latestRecordId: 2, ...updatedPlan });
+      await state.storage.put(
+        "settlementPlanCache",
+        JSON.stringify({
+          latestRecordId: 2,
+          transfers: [{ src: 999, dests: [{ id: 998, amount: 1 }] }],
+        }),
+      );
     });
-    expect(await (await dispatch(`/project/${project.id}/settle`, testEnv)).json()).toEqual(
-      expectedPlan,
+
+    const nonLatestBalanceChange = await dispatch(
+      `/project/${project.id}/record/1`,
+      testEnv,
+      jsonBody("PUT", promiseRecordBody(bob.id, 700), await authHeaders()),
     );
+    expect(nonLatestBalanceChange.status).toBe(200);
+    await runInDurableObject(stub, async (_instance, state) => {
+      await expect(state.storage.get("settlementPlanCache")).resolves.toBeUndefined();
+    });
+    const nonLatestUpdatedPlan = {
+      transfers: [{ src: 1, dests: [{ id: bob.id, amount: 700 }] }],
+    };
+    expect(await (await dispatch(`/project/${project.id}/settle`, testEnv)).json()).toEqual(
+      nonLatestUpdatedPlan,
+    );
+    await runInDurableObject(stub, async (_instance, state) => {
+      await state.storage.put(
+        "settlementPlanCache",
+        JSON.stringify({
+          latestRecordId: 2,
+          transfers: [{ src: 999, dests: [{ id: 998, amount: 1 }] }],
+        }),
+      );
+    });
+
+    const zeroDeltaDelete = await dispatch(`/project/${project.id}/record/2`, testEnv, {
+      method: "DELETE",
+      headers: await authHeaders(),
+    });
+    expect(zeroDeltaDelete.status).toBe(204);
+    expect(await (await dispatch(`/project/${project.id}/settle`, testEnv)).json()).toEqual({
+      transfers: [{ src: 999, dests: [{ id: 998, amount: 1 }] }],
+    });
+
+    const balanceDelete = await dispatch(`/project/${project.id}/record/1`, testEnv, {
+      method: "DELETE",
+      headers: await authHeaders(),
+    });
+    expect(balanceDelete.status).toBe(204);
+    expect(await (await dispatch(`/project/${project.id}/settle`, testEnv)).json()).toEqual({
+      transfers: [],
+    });
   });
 
   it("advances a matching cached sender batch without changing the remaining plan", async () => {
@@ -454,7 +529,7 @@ describe("settlement edge and adversarial cases", () => {
     expect(recomputedPlanAfterSenderTwo).not.toEqual(stablePlanAfterSenderTwo);
 
     const posted = await dispatch(
-      `/project/${projectId}`,
+      `/project/${projectId}/record`,
       testEnv,
       jsonBody("POST", senderTwoSettlementBody(), await authHeaders(senderEmail)),
     );
@@ -503,7 +578,7 @@ describe("settlement edge and adversarial cases", () => {
       });
 
       const posted = await dispatch(
-        `/project/${projectId}`,
+        `/project/${projectId}/record`,
         testEnv,
         jsonBody("POST", senderTwoSettlementBody(), await authHeaders(senderEmail)),
       );
@@ -518,7 +593,7 @@ describe("settlement edge and adversarial cases", () => {
     const { env: testEnv } = makeEnv();
     const { projectId, senderEmail } = await createStablePlanProject(testEnv);
     const posted = await dispatch(
-      `/project/${projectId}`,
+      `/project/${projectId}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -554,7 +629,7 @@ describe("settlement edge and adversarial cases", () => {
       const { env: testEnv } = makeEnv();
       const { projectId, senderEmail } = await createStablePlanProject(testEnv);
       const posted = await dispatch(
-        `/project/${projectId}`,
+        `/project/${projectId}/record`,
         testEnv,
         jsonBody("POST", senderTwoSettlementBody(settle), await authHeaders(senderEmail)),
       );
@@ -569,7 +644,7 @@ describe("settlement edge and adversarial cases", () => {
     const { env: testEnv } = makeEnv();
     const { projectId } = await createStablePlanProject(testEnv);
     const response = await dispatch(
-      `/project/${projectId}`,
+      `/project/${projectId}/record`,
       testEnv,
       jsonBody("POST", senderTwoSettlementBody(), await authHeaders()),
     );
@@ -585,7 +660,7 @@ describe("settlement edge and adversarial cases", () => {
     const { env: testEnv } = makeEnv();
     const project = await createProject(testEnv);
     const response = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody("POST", { ...noOpRecordBody("Not a transfer"), settle: true }, await authHeaders()),
     );
@@ -596,7 +671,7 @@ describe("settlement edge and adversarial cases", () => {
     const { env: testEnv } = makeEnv();
     const project = await createProject(testEnv);
     const response = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",

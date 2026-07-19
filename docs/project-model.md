@@ -35,11 +35,20 @@ Use this before changing project, member, record, ACL, or balance behavior.
 - Balances are stored by member ID, in cents.
 - Record descriptions are JSON to allow future description types without schema churn.
 - Validate that record deltas match the server-derived delta and sum to zero.
+- Record creation uses `POST /api/project/:id/record`. Individual live records can be read,
+  replaced, or deleted through `/api/project/:id/record/:recordId`.
+- Any active linked project member may replace or delete any live record. Replacement preserves the
+  original author and creation time while recording the latest editor and edit time.
+- Replacement applies the difference between the new and stored deltas to balances. Deletion
+  applies the inverse stored delta before replacing the description and delta with an internal
+  `deleted` tombstone. Tombstones remain counted but are omitted from reads.
+- New revert records are rejected. Stored legacy revert descriptions remain readable, but original
+  records are no longer annotated with information about a later revert.
 - Transfer records accept both the legacy single-recipient `{ from, to, amount }` shape and the
   multi-recipient `{ src, dests: [{ id, amount }] }` shape. Multi-recipient destinations must be
   unique, positive, and different from the source; their amounts are summed into the source delta.
-- Record writes may include a top-level `settle: true` intent for a transfer. This flag is not part
-  of the description and is not persisted in the immutable record.
+- New record writes may include a top-level `settle: true` intent for a transfer. This flag is not
+  part of the description and is not persisted in the record.
 - Expense category IDs are validated against published categories when records are posted. Project
   reads omit malformed, deleted, or otherwise unresolvable stored category IDs so historical records
   degrade to the general expense category.

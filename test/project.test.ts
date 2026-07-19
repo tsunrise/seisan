@@ -121,7 +121,7 @@ describe("project routes", () => {
     expect(cacheGet).not.toHaveBeenCalled();
 
     const postResponse = await dispatch(
-      "/project/not-a-uuid",
+      "/project/not-a-uuid/record",
       testEnv,
       jsonBody("POST", { malformed: true }, await authHeaders()),
     );
@@ -488,7 +488,7 @@ describe("project routes", () => {
 
     for (const [index, expectedStatus] of [201, 409].entries()) {
       const response = await dispatch(
-        `/project/${project.id}`,
+        `/project/${project.id}/record`,
         testEnv,
         jsonBody(
           "POST",
@@ -563,7 +563,7 @@ describe("project routes", () => {
     const responses = await Promise.all(
       Array.from({ length: 12 }, (_, index) =>
         dispatch(
-          `/project/${project.id}`,
+          `/project/${project.id}/record`,
           testEnv,
           jsonBody(
             "POST",
@@ -617,7 +617,7 @@ describe("project routes", () => {
     const project = await createProject(testEnv, { owner });
     for (const name of ["First", "Second"]) {
       const response = await dispatch(
-        `/project/${project.id}`,
+        `/project/${project.id}/record`,
         testEnv,
         jsonBody(
           "POST",
@@ -682,7 +682,7 @@ describe("project routes", () => {
     await createMember(testEnv, project.id, "Bob", owner);
 
     const oversized = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -697,7 +697,7 @@ describe("project routes", () => {
     expect(await oversized.json()).toEqual({ error: "money_limit_exceeded" });
 
     const maxTransfer = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -711,7 +711,7 @@ describe("project routes", () => {
     expect(maxTransfer.status).toBe(201);
 
     const overflow = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -726,7 +726,7 @@ describe("project routes", () => {
     expect(await overflow.json()).toEqual({ error: "money_limit_exceeded" });
   });
 
-  it("posts and reverts multi-recipient transfers while preserving destination order", async () => {
+  it("posts multi-recipient transfers while preserving destination order", async () => {
     const { env: testEnv } = makeEnv();
     const project = await createProject(testEnv, { ownerMemberName: "Alice" });
     const bob = await createMember(testEnv, project.id, "Bob");
@@ -737,7 +737,7 @@ describe("project routes", () => {
     ];
 
     const posted = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody("POST", multiTransferRecordBody(1, dests), await authHeaders()),
     );
@@ -753,18 +753,6 @@ describe("project routes", () => {
         description: { type: "transfer", src: 1, dests },
       },
     ]);
-
-    const reverted = await dispatch(
-      `/project/${project.id}`,
-      testEnv,
-      jsonBody(
-        "POST",
-        { delta: { "1": 500, "2": -300, "3": -200 }, description: { type: "revert", id: 1 } },
-        await authHeaders(),
-      ),
-    );
-    expect(reverted.status).toBe(201);
-    expect((await getProject(testEnv, project.id)).balance).toEqual({});
   });
 
   it("rejects invalid multi-recipient transfers", async () => {
@@ -790,7 +778,7 @@ describe("project routes", () => {
 
     for (const body of invalidBodies) {
       const response = await dispatch(
-        `/project/${project.id}`,
+        `/project/${project.id}/record`,
         testEnv,
         jsonBody("POST", body, await authHeaders()),
       );
@@ -807,7 +795,7 @@ describe("project routes", () => {
       {},
     );
     const oversizedResponse = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody("POST", oversized, await authHeaders()),
     );
@@ -831,7 +819,7 @@ describe("project routes", () => {
     const carol = await createMember(testEnv, project.id, "Carol", owner);
 
     const response = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -852,7 +840,7 @@ describe("project routes", () => {
     const bob = await createMember(testEnv, project.id, "Bob");
 
     const promiseWithReason = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -885,7 +873,7 @@ describe("project routes", () => {
     ]);
 
     const promiseWithoutReason = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -919,7 +907,7 @@ describe("project routes", () => {
     const carol = await createMember(testEnv, project.id, "Carol");
 
     const mismatchedDelta = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -936,7 +924,7 @@ describe("project routes", () => {
     expect(await mismatchedDelta.json()).toEqual({ error: "invalid_request" });
 
     const sameMembers = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -953,7 +941,7 @@ describe("project routes", () => {
     expect(await sameMembers.json()).toEqual({ error: "invalid_request" });
 
     const blankReason = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -970,7 +958,7 @@ describe("project routes", () => {
     expect(await blankReason.json()).toEqual({ error: "invalid_request" });
 
     const missingMember = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -992,7 +980,7 @@ describe("project routes", () => {
     expect(deleteCarol.status).toBe(204);
 
     const deletedMember = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -1008,7 +996,7 @@ describe("project routes", () => {
     expect(await deletedMember.json()).toEqual({ error: "invalid_request" });
   });
 
-  it("enforces promise money limits and supports reverting promises", async () => {
+  it("enforces promise money limits", async () => {
     const { env: testEnv } = makeEnv();
     const owner = `promise-limit-${crypto.randomUUID()}@example.com`;
     await putUserLimits(
@@ -1023,7 +1011,7 @@ describe("project routes", () => {
     const bob = await createMember(testEnv, project.id, "Bob", owner);
 
     const oversized = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -1039,7 +1027,7 @@ describe("project routes", () => {
     expect(await oversized.json()).toEqual({ error: "money_limit_exceeded" });
 
     const maxPromise = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -1054,7 +1042,7 @@ describe("project routes", () => {
     expect(maxPromise.status).toBe(201);
 
     const overflow = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -1069,42 +1057,8 @@ describe("project routes", () => {
     expect(overflow.status).toBe(409);
     expect(await overflow.json()).toEqual({ error: "money_limit_exceeded" });
 
-    const revert = await dispatch(
-      `/project/${project.id}`,
-      testEnv,
-      jsonBody(
-        "POST",
-        {
-          delta: { "1": -100, [String(bob.id)]: 100 },
-          description: { type: "revert", id: 1 },
-        },
-        await authHeaders(owner),
-      ),
-    );
-    expect(revert.status).toBe(201);
-    expect(await revert.json()).toEqual({ id: 2 });
-
     const view = await getProject(testEnv, project.id, owner);
-    const revertRecord = view.records.find(
-      (record): record is { id: number; createdAt: number } =>
-        typeof record === "object" &&
-        record !== null &&
-        "id" in record &&
-        (record as { id: number }).id === 2,
-    );
-    expect(view).toMatchObject({ balance: {}, records: [{ id: 2 }, { id: 1 }] });
-    expect(view.records).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: 1,
-          reverted: {
-            recordId: 2,
-            authorMemberId: 1,
-            createdAt: revertRecord?.createdAt,
-          },
-        }),
-      ]),
-    );
+    expect(view).toMatchObject({ balance: { "1": 100, "2": -100 }, records: [{ id: 1 }] });
   });
 
   it("creates restricted projects and enforces ACLs separately from members", async () => {
@@ -1275,7 +1229,7 @@ describe("project routes", () => {
     const bob = await createMember(testEnv, project.id, "Bob");
 
     const expense = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -1335,7 +1289,7 @@ describe("project routes", () => {
     );
 
     const transfer = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -1360,7 +1314,7 @@ describe("project routes", () => {
     const project = await createProject(testEnv, { ownerMemberName: "Alice" });
 
     const response = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -1395,7 +1349,7 @@ describe("project routes", () => {
     const project = await createProject(testEnv, { ownerMemberName: "Alice" });
 
     const response = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -1427,7 +1381,7 @@ describe("project routes", () => {
     const { env: testEnv } = makeEnv();
     const project = await createProject(testEnv, { ownerMemberName: "Alice" });
     const response = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody("POST", appendRecordBody(), await authHeaders()),
     );
@@ -1459,7 +1413,7 @@ describe("project routes", () => {
     const project = await createProject(testEnv, { ownerMemberName: "Alice" });
 
     const response = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -1491,7 +1445,7 @@ describe("project routes", () => {
     const project = await createProject(testEnv, { ownerMemberName: "Alice" });
 
     const response = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -1524,7 +1478,7 @@ describe("project routes", () => {
     const project = await createProject(testEnv, { ownerMemberName: "Alice" });
 
     const response = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody("POST", appendRecordBody(), await authHeaders()),
     );
@@ -1533,7 +1487,7 @@ describe("project routes", () => {
     expect(kvGet).not.toHaveBeenCalled();
   });
 
-  it("checks account and project rate limit keys before appending records", async () => {
+  it("checks account and project rate limits only when appending a record", async () => {
     const accountRateLimit = stubRateLimit(true);
     const projectRateLimit = stubRateLimit(true);
     const { env: testEnv } = makeEnv({
@@ -1543,7 +1497,7 @@ describe("project routes", () => {
     const project = await createProject(testEnv, { ownerMemberName: "Alice" });
 
     const response = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody("POST", appendRecordBody(), await authHeaders("Owner@Example.COM")),
     );
@@ -1555,6 +1509,27 @@ describe("project routes", () => {
     expect(projectRateLimit.limit).toHaveBeenCalledWith({
       key: `append-record:project:${project.id}`,
     });
+
+    accountRateLimit.limit.mockClear();
+    projectRateLimit.limit.mockClear();
+    const replaced = await dispatch(
+      `/project/${project.id}/record/1`,
+      testEnv,
+      jsonBody("PUT", appendRecordBody("Updated"), await authHeaders()),
+    );
+    expect(replaced.status).toBe(200);
+    expect(accountRateLimit.limit).not.toHaveBeenCalled();
+    expect(projectRateLimit.limit).not.toHaveBeenCalled();
+
+    accountRateLimit.limit.mockClear();
+    projectRateLimit.limit.mockClear();
+    const deleted = await dispatch(`/project/${project.id}/record/1`, testEnv, {
+      method: "DELETE",
+      headers: await authHeaders(),
+    });
+    expect(deleted.status).toBe(204);
+    expect(accountRateLimit.limit).not.toHaveBeenCalled();
+    expect(projectRateLimit.limit).not.toHaveBeenCalled();
   });
 
   it("returns an account rate limit reason before appending a record", async () => {
@@ -1567,7 +1542,7 @@ describe("project routes", () => {
     const project = await createProject(testEnv, { ownerMemberName: "Alice" });
 
     const response = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody("POST", appendRecordBody(), await authHeaders()),
     );
@@ -1610,7 +1585,7 @@ describe("project routes", () => {
     );
 
     const response = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody("POST", appendRecordBody(), await authHeaders(owner)),
     );
@@ -1632,7 +1607,7 @@ describe("project routes", () => {
     const project = await createProject(testEnv, { ownerMemberName: "Alice" });
 
     const response = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody("POST", appendRecordBody(), await authHeaders()),
     );
@@ -1650,7 +1625,7 @@ describe("project routes", () => {
     await createMember(testEnv, project.id, "Bob");
 
     const oversized = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -1673,7 +1648,7 @@ describe("project routes", () => {
     expect(await oversized.json()).toEqual({ error: "money_limit_exceeded" });
 
     const firstMaxTransfer = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -1695,7 +1670,7 @@ describe("project routes", () => {
     expect(firstMaxTransfer.status).toBe(201);
 
     const overflow = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -1730,7 +1705,7 @@ describe("project routes", () => {
     );
 
     const response = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -1759,7 +1734,7 @@ describe("project routes", () => {
     );
 
     const response = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -1786,7 +1761,7 @@ describe("project routes", () => {
 
     for (const name of ["First", "Second", "Third"]) {
       const response = await dispatch(
-        `/project/${project.id}`,
+        `/project/${project.id}/record`,
         testEnv,
         jsonBody(
           "POST",
@@ -1828,6 +1803,19 @@ describe("project routes", () => {
     });
     expect(finalPage.status).toBe(200);
     expect(((await finalPage.json()) as ProjectResponse).records).toMatchObject([{ id: 1 }]);
+
+    const tombstone = await dispatch(`/project/${project.id}/record/2`, testEnv, {
+      method: "DELETE",
+      headers: await authHeaders(),
+    });
+    expect(tombstone.status).toBe(204);
+    const pageAcrossTombstone = await dispatch(`/project/${project.id}?limit=2`, testEnv, {
+      headers: await authHeaders(),
+    });
+    expect(((await pageAcrossTombstone.json()) as ProjectResponse).records).toMatchObject([
+      { id: 3 },
+      { id: 1 },
+    ]);
 
     const invalidOffset = await dispatch(`/project/${project.id}?offset=0`, testEnv, {
       headers: await authHeaders(),
@@ -1906,7 +1894,7 @@ describe("project routes", () => {
     });
 
     const postAfterUnlink = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -2201,7 +2189,7 @@ describe("project routes", () => {
     ]);
 
     const postAfterBlockedRemoval = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -2269,7 +2257,7 @@ describe("project routes", () => {
     ]);
 
     const postAfterLeave = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -2337,7 +2325,7 @@ describe("project routes", () => {
     );
 
     const postAfterKick = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -2362,7 +2350,7 @@ describe("project routes", () => {
     const bob = await createMember(testEnv, project.id, "Bob");
 
     const historicalRecord = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -2414,7 +2402,7 @@ describe("project routes", () => {
     expect(renameDeleted.status).toBe(409);
 
     const recordWithDeleted = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -2439,7 +2427,7 @@ describe("project routes", () => {
     const bob = await createMember(testEnv, project.id, "Bob");
 
     await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -2465,13 +2453,13 @@ describe("project routes", () => {
     expect(await deleteBob.json()).toEqual({ error: "nonzero_balance" });
   });
 
-  it("supports one revert per non-revert record", async () => {
+  it("replaces and tombstones records while keeping balances exact", async () => {
     const { env: testEnv } = makeEnv();
-    const project = await createProject(testEnv);
-    await createMember(testEnv, project.id, "Bob");
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+    const bob = await createMember(testEnv, project.id, "Bob");
 
-    await dispatch(
-      `/project/${project.id}`,
+    const posted = await dispatch(
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
@@ -2487,143 +2475,343 @@ describe("project routes", () => {
         await authHeaders(),
       ),
     );
+    expect(posted.status).toBe(201);
+    expect(await posted.json()).toEqual({ id: 1 });
 
-    const revert = await dispatch(
-      `/project/${project.id}`,
+    const joined = await dispatch(
+      `/project/${project.id}/join`,
       testEnv,
-      jsonBody(
-        "POST",
-        {
-          delta: { "1": 2000, "2": -2000 },
-          description: { type: "revert", id: 1 },
-        },
-        await authHeaders(),
-      ),
+      jsonBody("POST", { memberId: bob.id }, await authHeaders("bob@example.com")),
     );
-    expect(revert.status).toBe(201);
-    expect(await revert.json()).toEqual({ id: 2 });
-
-    const doubleRevert = await dispatch(
-      `/project/${project.id}`,
+    expect(joined.status).toBe(201);
+    await putUserLimits(
       testEnv,
-      jsonBody(
-        "POST",
-        {
-          delta: { "1": 2000, "2": -2000 },
-          description: { type: "revert", id: 1 },
-        },
-        await authHeaders(),
-      ),
+      "bob@example.com",
+      limitsDocument({ "records.allow_post": false }),
     );
-    expect(doubleRevert.status).toBe(400);
 
-    const revertRevert = await dispatch(
-      `/project/${project.id}`,
-      testEnv,
-      jsonBody(
-        "POST",
-        {
-          delta: { "1": -2000, "2": 2000 },
-          description: { type: "revert", id: 2 },
-        },
-        await authHeaders(),
-      ),
-    );
-    expect(revertRevert.status).toBe(400);
-
-    const response = await getProject(testEnv, project.id);
-    const records = response.records as Array<{
-      id: number;
+    const original = await dispatch(`/project/${project.id}/record/1`, testEnv);
+    expect(original.status).toBe(200);
+    const originalRecord = (await original.json()) as {
+      authorMemberId: number;
       createdAt: number;
-      reverted?: { recordId: number; authorMemberId: number; createdAt: number };
-    }>;
-    const revertRecord = records.find((record) => record.id === 2);
-    const originalRecord = records.find((record) => record.id === 1);
-    expect(response).toMatchObject({ balance: {}, records: [{ id: 2 }, { id: 1 }] });
-    expect(revertRecord).not.toHaveProperty("reverted");
-    expect(originalRecord).toMatchObject({
-      reverted: {
-        recordId: 2,
-        authorMemberId: 1,
-        createdAt: revertRecord?.createdAt,
+      updatedAt?: number;
+    };
+    expect(originalRecord).toMatchObject({ authorMemberId: 1 });
+    expect(originalRecord).not.toHaveProperty("updatedAt");
+
+    const replaced = await dispatch(
+      `/project/${project.id}/record/1`,
+      testEnv,
+      jsonBody(
+        "PUT",
+        {
+          delta: { "1": -3000, "2": 3000 },
+          description: {
+            type: "expense",
+            name: "Updated tickets",
+            paid: { "1": 3000 },
+            liability: { "2": 3000 },
+          },
+        },
+        await authHeaders("bob@example.com"),
+      ),
+    );
+    expect(replaced.status).toBe(200);
+    expect(await replaced.json()).toMatchObject({
+      id: 1,
+      authorMemberId: 1,
+      createdAt: originalRecord.createdAt,
+      updatedAt: expect.any(Number) as number,
+      updatedByMemberId: bob.id,
+      delta: { "1": -3000, "2": 3000 },
+      description: { type: "expense", name: "Updated tickets" },
+    });
+    expect((await getProject(testEnv, project.id)).balance).toEqual({ "1": -3000, "2": 3000 });
+
+    const stub = await getProjectStoreStub(testEnv, project.id);
+    await runInDurableObject(stub, async (_instance, state) => {
+      expect(
+        state.storage.sql
+          .exec("SELECT member_id, amount_cents FROM balances ORDER BY member_id")
+          .toArray(),
+      ).toEqual([
+        { member_id: 1, amount_cents: -3000 },
+        { member_id: 2, amount_cents: 3000 },
+      ]);
+    });
+
+    const deleted = await dispatch(`/project/${project.id}/record/1`, testEnv, {
+      method: "DELETE",
+      headers: await authHeaders("bob@example.com"),
+    });
+    expect(deleted.status).toBe(204);
+    expect((await getProject(testEnv, project.id)).balance).toEqual({});
+    expect((await getProject(testEnv, project.id)).records).toEqual([]);
+    expect((await dispatch(`/project/${project.id}/record/1`, testEnv)).status).toBe(404);
+    expect(
+      (
+        await dispatch(`/project/${project.id}/record/1`, testEnv, {
+          method: "DELETE",
+          headers: await authHeaders(),
+        })
+      ).status,
+    ).toBe(404);
+
+    await runInDurableObject(stub, async (_instance, state) => {
+      const row = state.storage.sql
+        .exec<
+          {
+            description_type: string;
+            description_json: string;
+            delta_json: string;
+          } & Record<string, SqlStorageValue>
+        >("SELECT description_type, description_json, delta_json FROM records WHERE id = 1")
+        .one();
+      expect(row).toEqual({
+        description_type: "deleted",
+        description_json: "{}",
+        delta_json: "{}",
+      });
+      expect(
+        state.storage.sql
+          .exec("SELECT member_id, amount_cents FROM balances ORDER BY member_id")
+          .toArray(),
+      ).toEqual([]);
+    });
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
+    await runInDurableObject(
+      testEnv.PROJECTS_REGISTRY.getByName(PROJECTS_REGISTRY_NAME),
+      async (_instance, state) => {
+        expect(
+          state.storage.sql
+            .exec<
+              { record_count: number } & Record<string, SqlStorageValue>
+            >("SELECT record_count FROM project_summaries WHERE project_id = ?", project.id)
+            .one().record_count,
+        ).toBe(1);
       },
+    );
+
+    const next = await dispatch(
+      `/project/${project.id}/record`,
+      testEnv,
+      jsonBody("POST", appendRecordBody("Replacement history"), await authHeaders()),
+    );
+    expect(await next.json()).toEqual({ id: 2 });
+    expect((await getProject(testEnv, project.id)).records).toMatchObject([{ id: 2 }]);
+    await runInDurableObject(stub, async (_instance, state) => {
+      expect(state.storage.sql.exec("SELECT id FROM records ORDER BY id").toArray()).toEqual([
+        { id: 1 },
+        { id: 2 },
+      ]);
     });
   });
 
-  it("annotates reverted records when the reversal is outside the current page", async () => {
+  it("uses project read access for GET but requires membership for PUT", async () => {
     const { env: testEnv } = makeEnv();
-    const project = await createProject(testEnv);
-    await createMember(testEnv, project.id, "Bob");
-
+    const readerEmail = "reader@example.com";
+    const project = await createProject(testEnv, {
+      acl: { type: "restricted", emails: [readerEmail] },
+    });
     await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
+      testEnv,
+      jsonBody("POST", appendRecordBody(), await authHeaders()),
+    );
+
+    expect((await dispatch(`/project/${project.id}/record/1`, testEnv)).status).toBe(403);
+    const allowedRead = await dispatch(`/project/${project.id}/record/1`, testEnv, {
+      headers: await authHeaders(readerEmail),
+    });
+    expect(allowedRead.status).toBe(200);
+
+    const nonMemberPut = await dispatch(
+      `/project/${project.id}/record/1`,
+      testEnv,
+      jsonBody("PUT", appendRecordBody("Reader edit"), await authHeaders(readerEmail)),
+    );
+    expect(nonMemberPut.status).toBe(403);
+  });
+
+  it("leaves record mutation storage unchanged when replacement validation fails", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+    const bob = await createMember(testEnv, project.id, "Bob");
+    await dispatch(
+      `/project/${project.id}/record`,
+      testEnv,
+      jsonBody(
+        "POST",
+        promiseRecordBody({ creditorMemberId: bob.id, amount: 500 }),
+        await authHeaders(),
+      ),
+    );
+    expect((await dispatch(`/project/${project.id}/settle`, testEnv)).status).toBe(200);
+
+    const stub = await getProjectStoreStub(testEnv, project.id);
+    const storageSnapshot = async () =>
+      runInDurableObject(stub, async (_instance, state) => ({
+        record: state.storage.sql
+          .exec(
+            `SELECT description_type, description_json, delta_json, updated_at,
+                    updated_by_member_id FROM records WHERE id = 1`,
+          )
+          .one(),
+        balances: state.storage.sql
+          .exec("SELECT member_id, amount_cents FROM balances ORDER BY member_id")
+          .toArray(),
+        metadata: state.storage.kv.get("projectMetadata"),
+        cache: state.storage.kv.get("settlementPlanCache"),
+      }));
+    const before = await storageSnapshot();
+
+    const invalidDelta = await dispatch(
+      `/project/${project.id}/record/1`,
+      testEnv,
+      jsonBody(
+        "PUT",
+        promiseRecordBody({
+          creditorMemberId: bob.id,
+          amount: 500,
+          delta: { "1": 501, "2": -500 },
+        }),
+        await authHeaders(),
+      ),
+    );
+    expect(invalidDelta.status).toBe(400);
+
+    const overLimit = await dispatch(
+      `/project/${project.id}/record/1`,
+      testEnv,
+      jsonBody(
+        "PUT",
+        promiseRecordBody({
+          creditorMemberId: bob.id,
+          amount: BUILTIN_DEFAULT_LIMITS["money.maxAmountCents"] + 1,
+        }),
+        await authHeaders(),
+      ),
+    );
+    expect(overLimit.status).toBe(409);
+    expect(await overLimit.json()).toEqual({ error: "money_limit_exceeded" });
+    expect(await storageSnapshot()).toEqual(before);
+  });
+
+  it("rejects record mutations that would restore a deleted member balance", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+    const bob = await createMember(testEnv, project.id, "Bob");
+    await dispatch(
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
         {
-          delta: { "1": -2000, "2": 2000 },
+          delta: { "1": -100, "2": 100 },
           description: {
             type: "expense",
-            name: "Tickets",
-            paid: { "1": 2000 },
-            liability: { "2": 2000 },
+            name: "Shared item",
+            paid: { "1": 100 },
+            liability: { "2": 100 },
           },
         },
         await authHeaders(),
       ),
     );
-
     await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",
         {
-          delta: { "1": -1000, "2": 1000 },
-          description: {
-            type: "expense",
-            name: "Snacks",
-            paid: { "1": 1000 },
-            liability: { "2": 1000 },
-          },
+          delta: { "1": 100, "2": -100 },
+          description: { type: "transfer", from: bob.id, to: 1, amount: 100 },
         },
         await authHeaders(),
       ),
     );
-
-    const revert = await dispatch(
-      `/project/${project.id}`,
-      testEnv,
-      jsonBody(
-        "POST",
-        {
-          delta: { "1": 2000, "2": -2000 },
-          description: { type: "revert", id: 1 },
-        },
-        await authHeaders(),
-      ),
-    );
-    expect(revert.status).toBe(201);
-
-    const page = await dispatch(`/project/${project.id}?limit=1&offset=2`, testEnv, {
+    const deleteBob = await dispatch(`/project/${project.id}/members/${bob.id}`, testEnv, {
+      method: "DELETE",
       headers: await authHeaders(),
     });
-    expect(page.status).toBe(200);
-    const body = (await page.json()) as ProjectResponse;
-    const records = body.records as Array<{
-      id: number;
-      reverted?: { recordId: number; authorMemberId: number; createdAt: number };
-    }>;
+    expect(deleteBob.status).toBe(204);
 
-    expect(records).toMatchObject([
-      {
-        id: 1,
-        reverted: {
-          recordId: 3,
-          authorMemberId: 1,
-          createdAt: expect.any(Number) as number,
-        },
-      },
+    const deleteRecord = await dispatch(`/project/${project.id}/record/1`, testEnv, {
+      method: "DELETE",
+      headers: await authHeaders(),
+    });
+    expect(deleteRecord.status).toBe(409);
+    expect(await deleteRecord.json()).toEqual({ error: "nonzero_balance" });
+
+    const replaceRecord = await dispatch(
+      `/project/${project.id}/record/1`,
+      testEnv,
+      jsonBody("PUT", appendRecordBody("Owner-only replacement"), await authHeaders()),
+    );
+    expect(replaceRecord.status).toBe(409);
+    expect(await replaceRecord.json()).toEqual({ error: "nonzero_balance" });
+    expect((await getProject(testEnv, project.id)).balance).toEqual({});
+    expect((await dispatch(`/project/${project.id}/record/1`, testEnv)).status).toBe(200);
+  });
+
+  it("rejects the removed record creation route and new revert descriptions", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv);
+
+    const oldRoute = await dispatch(
+      `/project/${project.id}`,
+      testEnv,
+      jsonBody("POST", appendRecordBody(), await authHeaders()),
+    );
+    expect(oldRoute.status).toBe(404);
+
+    const revertPost = await dispatch(
+      `/project/${project.id}/record`,
+      testEnv,
+      jsonBody("POST", { delta: {}, description: { type: "revert", id: 1 } }, await authHeaders()),
+    );
+    expect(revertPost.status).toBe(400);
+
+    const created = await dispatch(
+      `/project/${project.id}/record`,
+      testEnv,
+      jsonBody("POST", appendRecordBody(), await authHeaders()),
+    );
+    expect(created.status).toBe(201);
+
+    const revertPut = await dispatch(
+      `/project/${project.id}/record/1`,
+      testEnv,
+      jsonBody("PUT", { delta: {}, description: { type: "revert", id: 1 } }, await authHeaders()),
+    );
+    expect(revertPut.status).toBe(400);
+  });
+
+  it("keeps legacy revert records readable without source annotations", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv);
+    const stub = await getProjectStoreStub(testEnv, project.id);
+
+    await runInDurableObject(stub, async (_instance, state) => {
+      state.storage.sql.exec(
+        `INSERT INTO records
+          (id, author_member_id, description_type, description_json, delta_json, created_at,
+           updated_at, updated_by_member_id)
+         VALUES (1, 1, 'revert', '{"type":"revert","id":99}', '{}', 1000, NULL, NULL)`,
+      );
+    });
+
+    const page = await getProject(testEnv, project.id);
+    expect(page.records).toMatchObject([
+      { id: 1, description: { type: "revert", id: 99 }, delta: {} },
     ]);
+    expect(page.records[0]).not.toHaveProperty("reverted");
+    const record = await dispatch(`/project/${project.id}/record/1`, testEnv);
+    expect(record.status).toBe(200);
+    expect(await record.json()).toMatchObject({
+      id: 1,
+      description: { type: "revert", id: 99 },
+    });
   });
 });

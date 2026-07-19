@@ -11,7 +11,7 @@ import {
   requireAuth,
   requireSameOriginWhenPresent,
 } from "../auth";
-import { CATEGORY_CONFIG_KEY, CategoryId } from "../category";
+import { CATEGORY_CONFIG_KEY } from "../category";
 import { sha256Hex } from "../crypto";
 import type { ProjectStore } from "../do/ProjectStore";
 import { normalizeEmail, normalizedEmailSchema } from "../email";
@@ -27,23 +27,19 @@ import {
 } from "../model";
 import {
   PROJECTS_REGISTRY_NAME,
-  MoneyByMemberIdUtils,
+  MemberId,
+  MoneyByMemberId,
   ProjectEmailsUtils,
   ProjectId,
   ProjectMemberConfig,
   ProjectMemberConfigPatch,
   ProjectNameUtils,
-  TransferBatch,
+  WritableRecordDescription,
   type ProjectRecord,
 } from "../project";
 
 const PROJECT_REGISTRY_CACHE_TTL_SECONDS = 60;
 const memberIdParamRegex = /^[1-9]\d*$/u;
-
-// TODO(schema-source): move the project primitive, money-map, record-description, and ACL schemas
-// below into the project domain module and reuse them here and in OpenAPI.
-const Cents = z.number().int().min(-Number.MAX_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER);
-const MemberId = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 
 const MemberName = z
   .string()
@@ -54,136 +50,6 @@ const ProjectName = z
   .string()
   .transform(ProjectNameUtils.normalizeProject)
   .pipe(z.string().min(1).max(ABSOLUTE_TEXT_LIMIT));
-
-function makeMoneyMapSchema(options: { nonNegative: boolean }) {
-  const valueSchema = options.nonNegative ? Cents.min(0) : Cents;
-  function isMemberIdKey(memberId: string): boolean {
-    if (!memberIdParamRegex.test(memberId)) {
-      return false;
-    }
-    const numericMemberId = Number(memberId);
-    return Number.isSafeInteger(numericMemberId) && numericMemberId > 0;
-  }
-
-  return z
-    .record(z.string(), valueSchema)
-    .superRefine((input, context) => {
-      const memberIds = Object.keys(input);
-      if (memberIds.length > ABSOLUTE_LIST_LIMIT) {
-        context.addIssue({
-          code: "custom",
-          message: "Money map has too many entries.",
-        });
-      }
-
-      const seen = new Set<string>();
-      for (const memberId of memberIds) {
-        if (!isMemberIdKey(memberId)) {
-          context.addIssue({
-            code: "custom",
-            message: "Invalid member ID key.",
-            path: [memberId],
-          });
-          continue;
-        }
-
-        const normalizedMemberId = String(Number(memberId));
-        if (seen.has(normalizedMemberId)) {
-          context.addIssue({
-            code: "custom",
-            message: "Duplicate member ID after normalization.",
-            path: [memberId],
-          });
-        }
-        seen.add(normalizedMemberId);
-      }
-    })
-    .transform((input) => MoneyByMemberIdUtils.normalize(input));
-}
-
-const MoneyMap = makeMoneyMapSchema({ nonNegative: false });
-const NonNegativeMoneyMap = makeMoneyMapSchema({ nonNegative: true });
-
-const ExpenseDescription = z
-  .object({
-    type: z.literal("expense"),
-    name: z.string().trim().min(1).max(ABSOLUTE_TEXT_LIMIT),
-    paid: NonNegativeMoneyMap,
-    liability: NonNegativeMoneyMap,
-    categoryId: CategoryId.optional(),
-  })
-  .superRefine((description, context) => {
-    const totalPaid = MoneyByMemberIdUtils.sum(description.paid);
-    const totalLiability = MoneyByMemberIdUtils.sum(description.liability);
-    if (totalPaid <= 0) {
-      context.addIssue({
-        code: "custom",
-        message: "Expense total must be positive.",
-        path: ["paid"],
-      });
-    }
-    if (totalPaid !== totalLiability) {
-      context.addIssue({
-        code: "custom",
-        message: "Paid total must equal liability total.",
-        path: ["liability"],
-      });
-    }
-  });
-
-const LegacyTransferDescription = z
-  .object({
-    type: z.literal("transfer"),
-    from: MemberId,
-    to: MemberId,
-    amount: Cents.positive(),
-  })
-  .superRefine((description, context) => {
-    if (description.from === description.to) {
-      context.addIssue({
-        code: "custom",
-        message: "Transfer endpoints must differ.",
-        path: ["to"],
-      });
-    }
-  });
-
-const MultiTransferDescription = TransferBatch.safeExtend({
-  type: z.literal("transfer"),
-});
-
-const TransferDescription = z.union([LegacyTransferDescription, MultiTransferDescription]);
-
-const PromiseDescription = z
-  .object({
-    type: z.literal("promise"),
-    debtorMemberId: MemberId,
-    creditorMemberId: MemberId,
-    amount: Cents.positive(),
-    reason: z.string().trim().min(1).max(ABSOLUTE_TEXT_LIMIT).optional(),
-  })
-  .superRefine((description, context) => {
-    if (description.debtorMemberId === description.creditorMemberId) {
-      context.addIssue({
-        code: "custom",
-        message: "Promise endpoints must differ.",
-        path: ["creditorMemberId"],
-      });
-    }
-  });
-
-const RevertDescription = z.object({
-  type: z.literal("revert"),
-  id: z.number().int().positive(),
-});
-
-const RecordDescription = z.union([
-  ExpenseDescription,
-  TransferDescription,
-  PromiseDescription,
-  RevertDescription,
-]);
-type ParsedRecordDescription = z.infer<typeof RecordDescription>;
 
 const ProjectAcl = z.discriminatedUnion("type", [
   z.object({ type: z.literal("public") }),
@@ -1067,8 +933,8 @@ projectApp.delete(
 
 const ProjectAppendRecord = z
   .object({
-    delta: MoneyMap,
-    description: RecordDescription,
+    delta: MoneyByMemberId,
+    description: WritableRecordDescription,
     settle: z.boolean().optional(),
   })
   .superRefine((record, context) => {
@@ -1081,8 +947,154 @@ const ProjectAppendRecord = z
     }
   });
 
+const ProjectPutRecord = z
+  .object({
+    delta: MoneyByMemberId,
+    description: WritableRecordDescription,
+  })
+  .strict();
+
+projectApp.get(
+  "/project/:id/record/:recordId",
+  describeRoute({
+    tags: ["Project Records"],
+    summary: "Get a project record",
+    description:
+      "Returns one live project record. Public projects may be read without authentication; deleted records are treated as missing.",
+    security: OpenApiSecurity.OptionalApiKeyBearer,
+    parameters: [OpenApiParameters.ProjectId, OpenApiParameters.RecordId],
+    responses: {
+      200: OpenApiResponses.ProjectRecord,
+      ...errorResponses(403, 404),
+    },
+  }),
+  optionalAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
+    }
+    const recordId = ProjectRouteParams.parseRecordId(context.req.param("recordId"));
+    if (recordId === null) {
+      return ErrorResponse.notFound();
+    }
+
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
+    const identity = context.get("identity");
+    const result = await projectLookup.store.getRecord({
+      publicId: projectLookup.projectId,
+      callerEmail: identity ? normalizeEmail(identity.email) : null,
+      recordId,
+    });
+    if (!result.ok) {
+      return mapProjectStoreError(result.error);
+    }
+    const [record] = await recordsWithCurrentCategories(context, [result.record]);
+    return context.json(record);
+  },
+);
+
+projectApp.put(
+  "/project/:id/record/:recordId",
+  describeRoute({
+    tags: ["Project Records"],
+    summary: "Replace a project record",
+    description:
+      "Fully replaces a live expense, transfer, or promise record while preserving its creation identity. The supplied delta must match the server-derived effect and sum to zero.",
+    security: OpenApiSecurity.ApiKeyBearer,
+    parameters: [OpenApiParameters.ProjectId, OpenApiParameters.RecordId],
+    requestBody: OpenApiRequests.ProjectPutRecord,
+    responses: {
+      200: OpenApiResponses.ProjectRecord,
+      ...errorResponses(400, 401, 403, 404, 409, 500),
+    },
+  }),
+  requireSameOriginWhenPresent,
+  requireAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
+    }
+    const recordId = ProjectRouteParams.parseRecordId(context.req.param("recordId"));
+    if (recordId === null) {
+      return ErrorResponse.notFound();
+    }
+    const parsed = await parseJson(context, ProjectPutRecord);
+    if (!parsed.ok) {
+      return ErrorResponse.invalidRequest();
+    }
+
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
+    const callerEmail = normalizeEmail(getRequiredIdentity(context).email);
+    const categoryValidation = await validateExpenseCategory(context, parsed.data.description);
+    if (!categoryValidation.ok) {
+      return categoryValidation.response;
+    }
+
+    const result = await projectLookup.store.putRecord({
+      callerEmail,
+      recordId,
+      delta: parsed.data.delta,
+      description: parsed.data.description,
+      nowMs: Date.now(),
+    });
+    if (!result.ok) {
+      return mapProjectStoreError(result.error);
+    }
+    const [record] = await recordsWithCurrentCategories(context, [result.record]);
+    return context.json(record);
+  },
+);
+
+projectApp.delete(
+  "/project/:id/record/:recordId",
+  describeRoute({
+    tags: ["Project Records"],
+    summary: "Delete a project record",
+    description:
+      "Reverses a live record's balance effect and replaces its stored description and delta with an internal tombstone. Deleted records are treated as missing.",
+    security: OpenApiSecurity.ApiKeyBearer,
+    parameters: [OpenApiParameters.ProjectId, OpenApiParameters.RecordId],
+    responses: {
+      204: OpenApiResponses.NoContent,
+      ...errorResponses(401, 403, 404, 409, 500),
+    },
+  }),
+  requireSameOriginWhenPresent,
+  requireAuth,
+  async (context) => {
+    if (!isValidProjectId(context.req.param("id"))) {
+      return ErrorResponse.notFound();
+    }
+    const recordId = ProjectRouteParams.parseRecordId(context.req.param("recordId"));
+    if (recordId === null) {
+      return ErrorResponse.notFound();
+    }
+
+    const projectLookup = await getProjectStore(context, context.req.param("id"));
+    if (!projectLookup) {
+      return ErrorResponse.notFound();
+    }
+    const callerEmail = normalizeEmail(getRequiredIdentity(context).email);
+    const result = await projectLookup.store.deleteRecord({
+      callerEmail,
+      recordId,
+      nowMs: Date.now(),
+    });
+    if (!result.ok) {
+      return mapProjectStoreError(result.error);
+    }
+    return context.body(null, 204);
+  },
+);
+
 projectApp.post(
-  "/project/:id",
+  "/project/:id/record",
   describeRoute({
     tags: ["Project Records"],
     summary: "Append a record to a project",
@@ -1241,7 +1253,7 @@ class AppendRecordRateLimiter {
 
 async function validateExpenseCategory(
   context: AppContext,
-  description: ParsedRecordDescription,
+  description: WritableRecordDescription,
 ): Promise<{ ok: true } | { ok: false; response: Response }> {
   if (description.type !== "expense" || description.categoryId === undefined) {
     return { ok: true };
@@ -1391,6 +1403,10 @@ class ProjectRouteParams {
     }
     const memberId = Number(rawMemberId);
     return Number.isSafeInteger(memberId) && memberId > 0 ? memberId : null;
+  }
+
+  static parseRecordId(rawRecordId: string): number | null {
+    return this.parseMemberId(rawRecordId);
   }
 }
 

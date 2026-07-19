@@ -110,7 +110,7 @@ export function SettlementPanel({
     }
     setPosting(true);
     try {
-      const description: api.RecordDescription = { type: "transfer", ...memberTransfer };
+      const description: api.WritableRecordDescription = { type: "transfer", ...memberTransfer };
       await api.appendRecord(project.id, {
         description,
         delta: deriveDelta(description),

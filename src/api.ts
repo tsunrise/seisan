@@ -7,8 +7,8 @@ import type {
   ProjectMember,
   ProjectMemberConfig,
   ProjectSummary,
-  RecordDescription,
   TransferBatch,
+  WritableRecordDescription,
   WithSyncTime,
 } from "./projectTypes";
 
@@ -25,6 +25,7 @@ export type {
   RecordDescription,
   TransferBatch,
   TransferDestination,
+  WritableRecordDescription,
   WithSyncTime,
 } from "./projectTypes";
 
@@ -338,9 +339,9 @@ export async function renameProject(projectId: string, name: string): Promise<{ 
 
 export async function appendRecord(
   projectId: string,
-  input: { delta: MoneyByMemberId; description: RecordDescription; settle?: boolean },
+  input: { delta: MoneyByMemberId; description: WritableRecordDescription; settle?: boolean },
 ): Promise<{ id: number }> {
-  return requestJson(`/api/project/${projectId}`, {
+  return requestJson(`/api/project/${projectId}/record`, {
     method: "POST",
     body: input,
     expectedStatus: 201,

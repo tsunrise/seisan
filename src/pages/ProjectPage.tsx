@@ -276,12 +276,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
           )
         ) : null}
         {panel === "recordDetail" && selectedRecord ? (
-          <RecordDetail
-            project={project.data}
-            record={selectedRecord}
-            canPost={Boolean(currentMember)}
-            onPosted={reload}
-          />
+          <RecordDetail project={project.data} record={selectedRecord} />
         ) : null}
         {recordDetailIsLoading ? (
           <Box sx={{ display: "grid", minHeight: 240, placeItems: "center" }}>

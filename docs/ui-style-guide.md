@@ -107,11 +107,12 @@ Full record rows:
 - Only the row content link is clickable. The empty rail/lane must not be clickable.
 - Render the gray timeline rail as one continuous parent line, not separate row-level line segments.
 - Selected rows use pale blue background, a subtle blue left border, and the desktop connector toward the detail panel.
-- Reverted source records remain visible with struck-through title, metadata, and amount, plus a small reverted note.
+- Legacy revert events remain visible, but source records use ordinary styling because the API no
+  longer publishes reverse-link annotations.
 
 Minor system events:
 
-- Use for revert records and similar low-weight history events.
+- Use for legacy revert records and similar low-weight history events.
 - Keep them compact, but align their right-side record number with full record rows.
 - Use a small hollow timeline node rather than a full record icon.
 - Center the hollow node on the system message baseline and keep the row visually lighter than a full record.

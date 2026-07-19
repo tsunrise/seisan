@@ -217,7 +217,7 @@ describe("registry routes", () => {
     const bob = await createMember(testEnv, project.id, "Bob", owner);
 
     const expense = await dispatch(
-      `/project/${project.id}`,
+      `/project/${project.id}/record`,
       testEnv,
       jsonBody(
         "POST",

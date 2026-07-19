@@ -63,6 +63,16 @@ Use this for Worker production code in `worker/`, especially route modules and s
 - Always catch and log failures inside the scheduled promise.
 - Do not destructure `waitUntil` or other methods that depend on platform object binding.
 
+## SQLite Atomicity
+
+- SQLite-backed Durable Objects automatically submit synchronous storage reads followed by writes
+  without an intervening `await` as one transaction. Use a non-async helper when relying on this
+  behavior so the boundary remains obvious and SQL cursors are consumed immediately.
+- Run asynchronous policy/config loading before entering that helper. Schedule alarms and other
+  asynchronous work only after the synchronous mutation tail succeeds.
+- `transactionSync()` remains valid when an explicit callback improves clarity; neither pattern may
+  contain an asynchronous callback.
+
 ## Comments
 
 Keep comments sparse and attached to non-obvious invariants, security reminders, or temporary backfills. Avoid comments that simply restate the SQL or TypeScript.

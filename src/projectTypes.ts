@@ -54,17 +54,16 @@ export type RecordDescription =
       id: number;
     };
 
+export type WritableRecordDescription = Exclude<RecordDescription, { type: "revert" }>;
+
 export interface ProjectRecord {
   id: number;
   authorMemberId: number;
   delta: MoneyByMemberId;
   description: RecordDescription;
   createdAt: number;
-  reverted?: {
-    recordId: number;
-    authorMemberId: number;
-    createdAt: number;
-  };
+  updatedAt?: number;
+  updatedByMemberId?: number;
 }
 
 export interface ProjectCreated {

@@ -68,6 +68,8 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 - The mobile timeline CTA is marked with `data-project-mobile-action`; keep that marker or update `timelineScroll.ts` at the same time.
 - This marker is required so initial scroll and restore logic keep the latest record content clear of the fixed action, especially on iPhone Safari.
 - Record cards should only make the record content row clickable, not the surrounding timeline lane.
+- Legacy revert records remain visible as compact history events, but the UI does not offer a
+  Revert action and source records are no longer struck through or annotated as reverted.
 - Keep hover states subtle and consistent with the row tone.
 - Project pages load the public category list once and share it with the expense composer and
   timeline. Missing category metadata renders as `Others` with the default expense icon.

@@ -55,7 +55,7 @@ export function TransferComposer({
     const parsed = parseTransferDestinations([destination]);
     return parsed ?? [];
   });
-  const description: api.RecordDescription = {
+  const description: api.WritableRecordDescription = {
     type: "transfer",
     src: from,
     dests: parsedDestinations ?? previewDestinations,

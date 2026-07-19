@@ -37,7 +37,7 @@ export function PromiseComposer({
   const [error, setError] = useState<string | null>(null);
   const cents = parseCents(amount);
   const trimmedReason = reason.trim();
-  const description: api.RecordDescription = {
+  const description: api.WritableRecordDescription = {
     type: "promise",
     debtorMemberId,
     creditorMemberId,

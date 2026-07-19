@@ -1,7 +1,8 @@
 import { runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { backfill } from "../worker/do/migrations";
+import { backfill, runSqlMigrations } from "../worker/do/migrations";
+import { projectStoreMigrations } from "../worker/do/migrations/ProjectStore.migration";
 import { PROJECTS_REGISTRY_NAME } from "../worker/project";
 import {
   cleanupWorkerTestState,
@@ -73,15 +74,92 @@ describe("durable objects", () => {
     await runInDurableObject(
       testEnv.PROJECT_STORE.get(testEnv.PROJECT_STORE.idFromString(cachedProject?.doId ?? "")),
       async (_instance, state) => {
-        await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(4);
+        await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(5);
         await expect(state.storage.get<boolean>("initialized")).resolves.toBe(true);
         expect(
           state.storage.sql
             .exec<MemberConfigRow>("SELECT config FROM members WHERE id = 1")
             .toArray()[0]?.config,
         ).toBe("{}");
+        const recordColumns = state.storage.sql
+          .exec<SqliteCatalogRow>("SELECT name, sql FROM sqlite_master WHERE name = 'records'")
+          .one().sql;
+        expect(recordColumns).toContain("updated_at INTEGER");
+        expect(recordColumns).toContain("updated_by_member_id INTEGER");
+        expect(recordColumns).not.toContain("reverts_record_id");
       },
     );
+  });
+
+  it("preserves expense and legacy revert rows when rebuilding the records table", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv);
+    const stub = await getProjectStoreStub(testEnv, project.id);
+
+    await runInDurableObject(stub, async (_instance, state) => {
+      state.storage.sql.exec("DROP TABLE records").toArray();
+      state.storage.sql
+        .exec(
+          `CREATE TABLE records (
+            id INTEGER PRIMARY KEY,
+            author_member_id INTEGER NOT NULL,
+            description_type TEXT NOT NULL,
+            description_json TEXT NOT NULL,
+            delta_json TEXT NOT NULL,
+            reverts_record_id INTEGER UNIQUE,
+            created_at INTEGER NOT NULL
+          )`,
+        )
+        .toArray();
+      state.storage.sql
+        .exec(
+          `INSERT INTO records
+            (id, author_member_id, description_type, description_json, delta_json,
+             reverts_record_id, created_at)
+           VALUES
+            (1, 1, 'expense', '{"type":"expense","name":"Dinner","paid":{"1":100},"liability":{"1":100}}', '{}', NULL, 1000),
+            (2, 1, 'revert', '{"type":"revert","id":1}', '{}', 1, 2000)`,
+        )
+        .toArray();
+      await state.storage.put("dbMigrationVersion", 4);
+
+      await runSqlMigrations(state, projectStoreMigrations);
+
+      expect(
+        state.storage.sql
+          .exec(
+            `SELECT id, description_type, description_json, delta_json, created_at,
+                    updated_at, updated_by_member_id
+             FROM records ORDER BY id`,
+          )
+          .toArray(),
+      ).toEqual([
+        {
+          id: 1,
+          description_type: "expense",
+          description_json:
+            '{"type":"expense","name":"Dinner","paid":{"1":100},"liability":{"1":100}}',
+          delta_json: "{}",
+          created_at: 1000,
+          updated_at: null,
+          updated_by_member_id: null,
+        },
+        {
+          id: 2,
+          description_type: "revert",
+          description_json: '{"type":"revert","id":1}',
+          delta_json: "{}",
+          created_at: 2000,
+          updated_at: null,
+          updated_by_member_id: null,
+        },
+      ]);
+      const recordsSql = state.storage.sql
+        .exec<SqliteCatalogRow>("SELECT name, sql FROM sqlite_master WHERE name = 'records'")
+        .one().sql;
+      expect(recordsSql).not.toContain("reverts_record_id");
+      await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(5);
+    });
   });
 
   it("stores project metadata in DO KV and drops legacy SQL metadata tables", async () => {

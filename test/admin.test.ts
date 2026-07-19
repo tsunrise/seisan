@@ -419,7 +419,7 @@ async function appendTransferRecords(
   const member = await createMember(testEnv, projectId, `Member ${crypto.randomUUID()}`, owner);
   for (let index = 0; index < count; index += 1) {
     const response = await dispatch(
-      `/project/${projectId}`,
+      `/project/${projectId}/record`,
       testEnv,
       jsonBody(
         "POST",

@@ -27,7 +27,7 @@
     },
     {
       "name": "Project Records",
-      "description": "Append immutable expense, transfer, promise, and revert records."
+      "description": "Create, read, replace, and tombstone expense, transfer, and promise records; legacy revert records remain readable."
     }
   ],
   "paths": {
@@ -1584,7 +1584,8 @@
                             "additionalProperties": {
                               "type": "integer",
                               "minimum": -9007199254740991,
-                              "maximum": 9007199254740991
+                              "maximum": 9007199254740991,
+                              "description": "Signed integer-cent amount."
                             },
                             "description": "Signed integer-cent amounts keyed by project-local member ID.",
                             "examples": [{ "1": -6200, "2": 6200 }]
@@ -1601,6 +1602,8 @@
                                   },
                                   "name": {
                                     "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 10000,
                                     "description": "Short description of the expense.",
                                     "examples": ["Ramen dinner"]
                                   },
@@ -1610,7 +1613,8 @@
                                     "additionalProperties": {
                                       "type": "integer",
                                       "minimum": 0,
-                                      "maximum": 9007199254740991
+                                      "maximum": 9007199254740991,
+                                      "description": "Signed integer-cent amount."
                                     },
                                     "description": "Non-negative integer-cent amounts keyed by project-local member ID.",
                                     "examples": [{ "1": 6200, "2": 6200 }]
@@ -1621,16 +1625,17 @@
                                     "additionalProperties": {
                                       "type": "integer",
                                       "minimum": 0,
-                                      "maximum": 9007199254740991
+                                      "maximum": 9007199254740991,
+                                      "description": "Signed integer-cent amount."
                                     },
                                     "description": "Non-negative integer-cent amounts keyed by project-local member ID.",
                                     "examples": [{ "1": 6200, "2": 6200 }]
                                   },
                                   "categoryId": {
                                     "description": "Classified spending category, when known.",
+                                    "examples": ["4a6cc79a-51da-4e94-9d62-45ba3d853b1c"],
                                     "type": "string",
-                                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
-                                    "examples": ["4a6cc79a-51da-4e94-9d62-45ba3d853b1c"]
+                                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
                                   }
                                 },
                                 "required": ["type", "name", "paid", "liability"],
@@ -1688,11 +1693,6 @@
                                   {
                                     "type": "object",
                                     "properties": {
-                                      "type": {
-                                        "type": "string",
-                                        "const": "transfer",
-                                        "description": "Transfer record discriminator."
-                                      },
                                       "src": {
                                         "type": "integer",
                                         "exclusiveMinimum": 0,
@@ -1727,9 +1727,14 @@
                                           "description": "One recipient and amount in a multi-recipient transfer."
                                         },
                                         "description": "Unique recipients and their positive cent-denominated amounts."
+                                      },
+                                      "type": {
+                                        "type": "string",
+                                        "const": "transfer",
+                                        "description": "Transfer record discriminator."
                                       }
                                     },
-                                    "required": ["type", "src", "dests"],
+                                    "required": ["src", "dests", "type"],
                                     "additionalProperties": false,
                                     "description": "A payment from one project member to one or more project members.",
                                     "examples": [
@@ -1789,7 +1794,9 @@
                                   "reason": {
                                     "description": "Optional explanation for the promise.",
                                     "examples": ["Museum tickets"],
-                                    "type": "string"
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 10000
                                   }
                                 },
                                 "required": [
@@ -1828,37 +1835,12 @@
                                 },
                                 "required": ["type", "id"],
                                 "additionalProperties": false,
-                                "description": "A record that reverses an earlier project record.",
+                                "description": "A deprecated legacy record that reverses an earlier project record.",
+                                "deprecated": true,
                                 "examples": [{ "type": "revert", "id": 1 }]
                               }
                             ],
-                            "description": "Typed details for an expense, transfer, promise, or revert record.",
-                            "examples": [
-                              {
-                                "type": "expense",
-                                "name": "Ramen dinner",
-                                "paid": { "1": 12400 },
-                                "liability": { "1": 6200, "2": 6200 },
-                                "categoryId": "4a6cc79a-51da-4e94-9d62-45ba3d853b1c"
-                              },
-                              { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
-                              {
-                                "type": "transfer",
-                                "src": 2,
-                                "dests": [
-                                  { "id": 1, "amount": 3100 },
-                                  { "id": 3, "amount": 3100 }
-                                ]
-                              },
-                              {
-                                "type": "promise",
-                                "debtorMemberId": 2,
-                                "creditorMemberId": 1,
-                                "amount": 3100,
-                                "reason": "Museum tickets"
-                              },
-                              { "type": "revert", "id": 1 }
-                            ]
+                            "description": "Stored details for an expense, transfer, promise, or deprecated legacy revert record."
                           },
                           "createdAt": {
                             "type": "integer",
@@ -1867,57 +1849,38 @@
                             "description": "Creation time as Unix milliseconds.",
                             "examples": [1767225600000]
                           },
-                          "reverted": {
-                            "description": "Information about the later record that reverted this one.",
-                            "type": "object",
-                            "properties": {
-                              "recordId": {
-                                "type": "integer",
-                                "exclusiveMinimum": 0,
-                                "maximum": 9007199254740991,
-                                "description": "Record ID of the reverting record.",
-                                "examples": [4]
-                              },
-                              "authorMemberId": {
-                                "type": "integer",
-                                "exclusiveMinimum": 0,
-                                "maximum": 9007199254740991,
-                                "description": "Member ID that created the reverting record.",
-                                "examples": [1]
-                              },
-                              "createdAt": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 9007199254740991,
-                                "description": "Revert creation time as Unix milliseconds.",
-                                "examples": [1767229200000]
-                              }
-                            },
-                            "required": ["recordId", "authorMemberId", "createdAt"],
-                            "additionalProperties": false
+                          "updatedAt": {
+                            "description": "Latest replacement time as Unix milliseconds; omitted until first edited.",
+                            "examples": [1767227400000],
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "updatedByMemberId": {
+                            "description": "Member ID that made the latest replacement; omitted until first edited.",
+                            "examples": [1],
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
                           }
                         },
                         "required": ["id", "authorMemberId", "delta", "description", "createdAt"],
                         "additionalProperties": false,
-                        "description": "An immutable ledger entry in a project.",
+                        "description": "A live ledger entry in a project.",
                         "examples": [
                           {
-                            "id": 1,
-                            "authorMemberId": 1,
-                            "delta": { "1": -6200, "2": 6200 },
+                            "id": 2,
+                            "authorMemberId": 2,
+                            "delta": { "1": 6200, "2": -6200 },
                             "description": {
-                              "type": "expense",
-                              "name": "Ramen dinner",
-                              "paid": { "1": 12400 },
-                              "liability": { "1": 6200, "2": 6200 },
-                              "categoryId": "4a6cc79a-51da-4e94-9d62-45ba3d853b1c"
+                              "type": "transfer",
+                              "from": 2,
+                              "to": 1,
+                              "amount": 6200
                             },
-                            "createdAt": 1767225600000,
-                            "reverted": {
-                              "recordId": 4,
-                              "authorMemberId": 1,
-                              "createdAt": 1767229200000
-                            }
+                            "createdAt": 1767226800000,
+                            "updatedAt": 1767227400000,
+                            "updatedByMemberId": 1
                           }
                         ]
                       },
@@ -1929,7 +1892,8 @@
                       "additionalProperties": {
                         "type": "integer",
                         "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
+                        "maximum": 9007199254740991,
+                        "description": "Signed integer-cent amount."
                       },
                       "description": "Signed integer-cent amounts keyed by project-local member ID.",
                       "examples": [{ "1": -6200, "2": 6200 }]
@@ -1991,15 +1955,16 @@
                         "liability": { "1": 6200, "2": 6200 },
                         "categoryId": "4a6cc79a-51da-4e94-9d62-45ba3d853b1c"
                       },
-                      "createdAt": 1767225600000,
-                      "reverted": { "recordId": 4, "authorMemberId": 1, "createdAt": 1767229200000 }
+                      "createdAt": 1767225600000
                     },
                     {
                       "id": 2,
                       "authorMemberId": 2,
                       "delta": { "1": 6200, "2": -6200 },
                       "description": { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
-                      "createdAt": 1767226800000
+                      "createdAt": 1767226800000,
+                      "updatedAt": 1767227400000,
+                      "updatedByMemberId": 1
                     },
                     {
                       "id": 3,
@@ -2382,618 +2347,6 @@
                   "error": "conflict",
                   "reason": "The requested change conflicts with project state."
                 }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "operationId": "postApiProjectById",
-        "tags": ["Project Records"],
-        "summary": "Append a record to a project",
-        "description": "Appends an immutable expense, transfer, promise, or revert entry. The supplied cent-denominated delta must match the server-derived effect and sum to zero. A transfer may set settle=true to best-effort advance an already-viewed settlement plan when the caller confirms their complete cached sender batch; the flag is not persisted in the record.",
-        "security": [{ "apiKeyBearer": [] }],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "Public project ID.",
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "example": "8d46d6c6-b970-4b2b-8d3e-47f57058f951"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "delta": {
-                    "type": "object",
-                    "propertyNames": { "type": "string", "pattern": "^[1-9]\\d*$" },
-                    "additionalProperties": {
-                      "type": "integer",
-                      "minimum": -9007199254740991,
-                      "maximum": 9007199254740991
-                    },
-                    "description": "Signed integer-cent amounts keyed by project-local member ID.",
-                    "examples": [{ "1": -6200, "2": 6200 }]
-                  },
-                  "description": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "const": "expense",
-                            "description": "Expense record discriminator."
-                          },
-                          "name": {
-                            "type": "string",
-                            "description": "Short description of the expense.",
-                            "examples": ["Ramen dinner"]
-                          },
-                          "paid": {
-                            "type": "object",
-                            "propertyNames": { "type": "string", "pattern": "^[1-9]\\d*$" },
-                            "additionalProperties": {
-                              "type": "integer",
-                              "minimum": 0,
-                              "maximum": 9007199254740991
-                            },
-                            "description": "Non-negative integer-cent amounts keyed by project-local member ID.",
-                            "examples": [{ "1": 6200, "2": 6200 }]
-                          },
-                          "liability": {
-                            "type": "object",
-                            "propertyNames": { "type": "string", "pattern": "^[1-9]\\d*$" },
-                            "additionalProperties": {
-                              "type": "integer",
-                              "minimum": 0,
-                              "maximum": 9007199254740991
-                            },
-                            "description": "Non-negative integer-cent amounts keyed by project-local member ID.",
-                            "examples": [{ "1": 6200, "2": 6200 }]
-                          },
-                          "categoryId": {
-                            "description": "Classified spending category, when known.",
-                            "type": "string",
-                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
-                            "examples": ["4a6cc79a-51da-4e94-9d62-45ba3d853b1c"]
-                          }
-                        },
-                        "required": ["type", "name", "paid", "liability"],
-                        "additionalProperties": false,
-                        "description": "A shared expense and its payment/liability split.",
-                        "examples": [
-                          {
-                            "type": "expense",
-                            "name": "Ramen dinner",
-                            "paid": { "1": 12400 },
-                            "liability": { "1": 6200, "2": 6200 },
-                            "categoryId": "4a6cc79a-51da-4e94-9d62-45ba3d853b1c"
-                          }
-                        ]
-                      },
-                      {
-                        "anyOf": [
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "transfer",
-                                "description": "Transfer record discriminator."
-                              },
-                              "from": {
-                                "type": "integer",
-                                "exclusiveMinimum": 0,
-                                "maximum": 9007199254740991,
-                                "description": "Member ID sending the money.",
-                                "examples": [2]
-                              },
-                              "to": {
-                                "type": "integer",
-                                "exclusiveMinimum": 0,
-                                "maximum": 9007199254740991,
-                                "description": "Member ID receiving the money.",
-                                "examples": [1]
-                              },
-                              "amount": {
-                                "type": "integer",
-                                "exclusiveMinimum": 0,
-                                "maximum": 9007199254740991,
-                                "description": "Transferred amount in integer cents.",
-                                "examples": [6200]
-                              }
-                            },
-                            "required": ["type", "from", "to", "amount"],
-                            "additionalProperties": false,
-                            "description": "A payment from one project member to another.",
-                            "examples": [{ "type": "transfer", "from": 2, "to": 1, "amount": 6200 }]
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "transfer",
-                                "description": "Transfer record discriminator."
-                              },
-                              "src": {
-                                "type": "integer",
-                                "exclusiveMinimum": 0,
-                                "maximum": 9007199254740991,
-                                "description": "Member ID sending the money.",
-                                "examples": [2]
-                              },
-                              "dests": {
-                                "minItems": 1,
-                                "maxItems": 10000,
-                                "type": "array",
-                                "items": {
-                                  "type": "object",
-                                  "properties": {
-                                    "id": {
-                                      "type": "integer",
-                                      "exclusiveMinimum": 0,
-                                      "maximum": 9007199254740991,
-                                      "description": "Member ID receiving this portion of the transfer.",
-                                      "examples": [1]
-                                    },
-                                    "amount": {
-                                      "type": "integer",
-                                      "exclusiveMinimum": 0,
-                                      "maximum": 9007199254740991,
-                                      "description": "Amount sent to this member in integer cents.",
-                                      "examples": [6200]
-                                    }
-                                  },
-                                  "required": ["id", "amount"],
-                                  "additionalProperties": false,
-                                  "description": "One recipient and amount in a multi-recipient transfer."
-                                },
-                                "description": "Unique recipients and their positive cent-denominated amounts."
-                              }
-                            },
-                            "required": ["type", "src", "dests"],
-                            "additionalProperties": false,
-                            "description": "A payment from one project member to one or more project members.",
-                            "examples": [
-                              {
-                                "type": "transfer",
-                                "src": 2,
-                                "dests": [
-                                  { "id": 1, "amount": 3100 },
-                                  { "id": 3, "amount": 3100 }
-                                ]
-                              }
-                            ]
-                          }
-                        ],
-                        "description": "A legacy single-recipient or multi-recipient transfer record.",
-                        "examples": [
-                          { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
-                          {
-                            "type": "transfer",
-                            "src": 2,
-                            "dests": [
-                              { "id": 1, "amount": 3100 },
-                              { "id": 3, "amount": 3100 }
-                            ]
-                          }
-                        ]
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "const": "promise",
-                            "description": "Promise record discriminator."
-                          },
-                          "debtorMemberId": {
-                            "type": "integer",
-                            "exclusiveMinimum": 0,
-                            "maximum": 9007199254740991,
-                            "description": "Member ID that owes the money.",
-                            "examples": [2]
-                          },
-                          "creditorMemberId": {
-                            "type": "integer",
-                            "exclusiveMinimum": 0,
-                            "maximum": 9007199254740991,
-                            "description": "Member ID that is owed the money.",
-                            "examples": [1]
-                          },
-                          "amount": {
-                            "type": "integer",
-                            "exclusiveMinimum": 0,
-                            "maximum": 9007199254740991,
-                            "description": "Promised amount in integer cents.",
-                            "examples": [3100]
-                          },
-                          "reason": {
-                            "description": "Optional explanation for the promise.",
-                            "examples": ["Museum tickets"],
-                            "type": "string"
-                          }
-                        },
-                        "required": ["type", "debtorMemberId", "creditorMemberId", "amount"],
-                        "additionalProperties": false,
-                        "description": "A debt acknowledged between two project members.",
-                        "examples": [
-                          {
-                            "type": "promise",
-                            "debtorMemberId": 2,
-                            "creditorMemberId": 1,
-                            "amount": 3100,
-                            "reason": "Museum tickets"
-                          }
-                        ]
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "const": "revert",
-                            "description": "Revert record discriminator."
-                          },
-                          "id": {
-                            "type": "integer",
-                            "exclusiveMinimum": 0,
-                            "maximum": 9007199254740991,
-                            "description": "Record ID whose effect is reversed.",
-                            "examples": [1]
-                          }
-                        },
-                        "required": ["type", "id"],
-                        "additionalProperties": false,
-                        "description": "A record that reverses an earlier project record.",
-                        "examples": [{ "type": "revert", "id": 1 }]
-                      }
-                    ],
-                    "description": "Typed details for an expense, transfer, promise, or revert record.",
-                    "examples": [
-                      {
-                        "type": "expense",
-                        "name": "Ramen dinner",
-                        "paid": { "1": 12400 },
-                        "liability": { "1": 6200, "2": 6200 },
-                        "categoryId": "4a6cc79a-51da-4e94-9d62-45ba3d853b1c"
-                      },
-                      { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
-                      {
-                        "type": "transfer",
-                        "src": 2,
-                        "dests": [
-                          { "id": 1, "amount": 3100 },
-                          { "id": 3, "amount": 3100 }
-                        ]
-                      },
-                      {
-                        "type": "promise",
-                        "debtorMemberId": 2,
-                        "creditorMemberId": 1,
-                        "amount": 3100,
-                        "reason": "Museum tickets"
-                      },
-                      { "type": "revert", "id": 1 }
-                    ]
-                  },
-                  "settle": {
-                    "description": "For a transfer sent by the caller's linked member, best-effort advances an already-cached settlement plan by removing the matching sender batch instead of recomputing it. This preserves plan stability but may keep a less efficient remaining plan. Any non-settlement record invalidates the cached plan normally.",
-                    "type": "boolean"
-                  }
-                },
-                "required": ["delta", "description"],
-                "additionalProperties": false,
-                "examples": [
-                  {
-                    "delta": { "1": -6200, "2": 6200 },
-                    "description": {
-                      "type": "expense",
-                      "name": "Ramen dinner",
-                      "paid": { "1": 12400 },
-                      "liability": { "1": 6200, "2": 6200 },
-                      "categoryId": "4a6cc79a-51da-4e94-9d62-45ba3d853b1c"
-                    }
-                  },
-                  {
-                    "delta": { "1": 6200, "2": -6200 },
-                    "description": { "type": "transfer", "from": 2, "to": 1, "amount": 6200 }
-                  },
-                  {
-                    "delta": { "1": 3100, "2": -6200, "3": 3100 },
-                    "description": {
-                      "type": "transfer",
-                      "src": 2,
-                      "dests": [
-                        { "id": 1, "amount": 3100 },
-                        { "id": 3, "amount": 3100 }
-                      ]
-                    },
-                    "settle": true
-                  },
-                  {
-                    "delta": { "1": -3100, "2": 3100 },
-                    "description": {
-                      "type": "promise",
-                      "debtorMemberId": 2,
-                      "creditorMemberId": 1,
-                      "amount": 3100,
-                      "reason": "Museum tickets"
-                    }
-                  },
-                  {
-                    "delta": { "1": 6200, "2": -6200 },
-                    "description": { "type": "revert", "id": 1 }
-                  }
-                ]
-              },
-              "example": {
-                "delta": { "1": -6200, "2": 6200 },
-                "description": {
-                  "type": "expense",
-                  "name": "Ramen dinner",
-                  "paid": { "1": 12400 },
-                  "liability": { "1": 6200, "2": 6200 },
-                  "categoryId": "4a6cc79a-51da-4e94-9d62-45ba3d853b1c"
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Created project record.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "integer",
-                      "exclusiveMinimum": 0,
-                      "maximum": 9007199254740991,
-                      "description": "Project-local ID of the created record.",
-                      "examples": [5]
-                    }
-                  },
-                  "required": ["id"],
-                  "additionalProperties": false
-                },
-                "example": { "id": 5 }
-              }
-            }
-          },
-          "400": {
-            "description": "Malformed or invalid request.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "description": "Stable machine-readable error code.",
-                      "examples": ["invalid_request"]
-                    },
-                    "reason": {
-                      "description": "Additional human-readable context, when available.",
-                      "type": "string"
-                    }
-                  },
-                  "required": ["error"],
-                  "additionalProperties": false,
-                  "description": "API error response.",
-                  "examples": [
-                    {
-                      "error": "invalid_request",
-                      "reason": "The request body did not match the documented schema."
-                    }
-                  ]
-                },
-                "example": {
-                  "error": "invalid_request",
-                  "reason": "The request body did not match the documented schema."
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is required or invalid.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "description": "Stable machine-readable error code.",
-                      "examples": ["invalid_request"]
-                    },
-                    "reason": {
-                      "description": "Additional human-readable context, when available.",
-                      "type": "string"
-                    }
-                  },
-                  "required": ["error"],
-                  "additionalProperties": false,
-                  "description": "API error response.",
-                  "examples": [
-                    {
-                      "error": "invalid_request",
-                      "reason": "The request body did not match the documented schema."
-                    }
-                  ]
-                },
-                "example": { "error": "unauthorized" }
-              }
-            }
-          },
-          "403": {
-            "description": "The caller is not allowed to perform this action.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "description": "Stable machine-readable error code.",
-                      "examples": ["invalid_request"]
-                    },
-                    "reason": {
-                      "description": "Additional human-readable context, when available.",
-                      "type": "string"
-                    }
-                  },
-                  "required": ["error"],
-                  "additionalProperties": false,
-                  "description": "API error response.",
-                  "examples": [
-                    {
-                      "error": "invalid_request",
-                      "reason": "The request body did not match the documented schema."
-                    }
-                  ]
-                },
-                "example": { "error": "forbidden" }
-              }
-            }
-          },
-          "404": {
-            "description": "The requested resource was not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "description": "Stable machine-readable error code.",
-                      "examples": ["invalid_request"]
-                    },
-                    "reason": {
-                      "description": "Additional human-readable context, when available.",
-                      "type": "string"
-                    }
-                  },
-                  "required": ["error"],
-                  "additionalProperties": false,
-                  "description": "API error response.",
-                  "examples": [
-                    {
-                      "error": "invalid_request",
-                      "reason": "The request body did not match the documented schema."
-                    }
-                  ]
-                },
-                "example": { "error": "not_found" }
-              }
-            }
-          },
-          "409": {
-            "description": "The request conflicts with project state or configured limits.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "description": "Stable machine-readable error code.",
-                      "examples": ["invalid_request"]
-                    },
-                    "reason": {
-                      "description": "Additional human-readable context, when available.",
-                      "type": "string"
-                    }
-                  },
-                  "required": ["error"],
-                  "additionalProperties": false,
-                  "description": "API error response.",
-                  "examples": [
-                    {
-                      "error": "invalid_request",
-                      "reason": "The request body did not match the documented schema."
-                    }
-                  ]
-                },
-                "example": {
-                  "error": "conflict",
-                  "reason": "The requested change conflicts with project state."
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "The request was rate limited.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "description": "Stable machine-readable error code.",
-                      "examples": ["invalid_request"]
-                    },
-                    "reason": {
-                      "description": "Additional human-readable context, when available.",
-                      "type": "string"
-                    }
-                  },
-                  "required": ["error"],
-                  "additionalProperties": false,
-                  "description": "API error response.",
-                  "examples": [
-                    {
-                      "error": "invalid_request",
-                      "reason": "The request body did not match the documented schema."
-                    }
-                  ]
-                },
-                "example": { "error": "rate_limited" }
-              }
-            }
-          },
-          "500": {
-            "description": "Unexpected server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string",
-                      "description": "Stable machine-readable error code.",
-                      "examples": ["invalid_request"]
-                    },
-                    "reason": {
-                      "description": "Additional human-readable context, when available.",
-                      "type": "string"
-                    }
-                  },
-                  "required": ["error"],
-                  "additionalProperties": false,
-                  "description": "API error response.",
-                  "examples": [
-                    {
-                      "error": "invalid_request",
-                      "reason": "The request body did not match the documented schema."
-                    }
-                  ]
-                },
-                "example": { "error": "internal_server_error" }
               }
             }
           }
@@ -6025,6 +5378,2058 @@
                   "error": "conflict",
                   "reason": "The requested change conflicts with project state."
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/project/{id}/record/{recordId}": {
+      "get": {
+        "operationId": "getApiProjectByIdRecordByRecordId",
+        "tags": ["Project Records"],
+        "summary": "Get a project record",
+        "description": "Returns one live project record. Public projects may be read without authentication; deleted records are treated as missing.",
+        "security": [{}, { "apiKeyBearer": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Public project ID.",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "8d46d6c6-b970-4b2b-8d3e-47f57058f951"
+            }
+          },
+          {
+            "name": "recordId",
+            "in": "path",
+            "required": true,
+            "description": "Project-local record ID.",
+            "schema": { "type": "integer", "minimum": 1, "example": 2 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project record.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Project-local record ID.",
+                      "examples": [1]
+                    },
+                    "authorMemberId": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Member ID that created the record.",
+                      "examples": [1]
+                    },
+                    "delta": {
+                      "type": "object",
+                      "propertyNames": { "type": "string", "pattern": "^[1-9]\\d*$" },
+                      "additionalProperties": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991,
+                        "description": "Signed integer-cent amount."
+                      },
+                      "description": "Signed integer-cent amounts keyed by project-local member ID.",
+                      "examples": [{ "1": -6200, "2": 6200 }]
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "expense",
+                              "description": "Expense record discriminator."
+                            },
+                            "name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 10000,
+                              "description": "Short description of the expense.",
+                              "examples": ["Ramen dinner"]
+                            },
+                            "paid": {
+                              "type": "object",
+                              "propertyNames": { "type": "string", "pattern": "^[1-9]\\d*$" },
+                              "additionalProperties": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991,
+                                "description": "Signed integer-cent amount."
+                              },
+                              "description": "Non-negative integer-cent amounts keyed by project-local member ID.",
+                              "examples": [{ "1": 6200, "2": 6200 }]
+                            },
+                            "liability": {
+                              "type": "object",
+                              "propertyNames": { "type": "string", "pattern": "^[1-9]\\d*$" },
+                              "additionalProperties": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991,
+                                "description": "Signed integer-cent amount."
+                              },
+                              "description": "Non-negative integer-cent amounts keyed by project-local member ID.",
+                              "examples": [{ "1": 6200, "2": 6200 }]
+                            },
+                            "categoryId": {
+                              "description": "Classified spending category, when known.",
+                              "examples": ["4a6cc79a-51da-4e94-9d62-45ba3d853b1c"],
+                              "type": "string",
+                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                            }
+                          },
+                          "required": ["type", "name", "paid", "liability"],
+                          "additionalProperties": false,
+                          "description": "A shared expense and its payment/liability split.",
+                          "examples": [
+                            {
+                              "type": "expense",
+                              "name": "Ramen dinner",
+                              "paid": { "1": 12400 },
+                              "liability": { "1": 6200, "2": 6200 },
+                              "categoryId": "4a6cc79a-51da-4e94-9d62-45ba3d853b1c"
+                            }
+                          ]
+                        },
+                        {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "transfer",
+                                  "description": "Transfer record discriminator."
+                                },
+                                "from": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991,
+                                  "description": "Member ID sending the money.",
+                                  "examples": [2]
+                                },
+                                "to": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991,
+                                  "description": "Member ID receiving the money.",
+                                  "examples": [1]
+                                },
+                                "amount": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991,
+                                  "description": "Transferred amount in integer cents.",
+                                  "examples": [6200]
+                                }
+                              },
+                              "required": ["type", "from", "to", "amount"],
+                              "additionalProperties": false,
+                              "description": "A payment from one project member to another.",
+                              "examples": [
+                                { "type": "transfer", "from": 2, "to": 1, "amount": 6200 }
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "src": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991,
+                                  "description": "Member ID sending the money.",
+                                  "examples": [2]
+                                },
+                                "dests": {
+                                  "minItems": 1,
+                                  "maxItems": 10000,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 9007199254740991,
+                                        "description": "Member ID receiving this portion of the transfer.",
+                                        "examples": [1]
+                                      },
+                                      "amount": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 9007199254740991,
+                                        "description": "Amount sent to this member in integer cents.",
+                                        "examples": [6200]
+                                      }
+                                    },
+                                    "required": ["id", "amount"],
+                                    "additionalProperties": false,
+                                    "description": "One recipient and amount in a multi-recipient transfer."
+                                  },
+                                  "description": "Unique recipients and their positive cent-denominated amounts."
+                                },
+                                "type": {
+                                  "type": "string",
+                                  "const": "transfer",
+                                  "description": "Transfer record discriminator."
+                                }
+                              },
+                              "required": ["src", "dests", "type"],
+                              "additionalProperties": false,
+                              "description": "A payment from one project member to one or more project members.",
+                              "examples": [
+                                {
+                                  "type": "transfer",
+                                  "src": 2,
+                                  "dests": [
+                                    { "id": 1, "amount": 3100 },
+                                    { "id": 3, "amount": 3100 }
+                                  ]
+                                }
+                              ]
+                            }
+                          ],
+                          "description": "A legacy single-recipient or multi-recipient transfer record.",
+                          "examples": [
+                            { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
+                            {
+                              "type": "transfer",
+                              "src": 2,
+                              "dests": [
+                                { "id": 1, "amount": 3100 },
+                                { "id": 3, "amount": 3100 }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "promise",
+                              "description": "Promise record discriminator."
+                            },
+                            "debtorMemberId": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "description": "Member ID that owes the money.",
+                              "examples": [2]
+                            },
+                            "creditorMemberId": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "description": "Member ID that is owed the money.",
+                              "examples": [1]
+                            },
+                            "amount": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "description": "Promised amount in integer cents.",
+                              "examples": [3100]
+                            },
+                            "reason": {
+                              "description": "Optional explanation for the promise.",
+                              "examples": ["Museum tickets"],
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 10000
+                            }
+                          },
+                          "required": ["type", "debtorMemberId", "creditorMemberId", "amount"],
+                          "additionalProperties": false,
+                          "description": "A debt acknowledged between two project members.",
+                          "examples": [
+                            {
+                              "type": "promise",
+                              "debtorMemberId": 2,
+                              "creditorMemberId": 1,
+                              "amount": 3100,
+                              "reason": "Museum tickets"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "revert",
+                              "description": "Revert record discriminator."
+                            },
+                            "id": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "description": "Record ID whose effect is reversed.",
+                              "examples": [1]
+                            }
+                          },
+                          "required": ["type", "id"],
+                          "additionalProperties": false,
+                          "description": "A deprecated legacy record that reverses an earlier project record.",
+                          "deprecated": true,
+                          "examples": [{ "type": "revert", "id": 1 }]
+                        }
+                      ],
+                      "description": "Stored details for an expense, transfer, promise, or deprecated legacy revert record."
+                    },
+                    "createdAt": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Creation time as Unix milliseconds.",
+                      "examples": [1767225600000]
+                    },
+                    "updatedAt": {
+                      "description": "Latest replacement time as Unix milliseconds; omitted until first edited.",
+                      "examples": [1767227400000],
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "updatedByMemberId": {
+                      "description": "Member ID that made the latest replacement; omitted until first edited.",
+                      "examples": [1],
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": ["id", "authorMemberId", "delta", "description", "createdAt"],
+                  "additionalProperties": false,
+                  "description": "A live ledger entry in a project.",
+                  "examples": [
+                    {
+                      "id": 2,
+                      "authorMemberId": 2,
+                      "delta": { "1": 6200, "2": -6200 },
+                      "description": { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
+                      "createdAt": 1767226800000,
+                      "updatedAt": 1767227400000,
+                      "updatedByMemberId": 1
+                    }
+                  ]
+                },
+                "example": {
+                  "id": 2,
+                  "authorMemberId": 2,
+                  "delta": { "1": 6200, "2": -6200 },
+                  "description": { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
+                  "createdAt": 1767226800000,
+                  "updatedAt": 1767227400000,
+                  "updatedByMemberId": 1
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is not allowed to perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "forbidden" }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested resource was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "not_found" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiProjectByIdRecordByRecordId",
+        "tags": ["Project Records"],
+        "summary": "Replace a project record",
+        "description": "Fully replaces a live expense, transfer, or promise record while preserving its creation identity. The supplied delta must match the server-derived effect and sum to zero.",
+        "security": [{ "apiKeyBearer": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Public project ID.",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "8d46d6c6-b970-4b2b-8d3e-47f57058f951"
+            }
+          },
+          {
+            "name": "recordId",
+            "in": "path",
+            "required": true,
+            "description": "Project-local record ID.",
+            "schema": { "type": "integer", "minimum": 1, "example": 2 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "delta": {
+                    "type": "object",
+                    "propertyNames": { "type": "string", "pattern": "^[1-9]\\d*$" },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "Signed integer-cent amount."
+                    },
+                    "description": "Signed integer-cent amounts keyed by project-local member ID.",
+                    "examples": [{ "1": -6200, "2": 6200 }]
+                  },
+                  "description": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "expense",
+                            "description": "Expense record discriminator."
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 10000,
+                            "description": "Short description of the expense.",
+                            "examples": ["Ramen dinner"]
+                          },
+                          "paid": {
+                            "type": "object",
+                            "propertyNames": { "type": "string", "pattern": "^[1-9]\\d*$" },
+                            "additionalProperties": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991,
+                              "description": "Signed integer-cent amount."
+                            },
+                            "description": "Non-negative integer-cent amounts keyed by project-local member ID.",
+                            "examples": [{ "1": 6200, "2": 6200 }]
+                          },
+                          "liability": {
+                            "type": "object",
+                            "propertyNames": { "type": "string", "pattern": "^[1-9]\\d*$" },
+                            "additionalProperties": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991,
+                              "description": "Signed integer-cent amount."
+                            },
+                            "description": "Non-negative integer-cent amounts keyed by project-local member ID.",
+                            "examples": [{ "1": 6200, "2": 6200 }]
+                          },
+                          "categoryId": {
+                            "description": "Classified spending category, when known.",
+                            "examples": ["4a6cc79a-51da-4e94-9d62-45ba3d853b1c"],
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                          }
+                        },
+                        "required": ["type", "name", "paid", "liability"],
+                        "additionalProperties": false,
+                        "description": "A shared expense and its payment/liability split.",
+                        "examples": [
+                          {
+                            "type": "expense",
+                            "name": "Ramen dinner",
+                            "paid": { "1": 12400 },
+                            "liability": { "1": 6200, "2": 6200 },
+                            "categoryId": "4a6cc79a-51da-4e94-9d62-45ba3d853b1c"
+                          }
+                        ]
+                      },
+                      {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "transfer",
+                                "description": "Transfer record discriminator."
+                              },
+                              "from": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991,
+                                "description": "Member ID sending the money.",
+                                "examples": [2]
+                              },
+                              "to": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991,
+                                "description": "Member ID receiving the money.",
+                                "examples": [1]
+                              },
+                              "amount": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991,
+                                "description": "Transferred amount in integer cents.",
+                                "examples": [6200]
+                              }
+                            },
+                            "required": ["type", "from", "to", "amount"],
+                            "additionalProperties": false,
+                            "description": "A payment from one project member to another.",
+                            "examples": [{ "type": "transfer", "from": 2, "to": 1, "amount": 6200 }]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "src": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991,
+                                "description": "Member ID sending the money.",
+                                "examples": [2]
+                              },
+                              "dests": {
+                                "minItems": 1,
+                                "maxItems": 10000,
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "integer",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 9007199254740991,
+                                      "description": "Member ID receiving this portion of the transfer.",
+                                      "examples": [1]
+                                    },
+                                    "amount": {
+                                      "type": "integer",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 9007199254740991,
+                                      "description": "Amount sent to this member in integer cents.",
+                                      "examples": [6200]
+                                    }
+                                  },
+                                  "required": ["id", "amount"],
+                                  "additionalProperties": false,
+                                  "description": "One recipient and amount in a multi-recipient transfer."
+                                },
+                                "description": "Unique recipients and their positive cent-denominated amounts."
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "transfer",
+                                "description": "Transfer record discriminator."
+                              }
+                            },
+                            "required": ["src", "dests", "type"],
+                            "additionalProperties": false,
+                            "description": "A payment from one project member to one or more project members.",
+                            "examples": [
+                              {
+                                "type": "transfer",
+                                "src": 2,
+                                "dests": [
+                                  { "id": 1, "amount": 3100 },
+                                  { "id": 3, "amount": 3100 }
+                                ]
+                              }
+                            ]
+                          }
+                        ],
+                        "description": "A legacy single-recipient or multi-recipient transfer record.",
+                        "examples": [
+                          { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
+                          {
+                            "type": "transfer",
+                            "src": 2,
+                            "dests": [
+                              { "id": 1, "amount": 3100 },
+                              { "id": 3, "amount": 3100 }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "promise",
+                            "description": "Promise record discriminator."
+                          },
+                          "debtorMemberId": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "description": "Member ID that owes the money.",
+                            "examples": [2]
+                          },
+                          "creditorMemberId": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "description": "Member ID that is owed the money.",
+                            "examples": [1]
+                          },
+                          "amount": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "description": "Promised amount in integer cents.",
+                            "examples": [3100]
+                          },
+                          "reason": {
+                            "description": "Optional explanation for the promise.",
+                            "examples": ["Museum tickets"],
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 10000
+                          }
+                        },
+                        "required": ["type", "debtorMemberId", "creditorMemberId", "amount"],
+                        "additionalProperties": false,
+                        "description": "A debt acknowledged between two project members.",
+                        "examples": [
+                          {
+                            "type": "promise",
+                            "debtorMemberId": 2,
+                            "creditorMemberId": 1,
+                            "amount": 3100,
+                            "reason": "Museum tickets"
+                          }
+                        ]
+                      }
+                    ],
+                    "description": "Writable details for an expense, transfer, or promise record.",
+                    "examples": [
+                      {
+                        "type": "expense",
+                        "name": "Ramen dinner",
+                        "paid": { "1": 12400 },
+                        "liability": { "1": 6200, "2": 6200 }
+                      },
+                      { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
+                      {
+                        "type": "promise",
+                        "debtorMemberId": 2,
+                        "creditorMemberId": 1,
+                        "amount": 3100,
+                        "reason": "Museum tickets"
+                      }
+                    ]
+                  }
+                },
+                "required": ["delta", "description"],
+                "additionalProperties": false,
+                "examples": [
+                  {
+                    "delta": { "1": -6200, "2": 6200 },
+                    "description": {
+                      "type": "expense",
+                      "name": "Ramen dinner",
+                      "paid": { "1": 12400 },
+                      "liability": { "1": 6200, "2": 6200 },
+                      "categoryId": "4a6cc79a-51da-4e94-9d62-45ba3d853b1c"
+                    }
+                  },
+                  {
+                    "delta": { "1": 6200, "2": -6200 },
+                    "description": { "type": "transfer", "from": 2, "to": 1, "amount": 6200 }
+                  },
+                  {
+                    "delta": { "1": 3100, "2": -6200, "3": 3100 },
+                    "description": {
+                      "type": "transfer",
+                      "src": 2,
+                      "dests": [
+                        { "id": 1, "amount": 3100 },
+                        { "id": 3, "amount": 3100 }
+                      ]
+                    }
+                  },
+                  {
+                    "delta": { "1": -3100, "2": 3100 },
+                    "description": {
+                      "type": "promise",
+                      "debtorMemberId": 2,
+                      "creditorMemberId": 1,
+                      "amount": 3100,
+                      "reason": "Museum tickets"
+                    }
+                  }
+                ]
+              },
+              "example": {
+                "delta": { "1": 6200, "2": -6200 },
+                "description": { "type": "transfer", "from": 2, "to": 1, "amount": 6200 }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Project record.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Project-local record ID.",
+                      "examples": [1]
+                    },
+                    "authorMemberId": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Member ID that created the record.",
+                      "examples": [1]
+                    },
+                    "delta": {
+                      "type": "object",
+                      "propertyNames": { "type": "string", "pattern": "^[1-9]\\d*$" },
+                      "additionalProperties": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991,
+                        "description": "Signed integer-cent amount."
+                      },
+                      "description": "Signed integer-cent amounts keyed by project-local member ID.",
+                      "examples": [{ "1": -6200, "2": 6200 }]
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "expense",
+                              "description": "Expense record discriminator."
+                            },
+                            "name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 10000,
+                              "description": "Short description of the expense.",
+                              "examples": ["Ramen dinner"]
+                            },
+                            "paid": {
+                              "type": "object",
+                              "propertyNames": { "type": "string", "pattern": "^[1-9]\\d*$" },
+                              "additionalProperties": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991,
+                                "description": "Signed integer-cent amount."
+                              },
+                              "description": "Non-negative integer-cent amounts keyed by project-local member ID.",
+                              "examples": [{ "1": 6200, "2": 6200 }]
+                            },
+                            "liability": {
+                              "type": "object",
+                              "propertyNames": { "type": "string", "pattern": "^[1-9]\\d*$" },
+                              "additionalProperties": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991,
+                                "description": "Signed integer-cent amount."
+                              },
+                              "description": "Non-negative integer-cent amounts keyed by project-local member ID.",
+                              "examples": [{ "1": 6200, "2": 6200 }]
+                            },
+                            "categoryId": {
+                              "description": "Classified spending category, when known.",
+                              "examples": ["4a6cc79a-51da-4e94-9d62-45ba3d853b1c"],
+                              "type": "string",
+                              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                            }
+                          },
+                          "required": ["type", "name", "paid", "liability"],
+                          "additionalProperties": false,
+                          "description": "A shared expense and its payment/liability split.",
+                          "examples": [
+                            {
+                              "type": "expense",
+                              "name": "Ramen dinner",
+                              "paid": { "1": 12400 },
+                              "liability": { "1": 6200, "2": 6200 },
+                              "categoryId": "4a6cc79a-51da-4e94-9d62-45ba3d853b1c"
+                            }
+                          ]
+                        },
+                        {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "transfer",
+                                  "description": "Transfer record discriminator."
+                                },
+                                "from": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991,
+                                  "description": "Member ID sending the money.",
+                                  "examples": [2]
+                                },
+                                "to": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991,
+                                  "description": "Member ID receiving the money.",
+                                  "examples": [1]
+                                },
+                                "amount": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991,
+                                  "description": "Transferred amount in integer cents.",
+                                  "examples": [6200]
+                                }
+                              },
+                              "required": ["type", "from", "to", "amount"],
+                              "additionalProperties": false,
+                              "description": "A payment from one project member to another.",
+                              "examples": [
+                                { "type": "transfer", "from": 2, "to": 1, "amount": 6200 }
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "src": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991,
+                                  "description": "Member ID sending the money.",
+                                  "examples": [2]
+                                },
+                                "dests": {
+                                  "minItems": 1,
+                                  "maxItems": 10000,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 9007199254740991,
+                                        "description": "Member ID receiving this portion of the transfer.",
+                                        "examples": [1]
+                                      },
+                                      "amount": {
+                                        "type": "integer",
+                                        "exclusiveMinimum": 0,
+                                        "maximum": 9007199254740991,
+                                        "description": "Amount sent to this member in integer cents.",
+                                        "examples": [6200]
+                                      }
+                                    },
+                                    "required": ["id", "amount"],
+                                    "additionalProperties": false,
+                                    "description": "One recipient and amount in a multi-recipient transfer."
+                                  },
+                                  "description": "Unique recipients and their positive cent-denominated amounts."
+                                },
+                                "type": {
+                                  "type": "string",
+                                  "const": "transfer",
+                                  "description": "Transfer record discriminator."
+                                }
+                              },
+                              "required": ["src", "dests", "type"],
+                              "additionalProperties": false,
+                              "description": "A payment from one project member to one or more project members.",
+                              "examples": [
+                                {
+                                  "type": "transfer",
+                                  "src": 2,
+                                  "dests": [
+                                    { "id": 1, "amount": 3100 },
+                                    { "id": 3, "amount": 3100 }
+                                  ]
+                                }
+                              ]
+                            }
+                          ],
+                          "description": "A legacy single-recipient or multi-recipient transfer record.",
+                          "examples": [
+                            { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
+                            {
+                              "type": "transfer",
+                              "src": 2,
+                              "dests": [
+                                { "id": 1, "amount": 3100 },
+                                { "id": 3, "amount": 3100 }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "promise",
+                              "description": "Promise record discriminator."
+                            },
+                            "debtorMemberId": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "description": "Member ID that owes the money.",
+                              "examples": [2]
+                            },
+                            "creditorMemberId": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "description": "Member ID that is owed the money.",
+                              "examples": [1]
+                            },
+                            "amount": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "description": "Promised amount in integer cents.",
+                              "examples": [3100]
+                            },
+                            "reason": {
+                              "description": "Optional explanation for the promise.",
+                              "examples": ["Museum tickets"],
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 10000
+                            }
+                          },
+                          "required": ["type", "debtorMemberId", "creditorMemberId", "amount"],
+                          "additionalProperties": false,
+                          "description": "A debt acknowledged between two project members.",
+                          "examples": [
+                            {
+                              "type": "promise",
+                              "debtorMemberId": 2,
+                              "creditorMemberId": 1,
+                              "amount": 3100,
+                              "reason": "Museum tickets"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "revert",
+                              "description": "Revert record discriminator."
+                            },
+                            "id": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "description": "Record ID whose effect is reversed.",
+                              "examples": [1]
+                            }
+                          },
+                          "required": ["type", "id"],
+                          "additionalProperties": false,
+                          "description": "A deprecated legacy record that reverses an earlier project record.",
+                          "deprecated": true,
+                          "examples": [{ "type": "revert", "id": 1 }]
+                        }
+                      ],
+                      "description": "Stored details for an expense, transfer, promise, or deprecated legacy revert record."
+                    },
+                    "createdAt": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Creation time as Unix milliseconds.",
+                      "examples": [1767225600000]
+                    },
+                    "updatedAt": {
+                      "description": "Latest replacement time as Unix milliseconds; omitted until first edited.",
+                      "examples": [1767227400000],
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "updatedByMemberId": {
+                      "description": "Member ID that made the latest replacement; omitted until first edited.",
+                      "examples": [1],
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": ["id", "authorMemberId", "delta", "description", "createdAt"],
+                  "additionalProperties": false,
+                  "description": "A live ledger entry in a project.",
+                  "examples": [
+                    {
+                      "id": 2,
+                      "authorMemberId": 2,
+                      "delta": { "1": 6200, "2": -6200 },
+                      "description": { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
+                      "createdAt": 1767226800000,
+                      "updatedAt": 1767227400000,
+                      "updatedByMemberId": 1
+                    }
+                  ]
+                },
+                "example": {
+                  "id": 2,
+                  "authorMemberId": 2,
+                  "delta": { "1": 6200, "2": -6200 },
+                  "description": { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
+                  "createdAt": 1767226800000,
+                  "updatedAt": 1767227400000,
+                  "updatedByMemberId": 1
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": {
+                  "error": "invalid_request",
+                  "reason": "The request body did not match the documented schema."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "unauthorized" }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is not allowed to perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "forbidden" }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested resource was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "not_found" }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with project state or configured limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": {
+                  "error": "conflict",
+                  "reason": "The requested change conflicts with project state."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "internal_server_error" }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteApiProjectByIdRecordByRecordId",
+        "tags": ["Project Records"],
+        "summary": "Delete a project record",
+        "description": "Reverses a live record's balance effect and replaces its stored description and delta with an internal tombstone. Deleted records are treated as missing.",
+        "security": [{ "apiKeyBearer": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Public project ID.",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "8d46d6c6-b970-4b2b-8d3e-47f57058f951"
+            }
+          },
+          {
+            "name": "recordId",
+            "in": "path",
+            "required": true,
+            "description": "Project-local record ID.",
+            "schema": { "type": "integer", "minimum": 1, "example": 2 }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful no-content response." },
+          "401": {
+            "description": "Authentication is required or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "unauthorized" }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is not allowed to perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "forbidden" }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested resource was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "not_found" }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with project state or configured limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": {
+                  "error": "conflict",
+                  "reason": "The requested change conflicts with project state."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "internal_server_error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/project/{id}/record": {
+      "post": {
+        "operationId": "postApiProjectByIdRecord",
+        "tags": ["Project Records"],
+        "summary": "Append a record to a project",
+        "description": "Appends an immutable expense, transfer, promise, or revert entry. The supplied cent-denominated delta must match the server-derived effect and sum to zero. A transfer may set settle=true to best-effort advance an already-viewed settlement plan when the caller confirms their complete cached sender batch; the flag is not persisted in the record.",
+        "security": [{ "apiKeyBearer": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Public project ID.",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "8d46d6c6-b970-4b2b-8d3e-47f57058f951"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "delta": {
+                    "type": "object",
+                    "propertyNames": { "type": "string", "pattern": "^[1-9]\\d*$" },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "Signed integer-cent amount."
+                    },
+                    "description": "Signed integer-cent amounts keyed by project-local member ID.",
+                    "examples": [{ "1": -6200, "2": 6200 }]
+                  },
+                  "description": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "expense",
+                            "description": "Expense record discriminator."
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 10000,
+                            "description": "Short description of the expense.",
+                            "examples": ["Ramen dinner"]
+                          },
+                          "paid": {
+                            "type": "object",
+                            "propertyNames": { "type": "string", "pattern": "^[1-9]\\d*$" },
+                            "additionalProperties": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991,
+                              "description": "Signed integer-cent amount."
+                            },
+                            "description": "Non-negative integer-cent amounts keyed by project-local member ID.",
+                            "examples": [{ "1": 6200, "2": 6200 }]
+                          },
+                          "liability": {
+                            "type": "object",
+                            "propertyNames": { "type": "string", "pattern": "^[1-9]\\d*$" },
+                            "additionalProperties": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991,
+                              "description": "Signed integer-cent amount."
+                            },
+                            "description": "Non-negative integer-cent amounts keyed by project-local member ID.",
+                            "examples": [{ "1": 6200, "2": 6200 }]
+                          },
+                          "categoryId": {
+                            "description": "Classified spending category, when known.",
+                            "examples": ["4a6cc79a-51da-4e94-9d62-45ba3d853b1c"],
+                            "type": "string",
+                            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+                          }
+                        },
+                        "required": ["type", "name", "paid", "liability"],
+                        "additionalProperties": false,
+                        "description": "A shared expense and its payment/liability split.",
+                        "examples": [
+                          {
+                            "type": "expense",
+                            "name": "Ramen dinner",
+                            "paid": { "1": 12400 },
+                            "liability": { "1": 6200, "2": 6200 },
+                            "categoryId": "4a6cc79a-51da-4e94-9d62-45ba3d853b1c"
+                          }
+                        ]
+                      },
+                      {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "transfer",
+                                "description": "Transfer record discriminator."
+                              },
+                              "from": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991,
+                                "description": "Member ID sending the money.",
+                                "examples": [2]
+                              },
+                              "to": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991,
+                                "description": "Member ID receiving the money.",
+                                "examples": [1]
+                              },
+                              "amount": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991,
+                                "description": "Transferred amount in integer cents.",
+                                "examples": [6200]
+                              }
+                            },
+                            "required": ["type", "from", "to", "amount"],
+                            "additionalProperties": false,
+                            "description": "A payment from one project member to another.",
+                            "examples": [{ "type": "transfer", "from": 2, "to": 1, "amount": 6200 }]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "src": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991,
+                                "description": "Member ID sending the money.",
+                                "examples": [2]
+                              },
+                              "dests": {
+                                "minItems": 1,
+                                "maxItems": 10000,
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "integer",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 9007199254740991,
+                                      "description": "Member ID receiving this portion of the transfer.",
+                                      "examples": [1]
+                                    },
+                                    "amount": {
+                                      "type": "integer",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 9007199254740991,
+                                      "description": "Amount sent to this member in integer cents.",
+                                      "examples": [6200]
+                                    }
+                                  },
+                                  "required": ["id", "amount"],
+                                  "additionalProperties": false,
+                                  "description": "One recipient and amount in a multi-recipient transfer."
+                                },
+                                "description": "Unique recipients and their positive cent-denominated amounts."
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "transfer",
+                                "description": "Transfer record discriminator."
+                              }
+                            },
+                            "required": ["src", "dests", "type"],
+                            "additionalProperties": false,
+                            "description": "A payment from one project member to one or more project members.",
+                            "examples": [
+                              {
+                                "type": "transfer",
+                                "src": 2,
+                                "dests": [
+                                  { "id": 1, "amount": 3100 },
+                                  { "id": 3, "amount": 3100 }
+                                ]
+                              }
+                            ]
+                          }
+                        ],
+                        "description": "A legacy single-recipient or multi-recipient transfer record.",
+                        "examples": [
+                          { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
+                          {
+                            "type": "transfer",
+                            "src": 2,
+                            "dests": [
+                              { "id": 1, "amount": 3100 },
+                              { "id": 3, "amount": 3100 }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "promise",
+                            "description": "Promise record discriminator."
+                          },
+                          "debtorMemberId": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "description": "Member ID that owes the money.",
+                            "examples": [2]
+                          },
+                          "creditorMemberId": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "description": "Member ID that is owed the money.",
+                            "examples": [1]
+                          },
+                          "amount": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991,
+                            "description": "Promised amount in integer cents.",
+                            "examples": [3100]
+                          },
+                          "reason": {
+                            "description": "Optional explanation for the promise.",
+                            "examples": ["Museum tickets"],
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 10000
+                          }
+                        },
+                        "required": ["type", "debtorMemberId", "creditorMemberId", "amount"],
+                        "additionalProperties": false,
+                        "description": "A debt acknowledged between two project members.",
+                        "examples": [
+                          {
+                            "type": "promise",
+                            "debtorMemberId": 2,
+                            "creditorMemberId": 1,
+                            "amount": 3100,
+                            "reason": "Museum tickets"
+                          }
+                        ]
+                      }
+                    ],
+                    "description": "Writable details for an expense, transfer, or promise record.",
+                    "examples": [
+                      {
+                        "type": "expense",
+                        "name": "Ramen dinner",
+                        "paid": { "1": 12400 },
+                        "liability": { "1": 6200, "2": 6200 }
+                      },
+                      { "type": "transfer", "from": 2, "to": 1, "amount": 6200 },
+                      {
+                        "type": "promise",
+                        "debtorMemberId": 2,
+                        "creditorMemberId": 1,
+                        "amount": 3100,
+                        "reason": "Museum tickets"
+                      }
+                    ]
+                  },
+                  "settle": {
+                    "description": "For a transfer sent by the caller's linked member, best-effort advances an already-cached settlement plan by removing the matching sender batch instead of recomputing it. This preserves plan stability but may keep a less efficient remaining plan. Any non-settlement record invalidates the cached plan normally.",
+                    "type": "boolean"
+                  }
+                },
+                "required": ["delta", "description"],
+                "additionalProperties": false,
+                "examples": [
+                  {
+                    "delta": { "1": -6200, "2": 6200 },
+                    "description": {
+                      "type": "expense",
+                      "name": "Ramen dinner",
+                      "paid": { "1": 12400 },
+                      "liability": { "1": 6200, "2": 6200 },
+                      "categoryId": "4a6cc79a-51da-4e94-9d62-45ba3d853b1c"
+                    }
+                  },
+                  {
+                    "delta": { "1": 6200, "2": -6200 },
+                    "description": { "type": "transfer", "from": 2, "to": 1, "amount": 6200 }
+                  },
+                  {
+                    "delta": { "1": 3100, "2": -6200, "3": 3100 },
+                    "description": {
+                      "type": "transfer",
+                      "src": 2,
+                      "dests": [
+                        { "id": 1, "amount": 3100 },
+                        { "id": 3, "amount": 3100 }
+                      ]
+                    },
+                    "settle": true
+                  },
+                  {
+                    "delta": { "1": -3100, "2": 3100 },
+                    "description": {
+                      "type": "promise",
+                      "debtorMemberId": 2,
+                      "creditorMemberId": 1,
+                      "amount": 3100,
+                      "reason": "Museum tickets"
+                    }
+                  }
+                ]
+              },
+              "example": {
+                "delta": { "1": -6200, "2": 6200 },
+                "description": {
+                  "type": "expense",
+                  "name": "Ramen dinner",
+                  "paid": { "1": 12400 },
+                  "liability": { "1": 6200, "2": 6200 },
+                  "categoryId": "4a6cc79a-51da-4e94-9d62-45ba3d853b1c"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created project record.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "description": "Project-local ID of the created record.",
+                      "examples": [5]
+                    }
+                  },
+                  "required": ["id"],
+                  "additionalProperties": false
+                },
+                "example": { "id": 5 }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed or invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": {
+                  "error": "invalid_request",
+                  "reason": "The request body did not match the documented schema."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is required or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "unauthorized" }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is not allowed to perform this action.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "forbidden" }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested resource was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "not_found" }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with project state or configured limits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": {
+                  "error": "conflict",
+                  "reason": "The requested change conflicts with project state."
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The request was rate limited.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "rate_limited" }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "Stable machine-readable error code.",
+                      "examples": ["invalid_request"]
+                    },
+                    "reason": {
+                      "description": "Additional human-readable context, when available.",
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false,
+                  "description": "API error response.",
+                  "examples": [
+                    {
+                      "error": "invalid_request",
+                      "reason": "The request body did not match the documented schema."
+                    }
+                  ]
+                },
+                "example": { "error": "internal_server_error" }
               }
             }
           }

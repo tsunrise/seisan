@@ -32,21 +32,13 @@ export function RecordCard({
   const author = project.members.find((member) => member.id === record.authorMemberId);
   const subjectIsCurrentMember = actor?.id === currentMember?.id;
   const viewerDelta = currentMember ? (record.delta[String(currentMember.id)] ?? 0) : null;
-  const isReverted = record.reverted !== undefined;
   const hasViewerAmount = viewerDelta !== null && viewerDelta !== 0;
-  const compact = !isReverted && !hasViewerAmount;
+  const compact = !hasViewerAmount;
   const relativeTime = formatRelativeTime(record.createdAt);
   const metadataText =
     record.authorMemberId === actorMemberId
       ? relativeTime
       : `${relativeTime}, posted by ${author?.name ?? "Unknown member"}`;
-  const revertedTextSx = isReverted
-    ? {
-        color: ledgerColors.muted,
-        textDecoration: "line-through",
-        textDecorationThickness: "1.5px",
-      }
-    : {};
   const expenseCategory =
     record.description.type === "expense"
       ? resolveRecordCategory(categories, record.description.categoryId)
@@ -166,7 +158,6 @@ export function RecordCard({
               lineHeight: 1.24,
               overflowWrap: "anywhere",
               wordBreak: "break-word",
-              ...revertedTextSx,
             }}
           >
             {recordTitle(record, project.members)}
@@ -178,7 +169,6 @@ export function RecordCard({
                 fontSize: 13,
                 fontWeight: 600,
                 overflowWrap: "anywhere",
-                ...revertedTextSx,
               }}
             >
               {expenseCategory.name}
@@ -191,24 +181,10 @@ export function RecordCard({
               fontWeight: 500,
               overflowWrap: "anywhere",
               wordBreak: "break-word",
-              ...revertedTextSx,
             }}
           >
             {metadataText}
           </Typography>
-          {record.reverted ? (
-            <Typography
-              sx={{
-                color: "text.secondary",
-                fontSize: 12,
-                fontWeight: 600,
-                overflowWrap: "anywhere",
-              }}
-            >
-              Reverted by {memberName(project.members, record.reverted.authorMemberId)}{" "}
-              {formatRelativeTime(record.reverted.createdAt)}
-            </Typography>
-          ) : null}
         </Stack>
         <Stack
           sx={{
@@ -228,7 +204,7 @@ export function RecordCard({
           >
             #{record.id}
           </Typography>
-          {hasViewerAmount ? <Amount amount={viewerDelta} muted={isReverted} /> : null}
+          {hasViewerAmount ? <Amount amount={viewerDelta} /> : null}
         </Stack>
       </Paper>
     </TimelineRecordShell>
