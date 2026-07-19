@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "activeDir": "active",
   "resolvedDir": "resolved",
-  "nextId": 19,
+  "nextId": 22,
   "issues": [
     {
       "id": "RT-1",
@@ -180,6 +180,33 @@
       "file": "active/rt-18-missing-project-reference-cache-entries-strand-registered-projects-20260713-203407.md",
       "date": "2026-07-13 20:34:07 PDT",
       "commit": "b8176cccc86cb33a2f59d7dcb56b6fe2f994c035"
+    },
+    {
+      "id": "RT-19",
+      "status": "active",
+      "severity": "High",
+      "title": "Authenticated Public Readers Receive Member Payment Instructions",
+      "file": "active/rt-19-authenticated-public-readers-receive-member-payment-instructions-20260718-235417.md",
+      "date": "2026-07-18 23:54:17 PDT",
+      "commit": "de374d20fd55712f662c21af9e59dc29b2ff06a2"
+    },
+    {
+      "id": "RT-20",
+      "status": "active",
+      "severity": "High",
+      "title": "Public Project Members Can Rewrite Unlinked Payment Profiles",
+      "file": "active/rt-20-public-project-members-can-rewrite-unlinked-payment-profiles-20260718-235417.md",
+      "date": "2026-07-18 23:54:17 PDT",
+      "commit": "b7a00394afbdda4386430469d82fcfacdd302b6d"
+    },
+    {
+      "id": "RT-21",
+      "status": "active",
+      "severity": "Medium",
+      "title": "Record Replacement And Deletion Bypass Abuse Controls",
+      "file": "active/rt-21-record-replacement-and-deletion-bypass-abuse-controls-20260718-235417.md",
+      "date": "2026-07-18 23:54:17 PDT",
+      "commit": "dabd697baf2eb4e8b7781d767e7700716ef2083e"
     }
   ]
 }
