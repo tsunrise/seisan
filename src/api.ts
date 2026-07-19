@@ -6,6 +6,7 @@ import type {
   ProjectCreated,
   ProjectMember,
   ProjectMemberConfig,
+  ProjectRecord,
   ProjectSummary,
   TransferBatch,
   WritableRecordDescription,
@@ -345,6 +346,28 @@ export async function appendRecord(
     method: "POST",
     body: input,
     expectedStatus: 201,
+  });
+}
+
+export async function getRecord(projectId: string, recordId: number): Promise<ProjectRecord> {
+  return requestJson(`/api/project/${projectId}/record/${recordId}`);
+}
+
+export async function putRecord(
+  projectId: string,
+  recordId: number,
+  input: { delta: MoneyByMemberId; description: WritableRecordDescription },
+): Promise<ProjectRecord> {
+  return requestJson(`/api/project/${projectId}/record/${recordId}`, {
+    method: "PUT",
+    body: input,
+  });
+}
+
+export async function deleteRecord(projectId: string, recordId: number): Promise<void> {
+  await requestEmpty(`/api/project/${projectId}/record/${recordId}`, {
+    method: "DELETE",
+    expectedStatus: 204,
   });
 }
 

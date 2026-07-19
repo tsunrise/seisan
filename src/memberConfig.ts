@@ -6,6 +6,26 @@ export interface MemberConfigDraft {
   size: string;
 }
 
+export function representedGroupCopy(isSelf: boolean): {
+  checkboxLabel: string;
+  sizeLabel: string;
+  helperText: string;
+} {
+  return isSelf
+    ? {
+        checkboxLabel: "I represent multiple people",
+        sizeLabel: "Number of people represented",
+        helperText:
+          "Include yourself in this total. The people you represent should not join this project independently.",
+      }
+    : {
+        checkboxLabel: "This member represents multiple people",
+        sizeLabel: "Number of people this member represents",
+        helperText:
+          "Include this member in the total. The people this member represents should not join this project independently.",
+      };
+}
+
 export function memberConfigDraft(config: ProjectMemberConfig = {}): MemberConfigDraft {
   const size = config.size ?? 1;
   return {

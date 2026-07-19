@@ -17,6 +17,7 @@ const defaultApiErrorMessages: Record<string, string> = {
   api_key_limit_exceeded: "This account has reached its API key count or expiration limit.",
   member_limit_exceeded: "Member limit reached. ",
   record_limit_exceeded: "This project has reached the record limit.",
+  record_type_mismatch: "A record cannot be changed to a different type.",
   acl_limit_exceeded: "This project has reached the allowed-email limit.",
   money_limit_exceeded: "That amount is over the supported limit.",
   rate_limited: "You have been rate limited.",

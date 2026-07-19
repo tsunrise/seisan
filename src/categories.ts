@@ -81,6 +81,16 @@ export function orderedCategoryOptions(
   return { suggested, remaining };
 }
 
+export function prefixMatchingCategories(
+  categories: CategoryOption[],
+  input: string,
+): CategoryOption[] {
+  const prefix = input.trim().toLocaleLowerCase();
+  return prefix
+    ? categories.filter((category) => category.name.toLocaleLowerCase().startsWith(prefix))
+    : categories;
+}
+
 export function resolveRecordCategory(
   categories: CategoryOption[],
   categoryId: string | undefined,

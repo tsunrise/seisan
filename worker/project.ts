@@ -634,6 +634,17 @@ export const RevertDescription = z
   });
 export type RevertDescription = z.infer<typeof RevertDescription>;
 
+export const DeletedDescription = z
+  .object({
+    type: z.literal("deleted").meta({ description: "Deleted record discriminator." }),
+  })
+  .strict()
+  .meta({
+    description: "A response-only tombstone for a deleted project record.",
+    examples: [{ type: "deleted" }],
+  });
+export type DeletedDescription = z.infer<typeof DeletedDescription>;
+
 export const WritableRecordDescription = z
   .union([ExpenseDescription, TransferDescription, PromiseDescription])
   .meta({
@@ -658,10 +669,16 @@ export const WritableRecordDescription = z
 export type WritableRecordDescription = z.infer<typeof WritableRecordDescription>;
 
 export const RecordDescription = z
-  .union([ExpenseDescription, TransferDescription, PromiseDescription, RevertDescription])
+  .union([
+    ExpenseDescription,
+    TransferDescription,
+    PromiseDescription,
+    RevertDescription,
+    DeletedDescription,
+  ])
   .meta({
     description:
-      "Stored details for an expense, transfer, promise, or deprecated legacy revert record.",
+      "Details for an expense, transfer, promise, deprecated legacy revert, or deleted record.",
   });
 export type RecordDescription = z.infer<typeof RecordDescription>;
 

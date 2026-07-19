@@ -31,9 +31,10 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 
 - Authenticated project reads expose `ProjectMemberFull` entries. Keep `ProjectMember` for registry
   summaries and mutation responses, which intentionally do not carry config.
-- Member profile fields use the shared `MemberConfigFields` control. The represented-group checkbox
-  reveals an integer input of at least two and reminds the user that represented people should not
-  join independently.
+- Member profile fields use the shared `MemberConfigFields` control. Its shared
+  `RepresentedGroupFields` gadget requires self/other context, uses first-person copy for the
+  current member and third-person copy when editing someone else, reveals an integer input of at
+  least two, and reminds the user that represented people should not join independently.
 - The frontend project-creation flow always creates a public project. Owners can change visibility
   and manage restricted-project emails afterward from Access control.
 - Project creation, joining, and placeholder-member creation save config with a follow-up member
@@ -52,8 +53,12 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 - `/project/:id/settings` is a compact settings menu rather than a single long form. It links to the
   current member's profile, settlement plan, members, and access control.
 - Profile, members, and access control use nested settings routes and return to the settings menu.
-  Keep profile name editing inline. Non-owners edit only their linked profile; owners get an
-  elevated "Update on behalf of" selector that can load and save any active member's profile.
+  Keep the profile page scoped to the current linked member. Editing another eligible member belongs
+  in member settings so there is only one administrative edit surface.
+- Member settings expose management mode to the owner and active linked members. Both can add
+  placeholders and edit unlinked members' names, represented sizes, and payment methods. A linked
+  member may also edit their own row, while only the owner sees administrative unlink and delete
+  controls or can edit a different linked member.
 - Follow the warm-ledger interpretation of an iOS settings list: full-width rows, restrained leading
   icons, thin grouped dividers, clear chevrons, and no nested decorative cards.
 
@@ -70,6 +75,12 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 - Record cards should only make the record content row clickable, not the surrounding timeline lane.
 - Legacy revert records remain visible as compact history events, but the UI does not offer a
   Revert action and source records are no longer struck through or annotated as reverted.
+- Deleted records remain visible as compact history events at their original creation position.
+  Their detail view shows original creation and deletion audit metadata but no money tables.
+- Active linked members can edit live expense, transfer, and promise records from record detail.
+  Editing keeps the record type fixed and reuses the new-record composers with prefilled values;
+  records that reference deleted members remain read-only. Confirmed deletion lives on the edit
+  panel and returns to the readable tombstone detail.
 - Keep hover states subtle and consistent with the row tone.
 - Project pages load the public category list once and share it with the expense composer and
   timeline. Missing category metadata renders as `Others` with the default expense icon.
@@ -81,8 +92,22 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
   recipient's amount, and the source member remains the timeline actor.
 - The transfer composer has one sender and repeatable destination rows. Destination autocomplete is
   a case-insensitive name-prefix match, excludes the sender and recipients already chosen in other
-  rows, and always posts the multi-recipient transfer shape. Show the aggregate sent amount and the
-  sender's resulting balance alongside the delta preview.
+  rows, and always posts the multi-recipient transfer shape. The sender uses the same searchable
+  prefix dropdown. Present the transfer as warm, compact condition-builder bands: the first starts
+  with `[from] paid`, each band contains `[to] [amount]`, and an `and` connector introduces every
+  additional recipient. Allow only one unfinished recipient row at a time. Show the aggregate sent
+  amount and the sender's resulting balance alongside the delta preview.
+- Expense, transfer, and promise composers share the linked-block surface, connector, and secondary
+  verb primitives from `src/project/LinkedBlockForm.tsx` while retaining type-specific fields and
+  validation.
+- The expense composer supports repeatable unique payer/amount rows using the grammar
+  `For <expense> | Categorized as <category> | , <payer> paid <amount> (| and <payer> paid
+<amount>)*`. Category and the first payer use a comma connector. Payer inputs use the same
+  prefix-searchable member dropdown as transfer inputs. Editing prefills exact payer allocations
+  and liability values, starting the liability control in custom mode. The liability block is not
+  linked to the payer sequence and follows the sentence `This expense should be paid by`. Its
+  secondary hint tells active linked members that additional members can be added in Project
+  settings.
 - `/project/:id/settle` is available only to linked active members. Show the current member's
   outgoing batch first in a settlement-specific payment list, without transfer-form inputs, past
   tense, or balance-total previews. Follow it with the primary confirmation action, full-width
@@ -104,9 +129,9 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 
 - The expense composer classifies the exact expense text after a 400 ms debounce or immediately on
   blur, requesting up to 20 candidates.
-- The category menu initially shows the first three unique ranked candidates plus every additional
-  unique candidate scoring above `0.2`, followed by a `Show all categories` action. Expanding shows
-  the remaining categories and `Others` alphabetically below a divider.
+- The category control is a searchable prefix-matching autocomplete. It keeps the classified
+  suggestions first, follows them with the remaining categories alphabetically, and shows each
+  category icon both in the input and dropdown.
 - Superseded requests must be aborted and ignored. Classification times out after 5 seconds and
   falls back to `Others`; scores below `0.2` also produce `Others`.
 - Manual dropdown selections remain authoritative for the rest of that composer session even while

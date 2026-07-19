@@ -9,6 +9,7 @@ import { useProject } from "../hooks/useProject";
 import { useProjects } from "../hooks/useProjects";
 import { InlineAlert } from "../components/InlineAlert";
 import { DesktopPlaceholder } from "../project/DesktopPlaceholder";
+import { EditRecordPanel } from "../project/EditRecordPanel";
 import { JoinPanel } from "../project/JoinPanel";
 import { JoinPromptPanel } from "../project/JoinPromptPanel";
 import { NewRecordPanel } from "../project/NewRecordPanel";
@@ -55,7 +56,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
 
   useEffect(() => {
     if (
-      panel !== "recordDetail" ||
+      (panel !== "recordDetail" && panel !== "editRecord") ||
       recordId === null ||
       !recordIdIsValid ||
       !projectData ||
@@ -120,18 +121,28 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
       </Box>
     );
   }
-  if (panel === "recordDetail" && recordId !== null && !recordIdIsValid) {
+  if (
+    (panel === "recordDetail" || panel === "editRecord") &&
+    recordId !== null &&
+    !recordIdIsValid
+  ) {
     return <NotFoundPage />;
   }
-  if (panel === "recordDetail" && recordId !== null && missingRecordId === recordId) {
+  if (
+    (panel === "recordDetail" || panel === "editRecord") &&
+    recordId !== null &&
+    missingRecordId === recordId
+  ) {
     return <NotFoundPage />;
   }
 
   const currentMember = findLinkedMember(project.data.members, currentEmail);
   const showPanel = panel !== "timeline";
   const timelineIsVisible = panel === "timeline" || timelineIsVisibleOnDesktop;
-  const recordDetailIsLoading =
-    panel === "recordDetail" && recordId !== null && selectedRecord === null;
+  const recordPanelIsLoading =
+    (panel === "recordDetail" || panel === "editRecord") &&
+    recordId !== null &&
+    selectedRecord === null;
   const categoryData = categories.status === "ready" ? categories.data : [];
 
   return (
@@ -186,7 +197,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
           isActive={timelineIsVisible}
           scrollToLatestKey={reloadKey}
           restoreScrollKey={panel === "timeline" ? location.key : ""}
-          selectedRecordId={panel === "recordDetail" ? recordId : null}
+          selectedRecordId={panel === "recordDetail" || panel === "editRecord" ? recordId : null}
           categories={categoryData}
         />
         <Box
@@ -276,9 +287,22 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
           )
         ) : null}
         {panel === "recordDetail" && selectedRecord ? (
-          <RecordDetail project={project.data} record={selectedRecord} />
+          <RecordDetail
+            project={project.data}
+            record={selectedRecord}
+            currentMember={currentMember}
+          />
         ) : null}
-        {recordDetailIsLoading ? (
+        {panel === "editRecord" && selectedRecord ? (
+          <EditRecordPanel
+            project={project.data}
+            currentMember={currentMember}
+            record={selectedRecord}
+            categories={categoryData}
+            onChanged={reload}
+          />
+        ) : null}
+        {recordPanelIsLoading ? (
           <Box sx={{ display: "grid", minHeight: 240, placeItems: "center" }}>
             <CircularProgress />
           </Box>

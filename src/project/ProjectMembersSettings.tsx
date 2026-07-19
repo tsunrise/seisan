@@ -30,6 +30,7 @@ import {
   memberConfigDraftIsValid,
   memberConfigFromDraft,
 } from "../memberConfig";
+import { getProjectMemberManagementPermissions } from "./memberManagementPermissions";
 
 const memberActionButtonSx = {
   border: 0,
@@ -56,10 +57,24 @@ export function ProjectMembersSettings({
   const [addingMember, setAddingMember] = useState(false);
   const [editingMember, setEditingMember] = useState<api.ProjectMemberFull | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [editingConfig, setEditingConfig] = useState(() => memberConfigDraft());
+  const [savingMember, setSavingMember] = useState(false);
   const [memberToKick, setMemberToKick] = useState<api.ProjectMemberFull | null>(null);
   const [kickingMember, setKickingMember] = useState(false);
-  const isOwner = currentEmail === project.owner;
+  const permissions = getProjectMemberManagementPermissions({
+    ownerEmail: project.owner,
+    currentEmail,
+    currentMember,
+  });
   const activeMembers = project.members.filter((member) => !member.deleted);
+  const trimmedEditingName = editingName.trim();
+  const nextEditingConfig = memberConfigFromDraft(editingConfig);
+  const editingNameChanged = editingMember !== null && trimmedEditingName !== editingMember.name;
+  const editingConfigChanged =
+    editingMember !== null &&
+    nextEditingConfig !== null &&
+    (nextEditingConfig.size !== editingMember.config?.size ||
+      nextEditingConfig.paymentMethod !== editingMember.config?.paymentMethod);
 
   async function addMember() {
     const config = memberConfigFromDraft(newMemberConfig, { includePaymentMethod: false });
@@ -94,20 +109,57 @@ export function ProjectMembersSettings({
   function openEditMember(member: api.ProjectMemberFull) {
     setEditingMember(member);
     setEditingName(member.name);
+    setEditingConfig(memberConfigDraft(member.config));
   }
 
-  async function saveMemberName() {
-    if (!editingMember || !editingName.trim()) {
+  function resetEditMember() {
+    setEditingMember(null);
+    setEditingName("");
+    setEditingConfig(memberConfigDraft());
+  }
+
+  function closeEditMember() {
+    if (!savingMember) {
+      resetEditMember();
+    }
+  }
+
+  async function saveMember() {
+    const config = memberConfigFromDraft(editingConfig);
+    if (
+      !editingMember ||
+      !trimmedEditingName ||
+      !config ||
+      (!editingNameChanged && !editingConfigChanged) ||
+      savingMember
+    ) {
       return;
     }
+    setSavingMember(true);
+    let savedName = false;
     try {
-      await api.patchMember(project.id, editingMember.id, { name: editingName.trim() });
-      setEditingMember(null);
-      setEditingName("");
+      if (editingNameChanged) {
+        await api.patchMember(project.id, editingMember.id, { name: trimmedEditingName });
+        savedName = true;
+      }
+      if (editingConfigChanged) {
+        await api.putMemberConfig(project.id, editingMember.id, config);
+      }
+      resetEditMember();
       onReload();
-      showSuccess("Member renamed.");
+      showSuccess("Member updated.");
     } catch (error) {
-      showError(getApiErrorMessage(error));
+      if (savedName) {
+        setEditingMember({ ...editingMember, name: trimmedEditingName });
+        onReload();
+        showError(
+          `Member name updated, but the remaining profile details were not saved. ${getApiErrorMessage(error)}`,
+        );
+      } else {
+        showError(getApiErrorMessage(error));
+      }
+    } finally {
+      setSavingMember(false);
     }
   }
 
@@ -142,7 +194,7 @@ export function ProjectMembersSettings({
   return (
     <PanelFrame title="Members" backTo={`/project/${project.id}/settings`}>
       <Stack spacing={2.25}>
-        {isOwner ? (
+        {permissions.canManage ? (
           <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between" }}>
             <Typography color="text.secondary" sx={{ fontSize: 14 }}>
               {activeMembers.length} active {activeMembers.length === 1 ? "member" : "members"}
@@ -161,9 +213,9 @@ export function ProjectMembersSettings({
             const balance = project.balance[String(member.id)] ?? 0;
             const isCurrentMember = member.id === currentMember?.id;
             const isOwnerMember = member.linkedEmail === project.owner;
-            const canDeleteMember = isOwner && balance === 0;
-            const canKickMemberEmail =
-              isOwner && member.linkedEmail !== undefined && member.linkedEmail !== project.owner;
+            const canEditMember = permissions.canEdit(member);
+            const canDeleteMember = permissions.canDelete(member, balance);
+            const canKickMemberEmail = permissions.canUnlink(member);
             return (
               <Stack
                 key={member.id}
@@ -208,35 +260,41 @@ export function ProjectMembersSettings({
                   <Amount amount={balance} />
                   {manage ? (
                     <>
-                      <IconButton
-                        aria-label={`Edit ${member.name}`}
-                        onClick={() => openEditMember(member)}
-                        sx={memberActionButtonSx}
-                      >
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                      <Tooltip title={canKickMemberEmail ? "Unlink email" : "Cannot unlink"}>
-                        <span>
+                      {canEditMember ? (
+                        <IconButton
+                          aria-label={`Edit ${member.name}`}
+                          onClick={() => openEditMember(member)}
+                          sx={memberActionButtonSx}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      ) : null}
+                      {permissions.isOwner ? (
+                        <>
+                          <Tooltip title={canKickMemberEmail ? "Unlink email" : "Cannot unlink"}>
+                            <span>
+                              <IconButton
+                                color="warning"
+                                aria-label={`Unlink ${member.name}`}
+                                disabled={!canKickMemberEmail}
+                                onClick={() => setMemberToKick(member)}
+                                sx={memberActionButtonSx}
+                              >
+                                <LinkOffIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
                           <IconButton
-                            color="warning"
-                            aria-label={`Unlink ${member.name}`}
-                            disabled={!canKickMemberEmail}
-                            onClick={() => setMemberToKick(member)}
+                            color="error"
+                            aria-label={`Delete ${member.name}`}
+                            disabled={!canDeleteMember}
+                            onClick={() => void deleteMember(member)}
                             sx={memberActionButtonSx}
                           >
-                            <LinkOffIcon fontSize="small" />
+                            <DeleteIcon fontSize="small" />
                           </IconButton>
-                        </span>
-                      </Tooltip>
-                      <IconButton
-                        color="error"
-                        aria-label={`Delete ${member.name}`}
-                        disabled={!canDeleteMember}
-                        onClick={() => void deleteMember(member)}
-                        sx={memberActionButtonSx}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
+                        </>
+                      ) : null}
                     </>
                   ) : null}
                 </Stack>
@@ -244,7 +302,7 @@ export function ProjectMembersSettings({
             );
           })}
         </Stack>
-        {manage && isOwner ? (
+        {manage && permissions.canAdd ? (
           <Stack spacing={1.5}>
             <Typography variant="h3">Add member</Typography>
             <TextField
@@ -256,6 +314,7 @@ export function ProjectMembersSettings({
             <MemberConfigFields
               draft={newMemberConfig}
               onChange={setNewMemberConfig}
+              isSelf={false}
               includePaymentMethod={false}
               disabled={addingMember}
             />
@@ -274,25 +333,40 @@ export function ProjectMembersSettings({
           </Stack>
         ) : null}
       </Stack>
-      <Dialog open={editingMember !== null} onClose={() => setEditingMember(null)} fullWidth>
-        <DialogTitle>Rename member</DialogTitle>
+      <Dialog open={editingMember !== null} onClose={closeEditMember} fullWidth>
+        <DialogTitle>Edit member</DialogTitle>
         <DialogContent>
-          <TextField
-            label="Member name"
-            value={editingName}
-            onChange={(event) => setEditingName(event.target.value)}
-            fullWidth
-            sx={{ mt: 1 }}
-          />
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Member name"
+              value={editingName}
+              onChange={(event) => setEditingName(event.target.value)}
+              disabled={savingMember}
+              fullWidth
+            />
+            <MemberConfigFields
+              draft={editingConfig}
+              onChange={setEditingConfig}
+              isSelf={editingMember?.id === currentMember?.id}
+              disabled={savingMember}
+            />
+          </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditingMember(null)}>Cancel</Button>
+          <Button disabled={savingMember} onClick={closeEditMember}>
+            Cancel
+          </Button>
           <Button
             variant="contained"
-            disabled={!editingName.trim() || editingName.trim() === editingMember?.name}
-            onClick={() => void saveMemberName()}
+            disabled={
+              !trimmedEditingName ||
+              !nextEditingConfig ||
+              (!editingNameChanged && !editingConfigChanged) ||
+              savingMember
+            }
+            onClick={() => void saveMember()}
           >
-            Save
+            {savingMember ? "Saving…" : "Save"}
           </Button>
         </DialogActions>
       </Dialog>

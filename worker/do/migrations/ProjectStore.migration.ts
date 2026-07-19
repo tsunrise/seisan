@@ -64,4 +64,11 @@ export const projectStoreMigrations: SqlMigration[] = [
     `DROP TABLE records`,
     `ALTER TABLE records_without_reverts RENAME TO records`,
   ],
+  // Older tombstones did not record deletion audit metadata. Clear any edit metadata they retained
+  // so readers never misattribute the last editor as the member who deleted the record.
+  [
+    `UPDATE records
+      SET updated_at = NULL, updated_by_member_id = NULL
+      WHERE description_type = 'deleted'`,
+  ],
 ];

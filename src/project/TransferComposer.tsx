@@ -1,10 +1,9 @@
 import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import PersonAddAltIcon from "@mui/icons-material/PersonAddAlt";
-import { Autocomplete, Button, IconButton, MenuItem, Stack, TextField } from "@mui/material";
-import type { FormEvent } from "react";
+import { Autocomplete, Box, Button, IconButton, Stack, TextField } from "@mui/material";
+import type { FormEvent, ReactNode } from "react";
 import { useRef, useState } from "react";
-import { useNavigate } from "react-router";
 
 import * as api from "../api";
 import { getApiErrorMessage } from "../apiErrorMessages";
@@ -14,14 +13,14 @@ import { MoneyTable } from "../components/MoneyTable";
 import { PanelFrame } from "../components/PanelFrame";
 import { activeMembers, deriveDelta } from "../domain";
 import { useAppSnackbar } from "../hooks/useAppSnackbar";
-import { RecordFormBridge } from "./RecordFormBridge";
-import { RecordSentenceField, RecordSentenceRow } from "./RecordSentenceRow";
+import { LinkedBlockList, LinkedBlockVerb } from "./LinkedBlockForm";
+import { prefixMatchingMembers } from "./memberSearch";
 import { TransferTotals } from "./TransferTotals";
 import {
   availableDestinationMembers,
   parseTransferDestinations,
-  prefixMatchingMembers,
   transferBatchTotal,
+  transferDraftFromDescription,
   type TransferDestinationDraft,
   type TransferPrefill,
 } from "./transferForm";
@@ -30,26 +29,51 @@ export function TransferComposer({
   project,
   currentMember,
   prefill,
-  onPosted,
+  initialDescription,
+  title,
+  backTo,
+  submitLabel,
+  submittingLabel,
+  onSubmit,
   onBack,
+  footer,
 }: {
   project: api.Project;
   currentMember: api.ProjectMember;
   prefill?: TransferPrefill | null;
-  onPosted: () => void;
-  onBack: () => void;
+  initialDescription?: Extract<api.WritableRecordDescription, { type: "transfer" }>;
+  title: string;
+  backTo: string;
+  submitLabel: string;
+  submittingLabel: string;
+  onSubmit: (input: {
+    description: api.WritableRecordDescription;
+    delta: api.MoneyByMemberId;
+  }) => Promise<void>;
+  onBack?: () => void;
+  footer?: ReactNode;
 }) {
-  const navigate = useNavigate();
-  const { showError, showSuccess } = useAppSnackbar();
+  const { showError } = useAppSnackbar();
   const members = activeMembers(project.members);
-  const initialFrom = prefill?.from ?? currentMember.id;
-  const initialTo = prefill?.to ?? members.find((member) => member.id !== initialFrom)?.id ?? null;
-  const nextDestinationKey = useRef(1);
+  const initialTransfer = initialDescription
+    ? transferDraftFromDescription(initialDescription)
+    : null;
+  const initialFrom = initialTransfer?.sourceId ?? prefill?.from ?? currentMember.id;
+  const initialDestinations: TransferDestinationDraft[] = initialTransfer
+    ? initialTransfer.destinations
+    : [
+        {
+          key: 0,
+          memberId: prefill?.to ?? members.find((member) => member.id !== initialFrom)?.id ?? null,
+          amount: prefill?.amount ?? "",
+        },
+      ];
+  const nextDestinationKey = useRef(initialDestinations.length);
   const [from, setFrom] = useState(initialFrom);
-  const [destinations, setDestinations] = useState<TransferDestinationDraft[]>([
-    { key: 0, memberId: initialTo, amount: prefill?.amount ?? "" },
-  ]);
+  const [destinations, setDestinations] = useState<TransferDestinationDraft[]>(initialDestinations);
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const selectedSourceMember = members.find((member) => member.id === from);
   const parsedDestinations = parseTransferDestinations(destinations);
   const previewDestinations = destinations.flatMap((destination) => {
     const parsed = parseTransferDestinations([destination]);
@@ -67,9 +91,9 @@ export function TransferComposer({
       destination.memberId === null ? [] : [destination.memberId],
     ),
   );
-  const canAddDestination = members.some(
-    (member) => member.id !== from && !selectedDestinationIds.has(member.id),
-  );
+  const canAddDestination =
+    destinations.every((destination) => destination.memberId !== null) &&
+    members.some((member) => member.id !== from && !selectedDestinationIds.has(member.id));
 
   function changeSource(sourceId: number) {
     setFrom(sourceId);
@@ -98,59 +122,68 @@ export function TransferComposer({
       setError("Choose a different member and a positive amount for every recipient.");
       return;
     }
+    setSubmitting(true);
     try {
-      await api.appendRecord(project.id, {
+      await onSubmit({
         description: { type: "transfer", src: from, dests: parsedDestinations },
         delta,
       });
-      showSuccess("Record posted.");
-      onPosted();
-      navigate(`/project/${project.id}`);
     } catch (error) {
       showError(getApiErrorMessage(error));
+    } finally {
+      setSubmitting(false);
     }
   }
 
   return (
-    <PanelFrame title="New transfer" backTo={`/project/${project.id}/records/new`} onBack={onBack}>
+    <PanelFrame title={title} backTo={backTo} onBack={onBack}>
       <Stack component="form" spacing={2} onSubmit={submit}>
-        <Stack spacing={1}>
-          {destinations.map((destination, index) => {
-            const options = availableDestinationMembers(
-              members,
-              from,
-              destinations,
-              destination.key,
-            );
-            const selectedMember =
-              members.find((member) => member.id === destination.memberId) ?? null;
-            return (
-              <Stack key={destination.key} spacing={0.5}>
-                <RecordSentenceRow>
+        <Stack spacing={1.25}>
+          <LinkedBlockList>
+            {destinations.map((destination, index) => {
+              const options = availableDestinationMembers(
+                members,
+                from,
+                destinations,
+                destination.key,
+              );
+              const selectedMember =
+                members.find((member) => member.id === destination.memberId) ?? null;
+              return (
+                <Box key={destination.key}>
                   {index === 0 ? (
-                    <>
-                      <RecordSentenceField minWidth={138}>
-                        <TextField
-                          select
-                          label="From"
-                          value={String(from)}
-                          onChange={(event) => changeSource(Number(event.target.value))}
-                        >
-                          {members.map((member) => (
-                            <MenuItem key={member.id} value={String(member.id)}>
-                              {member.name}
-                            </MenuItem>
-                          ))}
-                        </TextField>
-                      </RecordSentenceField>
-                      <RecordFormBridge>paid</RecordFormBridge>
-                    </>
-                  ) : (
-                    <RecordFormBridge>and</RecordFormBridge>
-                  )}
-                  <RecordSentenceField minWidth={138} grow>
+                    <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1.1 }}>
+                      <Box sx={{ flex: "1 1 auto", minWidth: 0 }}>
+                        <Autocomplete
+                          autoHighlight
+                          disableClearable
+                          openOnFocus
+                          options={members}
+                          value={selectedSourceMember}
+                          getOptionLabel={(member) => member.name}
+                          isOptionEqualToValue={(left, right) => left.id === right.id}
+                          filterOptions={(available, state) =>
+                            prefixMatchingMembers(available, state.inputValue)
+                          }
+                          onChange={(_event, member) => changeSource(member.id)}
+                          renderInput={(params) => <TextField {...params} label="From" required />}
+                        />
+                      </Box>
+                      <LinkedBlockVerb>paid</LinkedBlockVerb>
+                    </Stack>
+                  ) : null}
+                  <Box
+                    sx={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr) minmax(88px, 0.62fr) 32px",
+                      columnGap: 0.75,
+                      rowGap: 0.4,
+                      alignItems: "center",
+                    }}
+                  >
                     <Autocomplete
                       autoHighlight
+                      disableClearable={selectedMember !== null}
                       openOnFocus
                       options={options}
                       value={selectedMember}
@@ -164,8 +197,6 @@ export function TransferComposer({
                       }
                       renderInput={(params) => <TextField {...params} label="To" required />}
                     />
-                  </RecordSentenceField>
-                  <RecordSentenceField minWidth={116}>
                     <TextField
                       label="Amount"
                       inputMode="decimal"
@@ -175,26 +206,40 @@ export function TransferComposer({
                       }
                       placeholder="12.34"
                       required
+                      slotProps={{ inputLabel: { shrink: true } }}
                     />
-                  </RecordSentenceField>
-                  {destinations.length > 1 ? (
-                    <IconButton
-                      type="button"
-                      aria-label={`Remove recipient ${index + 1}`}
-                      onClick={() =>
-                        setDestinations((current) =>
-                          current.filter((candidate) => candidate.key !== destination.key),
-                        )
-                      }
-                    >
-                      <DeleteOutlineIcon />
-                    </IconButton>
-                  ) : null}
-                </RecordSentenceRow>
-                <MemberPaymentMethod member={selectedMember} />
-              </Stack>
-            );
-          })}
+                    {destinations.length > 1 ? (
+                      <IconButton
+                        type="button"
+                        size="small"
+                        aria-label={`Remove recipient ${index + 1}`}
+                        onClick={() =>
+                          setDestinations((current) =>
+                            current.filter((candidate) => candidate.key !== destination.key),
+                          )
+                        }
+                        sx={{
+                          width: 32,
+                          height: 36,
+                          border: 0,
+                          bgcolor: "transparent",
+                          color: "text.secondary",
+                          "&:hover": { bgcolor: "action.hover", color: "text.primary" },
+                        }}
+                      >
+                        <DeleteOutlineIcon fontSize="small" />
+                      </IconButton>
+                    ) : (
+                      <Box aria-hidden="true" />
+                    )}
+                    <Box sx={{ gridColumn: "1 / -1", minWidth: 0 }}>
+                      <MemberPaymentMethod member={selectedMember} />
+                    </Box>
+                  </Box>
+                </Box>
+              );
+            })}
+          </LinkedBlockList>
           <Button
             type="button"
             variant="text"
@@ -213,10 +258,11 @@ export function TransferComposer({
         <TransferTotals project={project} sourceId={from} total={total} />
         <MoneyTable title="Balance change" project={project} map={delta} />
         {error ? <InlineAlert>{error}</InlineAlert> : null}
-        <Button type="submit" variant="contained" startIcon={<AddIcon />}>
-          Post
+        <Button type="submit" variant="contained" startIcon={<AddIcon />} disabled={submitting}>
+          {submitting ? submittingLabel : submitLabel}
         </Button>
       </Stack>
+      {footer}
     </PanelFrame>
   );
 }

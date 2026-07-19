@@ -51,6 +51,9 @@ Use this before changing Durable Object classes, storage schemas, migrations, or
 - Replacing a record does not change its ID, so a replacement with a nonempty normalized net delta
   explicitly deletes the cache. Deleting a record does the same when its stored delta is nonempty.
   Description-only replacements and zero-delta tombstones retain the cache.
+- Record tombstones retain empty persisted description/delta JSON but are converted to a synthetic
+  deleted description at the response boundary. DELETE writes its member/time audit values in the
+  same synchronous mutation tail as the tombstone, balances, cache invalidation, and metadata.
 - Treat malformed cached JSON as a miss. Do not cache a computed plan when stored balances fail the
   safe-integer or zero-sum invariants.
 

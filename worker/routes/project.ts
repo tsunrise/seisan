@@ -461,7 +461,7 @@ projectApp.post(
     tags: ["Project Members"],
     summary: "Create a project member",
     description:
-      "Creates an unlinked participant in a project without requiring that person to have a Seisan account.",
+      "Allows the project owner or an active linked member to create an unlinked participant without requiring that person to have a Seisan account.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectMemberCreate,
@@ -574,7 +574,7 @@ projectApp.post(
     tags: ["Project Members"],
     summary: "Leave a project and unlink the current account from its member",
     description:
-      "Unlinks the authenticated account from its current project member while preserving ledger history.",
+      "Allows a linked non-owner to unlink their own account from its current project member while preserving ledger history.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     responses: {
@@ -626,7 +626,7 @@ projectApp.delete(
     tags: ["Project Members"],
     summary: "Unlink an email from a project member",
     description:
-      "Removes an account link from a project member while retaining the member and historical records.",
+      "Allows the project owner to remove another account's link from a project member while retaining the member and historical records.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectMemberEmailUnlink,
@@ -685,7 +685,8 @@ projectApp.patch(
   describeRoute({
     tags: ["Project Members"],
     summary: "Patch a project member",
-    description: "Renames a project member or unlinks the member's currently linked account.",
+    description:
+      "Renames a member when the caller is the owner, that linked member, or an active linked member editing an unlinked participant. Unlinking a linked account is owner-only.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId, OpenApiParameters.MemberId],
     requestBody: OpenApiRequests.ProjectMemberPatch,
@@ -786,7 +787,7 @@ projectApp.put(
     tags: ["Project Members"],
     summary: "Replace a project member's config",
     description:
-      "Replaces all optional metadata for a project member. An empty object clears the config.",
+      "Replaces all optional metadata when the caller is the owner, that linked member, or an active linked member editing an unlinked participant. An empty object clears the config.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId, OpenApiParameters.MemberId],
     requestBody: OpenApiRequests.ProjectMemberConfigPut,
@@ -835,7 +836,7 @@ projectApp.patch(
     tags: ["Project Members"],
     summary: "Patch a project member's config",
     description:
-      "Shallow-merges optional member metadata. A null field removes that field from the config.",
+      "Shallow-merges optional metadata when the caller is the owner, that linked member, or an active linked member editing an unlinked participant. A null field removes that field.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId, OpenApiParameters.MemberId],
     requestBody: OpenApiRequests.ProjectMemberConfigPatch,
@@ -884,7 +885,7 @@ projectApp.delete(
     tags: ["Project Members"],
     summary: "Soft-delete a project member",
     description:
-      "Marks an unused project member as deleted while preserving any historical references.",
+      "Allows the project owner to mark an unused project member as deleted while preserving historical references.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId, OpenApiParameters.MemberId],
     responses: {
@@ -960,7 +961,7 @@ projectApp.get(
     tags: ["Project Records"],
     summary: "Get a project record",
     description:
-      "Returns one live project record. Public projects may be read without authentication; deleted records are treated as missing.",
+      "Returns one project record, including response-only deleted tombstones. Public projects may be read without authentication.",
     security: OpenApiSecurity.OptionalApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId, OpenApiParameters.RecordId],
     responses: {
@@ -1057,7 +1058,7 @@ projectApp.delete(
     tags: ["Project Records"],
     summary: "Delete a project record",
     description:
-      "Reverses a live record's balance effect and replaces its stored description and delta with an internal tombstone. Deleted records are treated as missing.",
+      "Reverses a live record's balance effect and replaces its stored description and delta with a readable tombstone. Further mutations treat the deleted record as missing.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId, OpenApiParameters.RecordId],
     responses: {
@@ -1099,7 +1100,7 @@ projectApp.post(
     tags: ["Project Records"],
     summary: "Append a record to a project",
     description:
-      "Appends an immutable expense, transfer, promise, or revert entry. The supplied cent-denominated delta must match the server-derived effect and sum to zero. A transfer may set settle=true to best-effort advance an already-viewed settlement plan when the caller confirms their complete cached sender batch; the flag is not persisted in the record.",
+      "Creates an expense, transfer, or promise record. The supplied cent-denominated delta must match the server-derived effect and sum to zero. A transfer may set settle=true to best-effort advance an already-viewed settlement plan when the caller confirms their complete cached sender batch; the flag is not persisted in the record.",
     security: OpenApiSecurity.ApiKeyBearer,
     parameters: [OpenApiParameters.ProjectId],
     requestBody: OpenApiRequests.ProjectAppendRecord,
@@ -1438,6 +1439,7 @@ function mapProjectStoreError(error: string): Response {
     error === "project_limit_exceeded" ||
     error === "member_limit_exceeded" ||
     error === "record_limit_exceeded" ||
+    error === "record_type_mismatch" ||
     error === "acl_limit_exceeded" ||
     error === "money_limit_exceeded"
   ) {

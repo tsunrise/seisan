@@ -21,7 +21,7 @@ Use these implementation files as the design source of truth:
 - `src/components/PanelFrame.tsx`: standard panel title, back action, and frame behavior.
 - `src/project/RecordTimeline.tsx`: day-group timeline composition.
 - `src/project/RecordCard.tsx`: full record rows and minor system events, including category/type markers.
-- `src/project/RecordSentenceRow.tsx`: sentence-style composer layout.
+- `src/project/LinkedBlockForm.tsx`: linked composer bands, connectors, and secondary verbs.
 - `src/project/timelineLayout.ts`: date/marker column widths, rail position, row heights, marker offsets, and transition constants.
 - `src/project/timelineScroll.ts`: scroll restoration, sticky header offset, fixed mobile CTA clearance.
 - `src/project/timelineGroups.ts`: local-day grouping and day labels.
@@ -112,13 +112,15 @@ Full record rows:
 
 Minor system events:
 
-- Use for legacy revert records and similar low-weight history events.
+- Use for legacy revert records, deleted tombstones, and similar low-weight history events.
 - Keep them compact, but align their right-side record number with full record rows.
 - Use a small hollow timeline node rather than a full record icon.
 - Center the hollow node on the system message baseline and keep the row visually lighter than a full record.
 - Use one quiet row aligned to the rail, not a chip, toast, full record card, or divider-bearing row.
 - Do not draw separator lines between consecutive minor system events.
 - Keep them keyboard-focusable and accessible through the same record link behavior.
+- Deleted events use the record's original creation time for grouping and relative metadata. Show
+  who deleted the post in the message when trustworthy audit metadata is available.
 
 ## Dates, Money, And Copy
 
@@ -133,12 +135,23 @@ Use shared domain helpers from `src/domain.ts`.
 
 ## Forms
 
-Use the sentence-style composer pattern for new records:
+Use the shared linked-block composer pattern for new and edited records. Warm bands hold related
+fields, faint vertical rules connect repeated clauses, and verbs/connectors use secondary text:
 
-- Expense: `[payer] paid [amount] for [expense]`.
-- Transfer: keep one `[from]`, then use repeatable `[to] [amount]` rows with quiet add/remove
-  controls. Use prefix-search autocomplete for recipients and keep the aggregate sent amount and
-  sender's resulting balance visible below the rows.
+- Expense: start with `For [expense]`, link it through `Categorized as [category]`, then use a comma
+  connector before the first `[payer] paid [amount]` band. Additional payer bands use
+  `and [payer] paid [amount]`; payer selections are unique and the expense total is the sum of all
+  payer rows. Use the same prefix-searchable member dropdown as transfer inputs. End that linked
+  sequence after the payers. Introduce the separate allocation block with the unlinked sentence
+  `This expense should be paid by`, styled with the same secondary treatment as other verbs. At the
+  bottom of the allocation block, remind active linked members in secondary text that additional
+  members can be added in Project settings.
+- Transfer: use warm, compact condition-builder bands instead of tall sentence cards. The first band
+  starts with searchable `[from] paid`; every band contains `[to] [amount]`. Introduce additional
+  recipients with secondary `and` text beside a faint vertical rule that connects the adjacent
+  bands. Keep the band fill and border low-contrast, removal controls quiet, and both member inputs
+  prefix-searchable. Keep the aggregate sent amount and sender's resulting balance visible below the
+  rows.
 - Settlement: use a dedicated payment-plan display rather than transfer form controls. Lead with a
   concise explanation, show present-tense `Transfer to` rows with prominent amounts, then place
   the primary confirmation, full-width secondary customization buttons, and the default-collapsed
@@ -150,7 +163,8 @@ Use the sentence-style composer pattern for new records:
   restrained success color so incoming payments remain distinct from outgoing payments. Reuse the
   positive completion treatment with member-specific wording when only the current member has a
   zero balance, and keep the full-plan control available beneath it.
-- Promise: `[debtor] should pay [creditor] [amount] for [reason]`.
+- Promise: the first band reads `[debtor] should pay [creditor] [amount]`; a linked `for` reason band
+  completes the sentence.
 
 Form rules:
 

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import type * as api from "../api";
 import { panelFrameSx } from "../components/styles";
 import { ledgerColors, ledgerFonts } from "../theme";
-import { RecordCard, RevertRecordMessage } from "./RecordCard";
+import { MinorRecordMessage, RecordCard } from "./RecordCard";
 import { groupRecordsByDay } from "./timelineGroups";
 import { timelineLayout } from "./timelineLayout";
 import {
@@ -396,8 +396,9 @@ export function RecordTimeline({
                       scrollMarginBottom: { xs: MOBILE_BOTTOM_SCROLL_SPACE, md: 28 },
                     }}
                   >
-                    {record.description.type === "revert" ? (
-                      <RevertRecordMessage
+                    {record.description.type === "revert" ||
+                    record.description.type === "deleted" ? (
+                      <MinorRecordMessage
                         project={project}
                         record={record}
                         selected={selected}

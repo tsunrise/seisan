@@ -126,6 +126,9 @@ export function recordTitle(record: ProjectRecord, members: ProjectMember[]): st
   if (description.type === "promise") {
     return promiseCardTitle(description, members);
   }
+  if (description.type === "deleted") {
+    return "Post deleted";
+  }
   return `Reverted record #${description.id}`;
 }
 
@@ -213,7 +216,7 @@ export function deriveDelta(description: RecordDescription): MoneyByMemberId {
       [description.creditorMemberId]: -description.amount,
     });
   }
-  if (description.type === "revert") {
+  if (description.type === "revert" || description.type === "deleted") {
     return {};
   }
 

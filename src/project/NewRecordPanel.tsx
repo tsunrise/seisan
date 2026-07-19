@@ -8,9 +8,10 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
-import type * as api from "../api";
+import * as api from "../api";
 import { InlineAlert } from "../components/InlineAlert";
 import { PanelFrame } from "../components/PanelFrame";
+import { useAppSnackbar } from "../hooks/useAppSnackbar";
 import { ledgerColors } from "../theme";
 import { ExpenseComposer } from "./ExpenseComposer";
 import { PromiseComposer } from "./PromiseComposer";
@@ -29,6 +30,7 @@ export function NewRecordPanel({
   onPosted: () => void;
 }) {
   const navigate = useNavigate();
+  const { showSuccess } = useAppSnackbar();
   const [search] = useSearchParams();
   const transferPrefill = transferPrefillFromSearch(search, project.members);
   const [mode, setMode] = useState<"choice" | "expense" | "transfer" | "promise">(
@@ -40,6 +42,16 @@ export function NewRecordPanel({
     if (search.size > 0) {
       navigate(`/project/${project.id}/records/new`, { replace: true });
     }
+  }
+
+  async function postRecord(input: {
+    description: api.WritableRecordDescription;
+    delta: api.MoneyByMemberId;
+  }) {
+    await api.appendRecord(project.id, input);
+    showSuccess("Record posted.");
+    onPosted();
+    navigate(`/project/${project.id}`);
   }
 
   if (!currentMember) {
@@ -56,7 +68,11 @@ export function NewRecordPanel({
         project={project}
         currentMember={currentMember}
         categories={categories}
-        onPosted={onPosted}
+        title="New group spend"
+        backTo={`/project/${project.id}/records/new`}
+        submitLabel="Post"
+        submittingLabel="Posting…"
+        onSubmit={postRecord}
         onBack={returnToChoice}
       />
     );
@@ -68,7 +84,11 @@ export function NewRecordPanel({
         project={project}
         currentMember={currentMember}
         prefill={transferPrefill}
-        onPosted={onPosted}
+        title="New transfer"
+        backTo={`/project/${project.id}/records/new`}
+        submitLabel="Post"
+        submittingLabel="Posting…"
+        onSubmit={postRecord}
         onBack={returnToChoice}
       />
     );
@@ -79,7 +99,11 @@ export function NewRecordPanel({
       <PromiseComposer
         project={project}
         currentMember={currentMember}
-        onPosted={onPosted}
+        title="New promise"
+        backTo={`/project/${project.id}/records/new`}
+        submitLabel="Post"
+        submittingLabel="Posting…"
+        onSubmit={postRecord}
         onBack={returnToChoice}
       />
     );

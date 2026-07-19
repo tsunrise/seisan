@@ -226,16 +226,20 @@ const ProjectRecord = z
       examples: [exampleCreatedAt],
     }),
     updatedAt: NonNegativeSafeInteger.optional().meta({
-      description: "Latest replacement time as Unix milliseconds; omitted until first edited.",
+      description:
+        "Latest edit time for a live record or deletion time for a tombstone, as Unix milliseconds.",
       examples: [exampleCreatedAt + 1_800_000],
     }),
     updatedByMemberId: PositiveSafeInteger.optional().meta({
-      description: "Member ID that made the latest replacement; omitted until first edited.",
+      description: "Member ID that made the latest edit or deleted the record.",
       examples: [1],
     }),
   })
   .strict()
-  .meta({ description: "A live ledger entry in a project.", examples: [exampleRecords[1]] });
+  .meta({
+    description: "A ledger entry or deleted tombstone in a project.",
+    examples: [exampleRecords[1]],
+  });
 
 const ProjectSummary = z
   .object({
@@ -480,7 +484,8 @@ const ProjectMemberPatchRequest = z
       .strict(),
   ])
   .meta({
-    description: "Rename a member or unlink its account.",
+    description:
+      "Rename a member under member-management permissions, or unlink its account as the project owner.",
     examples: [{ name: "Ren Ito" }, { email: "" }],
   });
 const ProjectJoinRequest = z

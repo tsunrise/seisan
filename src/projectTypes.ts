@@ -52,9 +52,15 @@ export type RecordDescription =
   | {
       type: "revert";
       id: number;
+    }
+  | {
+      type: "deleted";
     };
 
-export type WritableRecordDescription = Exclude<RecordDescription, { type: "revert" }>;
+export type WritableRecordDescription = Exclude<
+  RecordDescription,
+  { type: "revert" } | { type: "deleted" }
+>;
 
 export interface ProjectRecord {
   id: number;

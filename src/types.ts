@@ -14,6 +14,7 @@ export type ProjectPanel =
   | "timeline"
   | "join"
   | "newRecord"
+  | "editRecord"
   | "settle"
   | "recordDetail"
   | "settings"

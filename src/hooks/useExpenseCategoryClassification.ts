@@ -36,19 +36,26 @@ interface ActiveRequest {
   promise: Promise<ClassificationResolution>;
 }
 
-const initialSelection: CategorySelection = {
+const defaultSelection: CategorySelection = {
   source: "automatic",
   categoryId: OTHERS_CATEGORY_ID,
 };
 
-export function useExpenseCategoryClassification(input: string) {
-  const [state, setState] = useState<ExpenseCategoryClassificationState>({
+export function useExpenseCategoryClassification(input: string, initialCategoryId?: string) {
+  const initialInputRef = useRef(input);
+  const skipInitialClassificationRef = useRef(
+    initialCategoryId !== undefined && input.trim().length > 0,
+  );
+  const initialSelection: CategorySelection = initialCategoryId
+    ? { source: "manual", categoryId: initialCategoryId }
+    : defaultSelection;
+  const [state, setState] = useState<ExpenseCategoryClassificationState>(() => ({
     ...initialSelection,
-    input: "",
-    status: "empty",
+    input: initialCategoryId ? input : "",
+    status: initialCategoryId && input.trim() ? "ready" : "empty",
     candidates: [],
     fallbackReason: null,
-  });
+  }));
   const stateRef = useRef(state);
   const selectionRef = useRef<CategorySelection>(initialSelection);
   const latestInputRef = useRef(input);
@@ -257,6 +264,15 @@ export function useExpenseCategoryClassification(input: string) {
   );
 
   useLayoutEffect(() => {
+    if (
+      skipInitialClassificationRef.current &&
+      input === initialInputRef.current &&
+      stateRef.current.input === input
+    ) {
+      skipInitialClassificationRef.current = false;
+      return;
+    }
+
     clearDebounce();
     activeRequestRef.current?.controller.abort();
     activeRequestRef.current = null;
@@ -265,7 +281,7 @@ export function useExpenseCategoryClassification(input: string) {
 
     if (!input.trim()) {
       if (selectionRef.current.source === "automatic") {
-        selectionRef.current = initialSelection;
+        selectionRef.current = defaultSelection;
       }
       commitState({
         ...selectionRef.current,

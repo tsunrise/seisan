@@ -198,13 +198,21 @@ export function useProject(projectId: string, reloadKey: number): Loadable<Pagin
         return existingRecord;
       }
 
-      const recordPage = await api.getProject(projectId, { limit: 1, offset: recordId + 1 });
-      const record = recordPage.records[0];
-      if (!record || record.id !== recordId) {
-        return null;
+      let record: api.ProjectRecord;
+      try {
+        record = await api.getRecord(projectId, recordId);
+      } catch (error) {
+        if (error instanceof api.ApiError && error.status === 404) {
+          return null;
+        }
+        throw error;
       }
 
-      const nextProject = mergeProjectRecord(projectRef.current ?? recordPage, record);
+      const project = projectRef.current;
+      if (!project) {
+        return null;
+      }
+      const nextProject = mergeProjectRecord(project, record);
       projectRef.current = nextProject;
       projectPageCache.set(projectId, {
         project: nextProject,

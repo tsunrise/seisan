@@ -7,6 +7,7 @@ import {
   isCurrentClassification,
   orderedCategoryOptions,
   OTHERS_CATEGORY_ID,
+  prefixMatchingCategories,
   resolveRecordCategory,
   selectionAfterClassification,
   selectionAfterClassificationFailure,
@@ -64,6 +65,20 @@ describe("category UI helpers", () => {
 
     expect(result.suggested.map((item) => item.name)).toEqual(["Travel", "Grocery", "Restaurant"]);
     expect(result.remaining.map((item) => item.name)).toEqual(["Education", "Others"]);
+  });
+
+  it("filters category inputs by a case-insensitive name prefix", () => {
+    const categories = [
+      category("dining", "Dining Out", "restaurant"),
+      category("groceries", "Groceries", "grocery"),
+      category("drinks", "Drinks", "restaurant"),
+    ];
+
+    expect(prefixMatchingCategories(categories, "  di").map((item) => item.name)).toEqual([
+      "Dining Out",
+    ]);
+    expect(prefixMatchingCategories(categories, "DR").map((item) => item.name)).toEqual(["Drinks"]);
+    expect(prefixMatchingCategories(categories, " ")).toEqual(categories);
   });
 
   it("uses the inclusive score threshold for automatic decisions", () => {

@@ -22,7 +22,8 @@ Use this before changing project, member, record, ACL, or balance behavior.
   names or account identifiers from it.
 - Authenticated full project reads include member configs. Logged-out public-project responses omit
   config, while ordinary member responses and registry summaries never include it. The owner or the
-  account linked to a member may replace or shallow-patch that member's config.
+  account linked to a member may replace or shallow-patch that member's config. Any active linked
+  member may also write config for an unlinked active member.
 - Stored member config is parsed independently with zod. Malformed config falls back to an empty
   object for that member so one bad row cannot break project or registry reads.
 - Member-config creation is a follow-up write after project creation, joining, or placeholder-member
@@ -38,10 +39,15 @@ Use this before changing project, member, record, ACL, or balance behavior.
 - Record creation uses `POST /api/project/:id/record`. Individual live records can be read,
   replaced, or deleted through `/api/project/:id/record/:recordId`.
 - Any active linked project member may replace or delete any live record. Replacement preserves the
-  original author and creation time while recording the latest editor and edit time.
+  original author and creation time while recording the latest editor and edit time. Replacement
+  cannot change the record's expense, transfer, or promise type.
 - Replacement applies the difference between the new and stored deltas to balances. Deletion
   applies the inverse stored delta before replacing the description and delta with an internal
-  `deleted` tombstone. Tombstones remain counted but are omitted from reads.
+  `deleted` tombstone. The existing update audit fields record the deleting member and time, and
+  therefore replace any earlier edit audit metadata.
+- Tombstones remain counted, appear in record pages, and can be read individually as the synthetic
+  response-only `{ type: "deleted" }` description. Their persisted description and delta JSON stay
+  empty. Further replacement and deletion attempts treat them as missing.
 - New revert records are rejected. Stored legacy revert descriptions remain readable, but original
   records are no longer annotated with information about a later revert.
 - Transfer records accept both the legacy single-recipient `{ from, to, amount }` shape and the
@@ -75,3 +81,9 @@ Use this before changing project, member, record, ACL, or balance behavior.
 - Public projects can be read by logged-out guests.
 - Project mutations require auth.
 - Posting requires a linked active member.
+- The owner or any active linked member may create an unlinked placeholder member. Public readers,
+  ACL-only viewers, former members, and deleted members do not receive member-management access.
+- The owner may edit any active member's name and config. An active linked member may edit their own
+  linked profile and any unlinked active member, but not a different linked member.
+- Administrative unlinking and member deletion are owner-only. A linked non-owner may still unlink
+  themself through the separate Leave operation.

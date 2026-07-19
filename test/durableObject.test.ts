@@ -74,7 +74,7 @@ describe("durable objects", () => {
     await runInDurableObject(
       testEnv.PROJECT_STORE.get(testEnv.PROJECT_STORE.idFromString(cachedProject?.doId ?? "")),
       async (_instance, state) => {
-        await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(5);
+        await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(6);
         await expect(state.storage.get<boolean>("initialized")).resolves.toBe(true);
         expect(
           state.storage.sql
@@ -89,6 +89,30 @@ describe("durable objects", () => {
         expect(recordColumns).not.toContain("reverts_record_id");
       },
     );
+  });
+
+  it("clears ambiguous edit audit metadata from tombstones during migration", async () => {
+    const { env: testEnv } = makeEnv();
+    const stub = testEnv.PROJECT_STORE.getByName(`tombstone-migration-${crypto.randomUUID()}`);
+
+    await runInDurableObject(stub, async (_instance, state) => {
+      state.storage.sql.exec(
+        `INSERT INTO records
+          (id, author_member_id, description_type, description_json, delta_json, created_at,
+           updated_at, updated_by_member_id)
+         VALUES (1, 1, 'deleted', '{}', '{}', 100, 200, 2)`,
+      );
+      await state.storage.put("dbMigrationVersion", 5);
+
+      await runSqlMigrations(state, projectStoreMigrations);
+
+      expect(
+        state.storage.sql
+          .exec("SELECT updated_at, updated_by_member_id FROM records WHERE id = 1")
+          .one(),
+      ).toEqual({ updated_at: null, updated_by_member_id: null });
+      await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(6);
+    });
   });
 
   it("preserves expense and legacy revert rows when rebuilding the records table", async () => {
@@ -158,7 +182,7 @@ describe("durable objects", () => {
         .exec<SqliteCatalogRow>("SELECT name, sql FROM sqlite_master WHERE name = 'records'")
         .one().sql;
       expect(recordsSql).not.toContain("reverts_record_id");
-      await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(5);
+      await expect(state.storage.get<number>("dbMigrationVersion")).resolves.toBe(6);
     });
   });
 

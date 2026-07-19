@@ -55,6 +55,10 @@ export default function App() {
           path="/project/:projectId/records/:recordId"
           element={<ProjectPage panel="recordDetail" />}
         />
+        <Route
+          path="/project/:projectId/records/:recordId/edit"
+          element={<ProjectPage panel="editRecord" />}
+        />
         <Route path="/project/:projectId/settings" element={<ProjectPage panel="settings" />} />
         <Route
           path="/project/:projectId/settings/profile"

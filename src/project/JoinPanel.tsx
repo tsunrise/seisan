@@ -166,7 +166,12 @@ export function JoinPanel({
         </FormControl>
         <Stack spacing={1.25}>
           <Typography variant="h3">Your details</Typography>
-          <MemberConfigFields draft={memberConfig} onChange={setMemberConfig} disabled={joining} />
+          <MemberConfigFields
+            draft={memberConfig}
+            onChange={setMemberConfig}
+            isSelf
+            disabled={joining}
+          />
         </Stack>
         <Button
           variant="contained"

@@ -1814,7 +1814,7 @@ describe("project routes", () => {
     });
     expect(((await pageAcrossTombstone.json()) as ProjectResponse).records).toMatchObject([
       { id: 3 },
-      { id: 1 },
+      { id: 2, description: { type: "deleted" } },
     ]);
 
     const invalidOffset = await dispatch(`/project/${project.id}?offset=0`, testEnv, {
@@ -1851,7 +1851,142 @@ describe("project routes", () => {
     expect(duplicateJoin.status).toBe(400);
   });
 
-  it("allows owner and self to rename or unlink members", async () => {
+  it("allows active members to create and edit unlinked members", async () => {
+    const { env: testEnv } = makeEnv();
+    const owner = `member-manager-owner-${crypto.randomUUID()}@example.com`;
+    await putUserLimits(
+      testEnv,
+      owner,
+      limitsDocument({
+        "projects.maxMemberNameLength": 12,
+      }),
+    );
+    const project = await createProject(testEnv, { owner, ownerMemberName: "Alice" });
+    const bob = await createMember(testEnv, project.id, "Bob", owner);
+    await dispatch(
+      `/project/${project.id}/join`,
+      testEnv,
+      jsonBody("POST", { memberId: bob.id }, await authHeaders("bob@example.com")),
+    );
+
+    const createCarol = await dispatch(
+      `/project/${project.id}/members`,
+      testEnv,
+      jsonBody("POST", { name: "Carol" }, await authHeaders("bob@example.com")),
+    );
+    expect(createCarol.status).toBe(201);
+    const carol = ((await createCarol.json()) as { member: { id: number } }).member;
+
+    const renameCarol = await dispatch(
+      `/project/${project.id}/members/${carol.id}`,
+      testEnv,
+      jsonBody("PATCH", { name: "Caroline" }, await authHeaders("bob@example.com")),
+    );
+    expect(renameCarol.status).toBe(200);
+
+    const replaceCarolConfig = await dispatch(
+      `/project/${project.id}/members/${carol.id}/config`,
+      testEnv,
+      jsonBody(
+        "PUT",
+        { size: 2, paymentMethod: "venmo: carol" },
+        await authHeaders("bob@example.com"),
+      ),
+    );
+    expect(replaceCarolConfig.status).toBe(200);
+
+    const patchCarolConfig = await dispatch(
+      `/project/${project.id}/members/${carol.id}/config`,
+      testEnv,
+      jsonBody("PATCH", { size: 3 }, await authHeaders("bob@example.com")),
+    );
+    expect(patchCarolConfig.status).toBe(200);
+    expect(await patchCarolConfig.json()).toEqual({
+      size: 3,
+      paymentMethod: "venmo: carol",
+    });
+
+    const david = await createMember(testEnv, project.id, "David", owner);
+    await dispatch(
+      `/project/${project.id}/join`,
+      testEnv,
+      jsonBody("POST", { memberId: david.id }, await authHeaders("david@example.com")),
+    );
+    const renameLinkedMember = await dispatch(
+      `/project/${project.id}/members/${david.id}`,
+      testEnv,
+      jsonBody("PATCH", { name: "Dave" }, await authHeaders("bob@example.com")),
+    );
+    expect(renameLinkedMember.status).toBe(403);
+    const configureLinkedMember = await dispatch(
+      `/project/${project.id}/members/${david.id}/config`,
+      testEnv,
+      jsonBody("PUT", { size: 2 }, await authHeaders("bob@example.com")),
+    );
+    expect(configureLinkedMember.status).toBe(403);
+
+    const renameOverOwnerLimit = await dispatch(
+      `/project/${project.id}/members/${carol.id}`,
+      testEnv,
+      jsonBody(
+        "PATCH",
+        { name: "A name that exceeds the owner's limit" },
+        await authHeaders("bob@example.com"),
+      ),
+    );
+    expect(renameOverOwnerLimit.status).toBe(409);
+    expect(await renameOverOwnerLimit.json()).toEqual({ error: "member_limit_exceeded" });
+
+    const overOwnerNameLimit = await dispatch(
+      `/project/${project.id}/members`,
+      testEnv,
+      jsonBody(
+        "POST",
+        { name: "A name that exceeds the owner's limit" },
+        await authHeaders("bob@example.com"),
+      ),
+    );
+    expect(overOwnerNameLimit.status).toBe(409);
+    expect(await overOwnerNameLimit.json()).toEqual({ error: "member_limit_exceeded" });
+
+    const outsiderCreate = await dispatch(
+      `/project/${project.id}/members`,
+      testEnv,
+      jsonBody("POST", { name: "Eve" }, await authHeaders("viewer@example.com")),
+    );
+    expect(outsiderCreate.status).toBe(403);
+    const outsiderEdit = await dispatch(
+      `/project/${project.id}/members/${carol.id}`,
+      testEnv,
+      jsonBody("PATCH", { name: "Eve" }, await authHeaders("viewer@example.com")),
+    );
+    expect(outsiderEdit.status).toBe(403);
+
+    const unlinkBob = await dispatch(
+      `/project/${project.id}/member-links`,
+      testEnv,
+      jsonBody("DELETE", { email: "bob@example.com" }, await authHeaders(owner)),
+    );
+    expect(unlinkBob.status).toBe(204);
+    const formerMemberEdit = await dispatch(
+      `/project/${project.id}/members/${carol.id}/config`,
+      testEnv,
+      jsonBody("PATCH", { size: 4 }, await authHeaders("bob@example.com")),
+    );
+    expect(formerMemberEdit.status).toBe(403);
+
+    const projectView = await getProject(testEnv, project.id, owner);
+    expect(projectView.members.find((member) => member.id === carol.id)).toMatchObject({
+      name: "Caroline",
+      config: { size: 3, paymentMethod: "venmo: carol" },
+    });
+    expect(projectView.members.find((member) => member.id === david.id)).toMatchObject({
+      name: "David",
+      config: {},
+    });
+  });
+
+  it("keeps linked-member self edits but reserves administrative unlinking for the owner", async () => {
     const { env: testEnv } = makeEnv();
     const project = await createProject(testEnv);
     const bob = await createMember(testEnv, project.id, "Bob");
@@ -1888,12 +2023,9 @@ describe("project routes", () => {
       testEnv,
       jsonBody("PATCH", { email: "" }, await authHeaders("member@example.com")),
     );
-    expect(selfUnlink.status).toBe(200);
-    expect(await selfUnlink.json()).toEqual({
-      member: { id: bob.id, name: "Robert", deleted: false },
-    });
+    expect(selfUnlink.status).toBe(403);
 
-    const postAfterUnlink = await dispatch(
+    const postAfterBlockedUnlink = await dispatch(
       `/project/${project.id}/record`,
       testEnv,
       jsonBody(
@@ -1910,12 +2042,7 @@ describe("project routes", () => {
         await authHeaders("member@example.com"),
       ),
     );
-    expect(postAfterUnlink.status).toBe(403);
-
-    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
-    await expect(listProjectsFromRegistry(testEnv, "member@example.com")).resolves.not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ id: project.id })]),
-    );
+    expect(postAfterBlockedUnlink.status).toBe(201);
 
     const ownerRename = await dispatch(
       `/project/${project.id}/members/${bob.id}`,
@@ -1924,8 +2051,63 @@ describe("project routes", () => {
     );
     expect(ownerRename.status).toBe(200);
     expect(await ownerRename.json()).toEqual({
+      member: {
+        id: bob.id,
+        name: "Bobby",
+        deleted: false,
+        linkedEmail: "member@example.com",
+      },
+    });
+
+    const ownerUnlink = await dispatch(
+      `/project/${project.id}/members/${bob.id}`,
+      testEnv,
+      jsonBody("PATCH", { email: "" }, await authHeaders("owner@example.com")),
+    );
+    expect(ownerUnlink.status).toBe(200);
+    expect(await ownerUnlink.json()).toEqual({
       member: { id: bob.id, name: "Bobby", deleted: false },
     });
+
+    const postAfterOwnerUnlink = await dispatch(
+      `/project/${project.id}/record`,
+      testEnv,
+      jsonBody(
+        "POST",
+        appendRecordBody("Blocked after unlink"),
+        await authHeaders("member@example.com"),
+      ),
+    );
+    expect(postAfterOwnerUnlink.status).toBe(403);
+
+    expect(await runProjectSummaryAlarm(testEnv, project.id)).toBe(true);
+    await expect(listProjectsFromRegistry(testEnv, "member@example.com")).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: project.id })]),
+    );
+  });
+
+  it("keeps owner management authority independent of a linked member", async () => {
+    const { env: testEnv } = makeEnv();
+    const project = await createProject(testEnv, { ownerMemberName: "Alice" });
+    const store = await getProjectStoreStub(testEnv, project.id);
+    await runInDurableObject(store, async (_instance, state) => {
+      state.storage.sql.exec("UPDATE members SET linked_email = NULL WHERE id = 1");
+    });
+
+    const created = await dispatch(
+      `/project/${project.id}/members`,
+      testEnv,
+      jsonBody("POST", { name: "Bob" }, await authHeaders("owner@example.com")),
+    );
+    expect(created.status).toBe(201);
+    const bob = ((await created.json()) as { member: { id: number } }).member;
+
+    const configured = await dispatch(
+      `/project/${project.id}/members/${bob.id}/config`,
+      testEnv,
+      jsonBody("PUT", { size: 2 }, await authHeaders("owner@example.com")),
+    );
+    expect(configured.status).toBe(200);
   });
 
   it("replaces, shallow-patches, and clears member config without publishing it", async () => {
@@ -2057,7 +2239,7 @@ describe("project routes", () => {
     }
   });
 
-  it("requires authenticated project access to read config and owner or self access to write", async () => {
+  it("uses project read access for config reads and member-management access for writes", async () => {
     const { env: testEnv } = makeEnv();
     const project = await createProject(testEnv, { ownerMemberName: "Alice" });
     const bob = await createMember(testEnv, project.id, "Bob");
@@ -2092,6 +2274,13 @@ describe("project routes", () => {
       headers: await authHeaders("viewer@example.com"),
     });
     expect(allowedRead.status).toBe(200);
+
+    const allowedViewerWrite = await dispatch(
+      restrictedPath,
+      testEnv,
+      jsonBody("PATCH", { size: 2 }, await authHeaders("viewer@example.com")),
+    );
+    expect(allowedViewerWrite.status).toBe(403);
 
     const deniedRead = await dispatch(restrictedPath, testEnv, {
       headers: await authHeaders("outsider@example.com"),
@@ -2546,9 +2735,27 @@ describe("project routes", () => {
       headers: await authHeaders("bob@example.com"),
     });
     expect(deleted.status).toBe(204);
-    expect((await getProject(testEnv, project.id)).balance).toEqual({});
-    expect((await getProject(testEnv, project.id)).records).toEqual([]);
-    expect((await dispatch(`/project/${project.id}/record/1`, testEnv)).status).toBe(404);
+    const projectWithTombstone = await getProject(testEnv, project.id);
+    expect(projectWithTombstone.balance).toEqual({});
+    expect(projectWithTombstone.records).toMatchObject([
+      {
+        id: 1,
+        authorMemberId: 1,
+        delta: {},
+        description: { type: "deleted" },
+        createdAt: originalRecord.createdAt,
+        updatedAt: expect.any(Number) as number,
+        updatedByMemberId: bob.id,
+      },
+    ]);
+    const tombstoneRead = await dispatch(`/project/${project.id}/record/1`, testEnv);
+    expect(tombstoneRead.status).toBe(200);
+    expect(await tombstoneRead.json()).toMatchObject({
+      id: 1,
+      description: { type: "deleted" },
+      delta: {},
+      updatedByMemberId: bob.id,
+    });
     expect(
       (
         await dispatch(`/project/${project.id}/record/1`, testEnv, {
@@ -2565,13 +2772,20 @@ describe("project routes", () => {
             description_type: string;
             description_json: string;
             delta_json: string;
+            updated_at: number;
+            updated_by_member_id: number;
           } & Record<string, SqlStorageValue>
-        >("SELECT description_type, description_json, delta_json FROM records WHERE id = 1")
+        >(
+          `SELECT description_type, description_json, delta_json, updated_at,
+                  updated_by_member_id FROM records WHERE id = 1`,
+        )
         .one();
       expect(row).toEqual({
         description_type: "deleted",
         description_json: "{}",
         delta_json: "{}",
+        updated_at: expect.any(Number) as number,
+        updated_by_member_id: bob.id,
       });
       expect(
         state.storage.sql
@@ -2599,7 +2813,10 @@ describe("project routes", () => {
       jsonBody("POST", appendRecordBody("Replacement history"), await authHeaders()),
     );
     expect(await next.json()).toEqual({ id: 2 });
-    expect((await getProject(testEnv, project.id)).records).toMatchObject([{ id: 2 }]);
+    expect((await getProject(testEnv, project.id)).records).toMatchObject([
+      { id: 2 },
+      { id: 1, description: { type: "deleted" } },
+    ]);
     await runInDurableObject(stub, async (_instance, state) => {
       expect(state.storage.sql.exec("SELECT id FROM records ORDER BY id").toArray()).toEqual([
         { id: 1 },
@@ -2695,6 +2912,21 @@ describe("project routes", () => {
     );
     expect(overLimit.status).toBe(409);
     expect(await overLimit.json()).toEqual({ error: "money_limit_exceeded" });
+
+    const typeMismatch = await dispatch(
+      `/project/${project.id}/record/1`,
+      testEnv,
+      jsonBody(
+        "PUT",
+        {
+          delta: { "1": -500, "2": 500 },
+          description: { type: "transfer", from: 1, to: 2, amount: 500 },
+        },
+        await authHeaders(),
+      ),
+    );
+    expect(typeMismatch.status).toBe(409);
+    expect(await typeMismatch.json()).toEqual({ error: "record_type_mismatch" });
     expect(await storageSnapshot()).toEqual(before);
   });
 

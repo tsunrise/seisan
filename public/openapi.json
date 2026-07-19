@@ -1838,9 +1838,23 @@
                                 "description": "A deprecated legacy record that reverses an earlier project record.",
                                 "deprecated": true,
                                 "examples": [{ "type": "revert", "id": 1 }]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "deleted",
+                                    "description": "Deleted record discriminator."
+                                  }
+                                },
+                                "required": ["type"],
+                                "additionalProperties": false,
+                                "description": "A response-only tombstone for a deleted project record.",
+                                "examples": [{ "type": "deleted" }]
                               }
                             ],
-                            "description": "Stored details for an expense, transfer, promise, or deprecated legacy revert record."
+                            "description": "Details for an expense, transfer, promise, deprecated legacy revert, or deleted record."
                           },
                           "createdAt": {
                             "type": "integer",
@@ -1850,14 +1864,14 @@
                             "examples": [1767225600000]
                           },
                           "updatedAt": {
-                            "description": "Latest replacement time as Unix milliseconds; omitted until first edited.",
+                            "description": "Latest edit time for a live record or deletion time for a tombstone, as Unix milliseconds.",
                             "examples": [1767227400000],
                             "type": "integer",
                             "minimum": 0,
                             "maximum": 9007199254740991
                           },
                           "updatedByMemberId": {
-                            "description": "Member ID that made the latest replacement; omitted until first edited.",
+                            "description": "Member ID that made the latest edit or deleted the record.",
                             "examples": [1],
                             "type": "integer",
                             "exclusiveMinimum": 0,
@@ -1866,7 +1880,7 @@
                         },
                         "required": ["id", "authorMemberId", "delta", "description", "createdAt"],
                         "additionalProperties": false,
-                        "description": "A live ledger entry in a project.",
+                        "description": "A ledger entry or deleted tombstone in a project.",
                         "examples": [
                           {
                             "id": 2,
@@ -3203,7 +3217,7 @@
         "operationId": "postApiProjectByIdMembers",
         "tags": ["Project Members"],
         "summary": "Create a project member",
-        "description": "Creates an unlinked participant in a project without requiring that person to have a Seisan account.",
+        "description": "Allows the project owner or an active linked member to create an unlinked participant without requiring that person to have a Seisan account.",
         "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
@@ -3776,7 +3790,7 @@
         "operationId": "postApiProjectByIdLeave",
         "tags": ["Project Members"],
         "summary": "Leave a project and unlink the current account from its member",
-        "description": "Unlinks the authenticated account from its current project member while preserving ledger history.",
+        "description": "Allows a linked non-owner to unlink their own account from its current project member while preserving ledger history.",
         "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
@@ -3959,7 +3973,7 @@
         "operationId": "deleteApiProjectByIdMemberLinks",
         "tags": ["Project Members"],
         "summary": "Unlink an email from a project member",
-        "description": "Removes an account link from a project member while retaining the member and historical records.",
+        "description": "Allows the project owner to remove another account's link from a project member while retaining the member and historical records.",
         "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
@@ -4199,7 +4213,7 @@
         "operationId": "patchApiProjectByIdMembersByMemberId",
         "tags": ["Project Members"],
         "summary": "Patch a project member",
-        "description": "Renames a project member or unlinks the member's currently linked account.",
+        "description": "Renames a member when the caller is the owner, that linked member, or an active linked member editing an unlinked participant. Unlinking a linked account is owner-only.",
         "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
@@ -4254,7 +4268,7 @@
                     "additionalProperties": false
                   }
                 ],
-                "description": "Rename a member or unlink its account.",
+                "description": "Rename a member under member-management permissions, or unlink its account as the project owner.",
                 "examples": [{ "name": "Ren Ito" }, { "email": "" }]
               },
               "example": { "name": "Ren Ito" }
@@ -4514,7 +4528,7 @@
         "operationId": "deleteApiProjectByIdMembersByMemberId",
         "tags": ["Project Members"],
         "summary": "Soft-delete a project member",
-        "description": "Marks an unused project member as deleted while preserving any historical references.",
+        "description": "Allows the project owner to mark an unused project member as deleted while preserving historical references.",
         "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
@@ -4889,7 +4903,7 @@
         "operationId": "putApiProjectByIdMembersByMemberIdConfig",
         "tags": ["Project Members"],
         "summary": "Replace a project member's config",
-        "description": "Replaces all optional metadata for a project member. An empty object clears the config.",
+        "description": "Replaces all optional metadata when the caller is the owner, that linked member, or an active linked member editing an unlinked participant. An empty object clears the config.",
         "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
@@ -5137,7 +5151,7 @@
         "operationId": "patchApiProjectByIdMembersByMemberIdConfig",
         "tags": ["Project Members"],
         "summary": "Patch a project member's config",
-        "description": "Shallow-merges optional member metadata. A null field removes that field from the config.",
+        "description": "Shallow-merges optional metadata when the caller is the owner, that linked member, or an active linked member editing an unlinked participant. A null field removes that field.",
         "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
@@ -5389,7 +5403,7 @@
         "operationId": "getApiProjectByIdRecordByRecordId",
         "tags": ["Project Records"],
         "summary": "Get a project record",
-        "description": "Returns one live project record. Public projects may be read without authentication; deleted records are treated as missing.",
+        "description": "Returns one project record, including response-only deleted tombstones. Public projects may be read without authentication.",
         "security": [{}, { "apiKeyBearer": [] }],
         "parameters": [
           {
@@ -5688,9 +5702,23 @@
                           "description": "A deprecated legacy record that reverses an earlier project record.",
                           "deprecated": true,
                           "examples": [{ "type": "revert", "id": 1 }]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "deleted",
+                              "description": "Deleted record discriminator."
+                            }
+                          },
+                          "required": ["type"],
+                          "additionalProperties": false,
+                          "description": "A response-only tombstone for a deleted project record.",
+                          "examples": [{ "type": "deleted" }]
                         }
                       ],
-                      "description": "Stored details for an expense, transfer, promise, or deprecated legacy revert record."
+                      "description": "Details for an expense, transfer, promise, deprecated legacy revert, or deleted record."
                     },
                     "createdAt": {
                       "type": "integer",
@@ -5700,14 +5728,14 @@
                       "examples": [1767225600000]
                     },
                     "updatedAt": {
-                      "description": "Latest replacement time as Unix milliseconds; omitted until first edited.",
+                      "description": "Latest edit time for a live record or deletion time for a tombstone, as Unix milliseconds.",
                       "examples": [1767227400000],
                       "type": "integer",
                       "minimum": 0,
                       "maximum": 9007199254740991
                     },
                     "updatedByMemberId": {
-                      "description": "Member ID that made the latest replacement; omitted until first edited.",
+                      "description": "Member ID that made the latest edit or deleted the record.",
                       "examples": [1],
                       "type": "integer",
                       "exclusiveMinimum": 0,
@@ -5716,7 +5744,7 @@
                   },
                   "required": ["id", "authorMemberId", "delta", "description", "createdAt"],
                   "additionalProperties": false,
-                  "description": "A live ledger entry in a project.",
+                  "description": "A ledger entry or deleted tombstone in a project.",
                   "examples": [
                     {
                       "id": 2,
@@ -6414,9 +6442,23 @@
                           "description": "A deprecated legacy record that reverses an earlier project record.",
                           "deprecated": true,
                           "examples": [{ "type": "revert", "id": 1 }]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "deleted",
+                              "description": "Deleted record discriminator."
+                            }
+                          },
+                          "required": ["type"],
+                          "additionalProperties": false,
+                          "description": "A response-only tombstone for a deleted project record.",
+                          "examples": [{ "type": "deleted" }]
                         }
                       ],
-                      "description": "Stored details for an expense, transfer, promise, or deprecated legacy revert record."
+                      "description": "Details for an expense, transfer, promise, deprecated legacy revert, or deleted record."
                     },
                     "createdAt": {
                       "type": "integer",
@@ -6426,14 +6468,14 @@
                       "examples": [1767225600000]
                     },
                     "updatedAt": {
-                      "description": "Latest replacement time as Unix milliseconds; omitted until first edited.",
+                      "description": "Latest edit time for a live record or deletion time for a tombstone, as Unix milliseconds.",
                       "examples": [1767227400000],
                       "type": "integer",
                       "minimum": 0,
                       "maximum": 9007199254740991
                     },
                     "updatedByMemberId": {
-                      "description": "Member ID that made the latest replacement; omitted until first edited.",
+                      "description": "Member ID that made the latest edit or deleted the record.",
                       "examples": [1],
                       "type": "integer",
                       "exclusiveMinimum": 0,
@@ -6442,7 +6484,7 @@
                   },
                   "required": ["id", "authorMemberId", "delta", "description", "createdAt"],
                   "additionalProperties": false,
-                  "description": "A live ledger entry in a project.",
+                  "description": "A ledger entry or deleted tombstone in a project.",
                   "examples": [
                     {
                       "id": 2,
@@ -6665,7 +6707,7 @@
         "operationId": "deleteApiProjectByIdRecordByRecordId",
         "tags": ["Project Records"],
         "summary": "Delete a project record",
-        "description": "Reverses a live record's balance effect and replaces its stored description and delta with an internal tombstone. Deleted records are treated as missing.",
+        "description": "Reverses a live record's balance effect and replaces its stored description and delta with a readable tombstone. Further mutations treat the deleted record as missing.",
         "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {
@@ -6855,7 +6897,7 @@
         "operationId": "postApiProjectByIdRecord",
         "tags": ["Project Records"],
         "summary": "Append a record to a project",
-        "description": "Appends an immutable expense, transfer, promise, or revert entry. The supplied cent-denominated delta must match the server-derived effect and sum to zero. A transfer may set settle=true to best-effort advance an already-viewed settlement plan when the caller confirms their complete cached sender batch; the flag is not persisted in the record.",
+        "description": "Creates an expense, transfer, or promise record. The supplied cent-denominated delta must match the server-derived effect and sum to zero. A transfer may set settle=true to best-effort advance an already-viewed settlement plan when the caller confirms their complete cached sender batch; the flag is not persisted in the record.",
         "security": [{ "apiKeyBearer": [] }],
         "parameters": [
           {

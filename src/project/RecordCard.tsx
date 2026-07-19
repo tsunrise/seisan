@@ -11,6 +11,7 @@ import { formatRelativeTime, isMultiRecipientTransfer, memberName, recordTitle }
 import { ledgerColors } from "../theme";
 import { timelineLayout } from "./timelineLayout";
 import { recordActorMemberId } from "./recordActor";
+import { deletedRecordMessage, recordEditMetadata } from "./recordEditing";
 
 export function RecordCard({
   project,
@@ -35,10 +36,14 @@ export function RecordCard({
   const hasViewerAmount = viewerDelta !== null && viewerDelta !== 0;
   const compact = !hasViewerAmount;
   const relativeTime = formatRelativeTime(record.createdAt);
-  const metadataText =
+  const createdMetadataText =
     record.authorMemberId === actorMemberId
       ? relativeTime
       : `${relativeTime}, posted by ${author?.name ?? "Unknown member"}`;
+  const editMetadata = recordEditMetadata(record, project.members);
+  const metadataText = editMetadata
+    ? `${createdMetadataText} · ${editMetadata}`
+    : createdMetadataText;
   const expenseCategory =
     record.description.type === "expense"
       ? resolveRecordCategory(categories, record.description.categoryId)
@@ -211,7 +216,7 @@ export function RecordCard({
   );
 }
 
-export function RevertRecordMessage({
+export function MinorRecordMessage({
   project,
   record,
   selected = false,
@@ -222,12 +227,15 @@ export function RevertRecordMessage({
   selected?: boolean;
   onOpen?: (recordId: number) => void;
 }) {
-  if (record.description.type !== "revert") {
+  if (record.description.type !== "revert" && record.description.type !== "deleted") {
     return null;
   }
 
-  const authorName = memberName(project.members, record.authorMemberId);
   const metadataText = formatRelativeTime(record.createdAt);
+  const message =
+    record.description.type === "revert"
+      ? `${memberName(project.members, record.authorMemberId)} reverted record #${record.description.id}`
+      : deletedRecordMessage(record, project.members);
 
   return (
     <TimelineSystemEventShell selected={selected}>
@@ -306,7 +314,7 @@ export function RevertRecordMessage({
               wordBreak: "break-word",
             }}
           >
-            {authorName} reverted record #{record.description.id}
+            {message}
           </Typography>
           <Typography
             sx={{

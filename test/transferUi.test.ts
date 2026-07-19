@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { ProjectMember, TransferBatch } from "../src/projectTypes";
+import { prefixMatchingMembers } from "../src/project/memberSearch";
 import {
   availableDestinationMembers,
   parseTransferDestinations,
-  prefixMatchingMembers,
   transferBatchTotal,
   transferPrefillFromSearch,
   transferPrefillSearch,

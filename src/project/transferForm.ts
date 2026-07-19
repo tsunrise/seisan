@@ -1,4 +1,9 @@
-import type { ProjectMember, TransferBatch, TransferDestination } from "../projectTypes";
+import type {
+  ProjectMember,
+  TransferBatch,
+  TransferDestination,
+  WritableRecordDescription,
+} from "../projectTypes";
 import { parseCents } from "../domain";
 
 export interface TransferDestinationDraft {
@@ -13,11 +18,22 @@ export interface TransferPrefill {
   amount: string;
 }
 
-export function prefixMatchingMembers(members: ProjectMember[], input: string): ProjectMember[] {
-  const prefix = input.trim().toLocaleLowerCase();
-  return prefix.length === 0
-    ? members
-    : members.filter((member) => member.name.toLocaleLowerCase().startsWith(prefix));
+export function transferDraftFromDescription(
+  description: Extract<WritableRecordDescription, { type: "transfer" }>,
+): { sourceId: number; destinations: TransferDestinationDraft[] } {
+  const sourceId = "from" in description ? description.from : description.src;
+  const destinations =
+    "from" in description
+      ? [{ id: description.to, amount: description.amount }]
+      : description.dests;
+  return {
+    sourceId,
+    destinations: destinations.map((destination, index) => ({
+      key: index,
+      memberId: destination.id,
+      amount: transferAmountInput(destination.amount),
+    })),
+  };
 }
 
 export function availableDestinationMembers(

@@ -90,7 +90,7 @@ export function CreateProjectPage() {
                 value={ownerMemberName}
                 onChange={(event) => setOwnerMemberName(event.target.value)}
               />
-              <MemberConfigFields draft={memberConfig} onChange={setMemberConfig} />
+              <MemberConfigFields draft={memberConfig} onChange={setMemberConfig} isSelf />
             </Stack>
             <Button type="submit" variant="contained" startIcon={<AddIcon />} disabled={creating}>
               {creating ? "Creating…" : "Create"}
