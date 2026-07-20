@@ -1,2 +1,4 @@
 User-agent: *
 Allow: /
+
+Sitemap: https://seisan.waga.me/sitemap.xml

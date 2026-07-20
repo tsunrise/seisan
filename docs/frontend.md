@@ -150,6 +150,7 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 - The logo asset is `public/seisan-logo.svg`, and `index.html` uses it as the favicon.
 - Set page titles with `useDocumentTitle` for routes that should own `document.title`.
 - Existing title-setting routes include `/projects`, `/account`, `/account/api-keys`, `/api-docs`, project routes, `/login`, `/privacy`, and `/admin/*`; root redirects to `/projects`.
+- `public/sitemap.xml` lists only stable public pages on the production origin. Keep authenticated, admin, and dynamic project URLs out of it, and keep its absolute URL advertised in `public/robots.txt`.
 - Avoid in-app explanatory text about how the UI works unless it is actual product copy.
 - For SEO-facing shell content, update `index.html` metadata rather than adding marketing-only UI to app routes.
 
