@@ -255,7 +255,7 @@ export function TransferComposer({
             Add recipient
           </Button>
         </Stack>
-        <TransferTotals project={project} sourceId={from} total={total} />
+        <TransferTotals total={total} />
         <MoneyTable title="Balance change" project={project} map={delta} />
         {error ? <InlineAlert>{error}</InlineAlert> : null}
         <Button type="submit" variant="contained" startIcon={<AddIcon />} disabled={submitting}>

@@ -98,7 +98,7 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
   prefix dropdown. Present the transfer as warm, compact condition-builder bands: the first starts
   with `[from] paid`, each band contains `[to] [amount]`, and an `and` connector introduces every
   additional recipient. Allow only one unfinished recipient row at a time. Show the aggregate sent
-  amount and the sender's resulting balance alongside the delta preview.
+  amount alongside the delta preview.
 - Expense, transfer, and promise composers share the linked-block surface, connector, and secondary
   verb primitives from `src/project/LinkedBlockForm.tsx` while retaining type-specific fields and
   validation.

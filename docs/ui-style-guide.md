@@ -150,8 +150,7 @@ fields, faint vertical rules connect repeated clauses, and verbs/connectors use 
   starts with searchable `[from] paid`; every band contains `[to] [amount]`. Introduce additional
   recipients with secondary `and` text beside a faint vertical rule that connects the adjacent
   bands. Keep the band fill and border low-contrast, removal controls quiet, and both member inputs
-  prefix-searchable. Keep the aggregate sent amount and sender's resulting balance visible below the
-  rows.
+  prefix-searchable. Keep the aggregate sent amount visible below the rows.
 - Settlement: use a dedicated payment-plan display rather than transfer form controls. Lead with a
   concise explanation, show present-tense `Transfer to` rows with prominent amounts, then place
   the primary confirmation, full-width secondary customization buttons, and the default-collapsed
