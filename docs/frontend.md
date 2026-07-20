@@ -39,8 +39,10 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
   and manage restricted-project emails afterward from Access control.
 - Project creation, joining, and placeholder-member creation save config with a follow-up member
   config request using the member ID returned by the first mutation.
-- Equal expense splits weight selected members by `config.size ?? 1`. Ratio splits show the same
-  value as each member's editable default, while custom splits remain explicit amounts.
+- Equal expense splits weight selected members by `config.size ?? 1`. Allocate indivisible cents
+  with the largest-remainder method and break equal remainders by member ID so no final member
+  absorbs the accumulated rounding difference. Ratio splits show the same value as each member's
+  editable default, while custom splits remain explicit amounts.
 - Show payment methods where someone is deciding how to pay: member lists, selected recipients in
   the transfer composer, and outgoing settlement payments.
 - Show represented group size as `+N` beside member names in compact balance lists, member settings

@@ -279,25 +279,76 @@ export function allocateRatio(
   total: number,
   ratios: Array<{ memberId: number; ratio: number }>,
 ): MoneyByMemberId {
-  const activeRatios = ratios.filter((ratio) => ratio.ratio > 0);
-  const totalRatio = activeRatios.reduce((sum, ratio) => sum + ratio.ratio, 0);
-  if (totalRatio <= 0) {
+  if (!Number.isSafeInteger(total) || total <= 0) {
     return {};
   }
 
-  const sorted = [...activeRatios].sort((left, right) => left.memberId - right.memberId);
+  const parsedRatios = ratios.flatMap(({ memberId, ratio }) => {
+    const parsed = parsePositiveDecimalRatio(ratio);
+    return Number.isSafeInteger(memberId) && memberId > 0 && parsed
+      ? [{ memberId, ...parsed }]
+      : [];
+  });
+  if (parsedRatios.length === 0) {
+    return {};
+  }
+
+  const commonExponent = parsedRatios.reduce(
+    (lowest, ratio) => Math.min(lowest, ratio.exponent),
+    parsedRatios[0].exponent,
+  );
+  const weightsByMemberId = new Map<number, bigint>();
+  for (const ratio of parsedRatios) {
+    const weight = ratio.coefficient * 10n ** BigInt(ratio.exponent - commonExponent);
+    weightsByMemberId.set(ratio.memberId, (weightsByMemberId.get(ratio.memberId) ?? 0n) + weight);
+  }
+
+  const weights = [...weightsByMemberId]
+    .map(([memberId, weight]) => ({ memberId, weight }))
+    .sort((left, right) => left.memberId - right.memberId);
+  const totalWeight = weights.reduce((sum, ratio) => sum + ratio.weight, 0n);
+  const totalAsBigInt = BigInt(total);
+  const shares = weights.map(({ memberId, weight }) => {
+    const numerator = totalAsBigInt * weight;
+    return {
+      memberId,
+      amount: Number(numerator / totalWeight),
+      remainder: numerator % totalWeight,
+    };
+  });
+
+  const assigned = shares.reduce((sum, share) => sum + share.amount, 0);
+  const remaining = total - assigned;
+  const remainderOrder = [...shares].sort((left, right) => {
+    if (left.remainder !== right.remainder) {
+      return left.remainder > right.remainder ? -1 : 1;
+    }
+    return left.memberId - right.memberId;
+  });
+  for (let index = 0; index < remaining; index += 1) {
+    remainderOrder[index].amount += 1;
+  }
+
   const allocation: MoneyByMemberId = {};
-  let assigned = 0;
-  for (let index = 0; index < sorted.length; index += 1) {
-    const ratio = sorted[index];
-    const amount =
-      index === sorted.length - 1
-        ? total - assigned
-        : Math.floor((total * ratio.ratio) / totalRatio);
-    allocation[String(ratio.memberId)] = amount;
-    assigned += amount;
+  for (const share of shares) {
+    allocation[String(share.memberId)] = share.amount;
   }
   return normalizeMoneyMap(allocation);
+}
+
+function parsePositiveDecimalRatio(
+  ratio: number,
+): { coefficient: bigint; exponent: number } | null {
+  if (!Number.isFinite(ratio) || ratio <= 0) {
+    return null;
+  }
+
+  const [mantissa, scientificExponent = "0"] = ratio.toString().split("e");
+  const [whole, fraction = ""] = mantissa.split(".");
+  return {
+    coefficient: BigInt(`${whole}${fraction}`),
+    exponent: Number(scientificExponent) - fraction.length,
+  };
 }
 
 function promiseTitle(
