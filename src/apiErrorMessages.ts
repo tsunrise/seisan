@@ -1,4 +1,4 @@
-import { ApiError } from "./api";
+import { ApiError } from "./apiError";
 
 const unknownApiErrorMessage = "Something went wrong. Try again later.";
 const networkErrorMessage = "Could not reach Seisan. Check your connection and try again.";
@@ -6,6 +6,7 @@ const networkErrorMessage = "Could not reach Seisan. Check your connection and t
 const defaultApiErrorMessages: Record<string, string> = {
   unauthorized: "Please sign in again.",
   forbidden: "You do not have access to do that.",
+  email_not_supported: "This email is not supported.",
   posting_blocked: "Your account is blocked from posting records.",
   not_found: "That item could not be found.",
   invalid_request: "Check the details and try again.",
@@ -31,6 +32,11 @@ const defaultApiErrorMessages: Record<string, string> = {
 export function getApiErrorMessage(error: unknown): string {
   if (!(error instanceof ApiError)) {
     return networkErrorMessage;
+  }
+
+  const blockedEmailReason = error.reason?.trim();
+  if (error.code === "email_not_supported" && blockedEmailReason) {
+    return `${defaultApiErrorMessages.email_not_supported} ${blockedEmailReason}`;
   }
 
   const keyedCode = apiErrorMessageKey(error);

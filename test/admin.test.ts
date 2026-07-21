@@ -2,7 +2,9 @@ import * as jose from "jose";
 import { runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { BLOCKED_EMAILS_CONFIG_KEY } from "../worker/blockedEmails";
 import { normalizeEmail } from "../worker/email";
+import { GLOBAL_CONFIG_STORE_NAME } from "../worker/globalConfig";
 import {
   BUILTIN_DEFAULT_LIMITS,
   LIMITS_STORE_NAME,
@@ -79,6 +81,127 @@ describe("admin routes", () => {
     await expect(
       testEnv.CONFIGS.get(LimitsKvStore.userKey(normalizedUserEmail), "json"),
     ).resolves.toEqual(userLimits);
+  });
+
+  it("manages and tests blocked email patterns through local admin endpoints", async () => {
+    const { env: testEnv } = makeEnv();
+
+    const missing = await adminDispatch("/blocked_emails", testEnv);
+    expect(missing.status).toBe(200);
+    expect(await missing.json()).toEqual({ version: 1, patterns: [] });
+
+    const invalidPattern = await adminDispatch(
+      "/blocked_emails",
+      testEnv,
+      jsonBody("PUT", { version: 1, patterns: [{ pattern: "[" }] }),
+    );
+    expect(invalidPattern.status).toBe(400);
+    expect(await invalidPattern.json()).toEqual({ error: "invalid_request" });
+
+    const invalidReason = await adminDispatch(
+      "/blocked_emails",
+      testEnv,
+      jsonBody("PUT", {
+        version: 1,
+        patterns: [{ pattern: "@example\\.com$", reason: "first\nsecond" }],
+      }),
+    );
+    expect(invalidReason.status).toBe(400);
+    expect(await invalidReason.json()).toEqual({ error: "invalid_request" });
+
+    const legacyDocument = await adminDispatch(
+      "/blocked_emails",
+      testEnv,
+      jsonBody("PUT", { version: 1, patterns: ["@example\\.com$"] }),
+    );
+    expect(legacyDocument.status).toBe(400);
+    expect(await legacyDocument.json()).toEqual({ error: "invalid_request" });
+
+    const document = {
+      version: 1 as const,
+      patterns: [
+        { pattern: "@example\\.com$", reason: "Please use your organization email." },
+        { pattern: "^blocked@" },
+      ],
+    };
+    const put = await adminDispatch("/blocked_emails", testEnv, jsonBody("PUT", document));
+    expect(put.status).toBe(204);
+
+    const get = await adminDispatch("/blocked_emails", testEnv);
+    expect(get.status).toBe(200);
+    expect(await get.json()).toEqual(document);
+
+    const blocked = await adminDispatch(
+      "/blocked_emails/test",
+      testEnv,
+      jsonBody("POST", { email: "USER@EXAMPLE.COM" }),
+    );
+    expect(blocked.status).toBe(200);
+    expect(await blocked.json()).toEqual({
+      email: "user@example.com",
+      blocked: true,
+      matchedPattern: "@example\\.com$",
+      reason: "Please use your organization email.",
+    });
+
+    const blockedWithoutReason = await adminDispatch(
+      "/blocked_emails/test",
+      testEnv,
+      jsonBody("POST", { email: "BLOCKED@ELSEWHERE.TEST" }),
+    );
+    expect(blockedWithoutReason.status).toBe(200);
+    expect(await blockedWithoutReason.json()).toEqual({
+      email: "blocked@elsewhere.test",
+      blocked: true,
+      matchedPattern: "^blocked@",
+    });
+
+    const supported = await adminDispatch(
+      "/blocked_emails/test",
+      testEnv,
+      jsonBody("POST", { email: "user@elsewhere.test" }),
+    );
+    expect(supported.status).toBe(200);
+    expect(await supported.json()).toEqual({
+      email: "user@elsewhere.test",
+      blocked: false,
+      matchedPattern: null,
+    });
+
+    const invalidEmail = await adminDispatch(
+      "/blocked_emails/test",
+      testEnv,
+      jsonBody("POST", { email: "not-an-email" }),
+    );
+    expect(invalidEmail.status).toBe(400);
+
+    await expect(testEnv.PUBLISHED_GLOBAL_CONFIG.get(BLOCKED_EMAILS_CONFIG_KEY)).resolves.toBe(
+      JSON.stringify(document),
+    );
+  });
+
+  it("reports unreadable authoritative blocked email configuration", async () => {
+    const { env: testEnv } = makeEnv();
+    const stub = testEnv.GLOBAL_CONFIG.getByName(GLOBAL_CONFIG_STORE_NAME);
+    await stub.getBlockedEmails();
+    await runInDurableObject(stub, async (_instance, state) => {
+      state.storage.sql.exec(
+        `INSERT INTO global_config (key, value)
+         VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        BLOCKED_EMAILS_CONFIG_KEY,
+        "{",
+      );
+    });
+
+    const get = await adminDispatch("/blocked_emails", testEnv);
+    expect(get.status).toBe(500);
+    const test = await adminDispatch(
+      "/blocked_emails/test",
+      testEnv,
+      jsonBody("POST", { email: "user@example.com" }),
+    );
+    expect(test.status).toBe(500);
   });
 
   it("serves admin limit built-ins and schema metadata", async () => {

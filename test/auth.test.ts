@@ -6,6 +6,7 @@ import {
 } from "cloudflare:test";
 import { describe, expect, it, vi } from "vitest";
 
+import { BlockedEmailsDocumentCodec, type BlockedEmailsDocument } from "../worker/blockedEmails";
 import {
   LOGIN_CODE_TTL_MS,
   LOGIN_RESEND_COOLDOWN_MS,
@@ -50,7 +51,7 @@ function emailWithLength(length: number): string {
   return `${"a".repeat(length - suffix.length)}${suffix}`;
 }
 
-function makeEnv(turnstileSuccess = true): TestEnv {
+function makeEnv(turnstileSuccess = true, overrides: Partial<Env> = {}): TestEnv {
   const sentEmails: TestEnv["sentEmails"] = [];
   const send = vi.fn(async (message: TestEnv["sentEmails"][number]) => {
     sentEmails.push(message);
@@ -73,6 +74,7 @@ function makeEnv(turnstileSuccess = true): TestEnv {
       LOGIN_EMAIL_FROM,
       TURNSTILE_SECRET_KEY,
       SEND_EMAIL: { send } as unknown as SendEmail,
+      ...overrides,
     } as unknown as Env,
     sentEmails,
     turnstileFetch,
@@ -257,6 +259,179 @@ describe("auth worker", () => {
     expect(sentEmails).toHaveLength(1);
     expect(sentEmails[0].to).toBe(email);
     expect(turnstileFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects blocked login attempts after Turnstile without storing or sending", async () => {
+    const email = uniqueEmail();
+    const {
+      env: testEnv,
+      sentEmails,
+      turnstileFetch,
+    } = makeEnv(true, {
+      PUBLISHED_GLOBAL_CONFIG: publishedBlockedEmails({
+        version: 1,
+        patterns: [{ pattern: "@example\\.com$", reason: "Please use your organization email." }],
+      }),
+    });
+
+    const response = await dispatch("/login/attempt", testEnv, jsonPost(loginAttemptBody(email)));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "email_not_supported",
+      reason: "Please use your organization email.",
+    });
+    expect(turnstileFetch).toHaveBeenCalledTimes(1);
+    expect(sentEmails).toHaveLength(0);
+
+    const emailHash = await sha256Hex(email);
+    await runInDurableObject(
+      testEnv.LOGIN_ATTEMPT_STORE.getByName(emailHash),
+      async (_instance, state) => {
+        expect(
+          state.storage.sql
+            .exec("SELECT email_hash FROM login_attempts WHERE email_hash = ?", emailHash)
+            .toArray(),
+        ).toHaveLength(0);
+      },
+    );
+  });
+
+  it("blocks verification when an email is blocked after its code was issued", async () => {
+    const email = uniqueEmail();
+    const issued = makeEnv();
+    const attemptResponse = await dispatch(
+      "/login/attempt",
+      issued.env,
+      jsonPost(loginAttemptBody(email)),
+    );
+    const attemptId = await readLoginAttemptId(attemptResponse);
+    const code = /\b(\d{6})\b/u.exec(issued.sentEmails[0].text ?? "")?.[1];
+    expect(code).toBeDefined();
+
+    const blockedEnv = {
+      ...issued.env,
+      PUBLISHED_GLOBAL_CONFIG: publishedBlockedEmails({
+        version: 1,
+        patterns: [{ pattern: "@example\\.com$", reason: "Use a supported domain." }],
+      }),
+    } as Env;
+    const response = await dispatch(
+      "/login/verify",
+      blockedEnv,
+      jsonPost(loginVerifyBody(email, code ?? "", attemptId)),
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "email_not_supported",
+      reason: "Use a supported domain.",
+    });
+    expect(response.headers.get("set-cookie")).toBeNull();
+
+    const emailHash = await sha256Hex(email);
+    await runInDurableObject(
+      issued.env.LOGIN_ATTEMPT_STORE.getByName(emailHash),
+      async (_instance, state) => {
+        expect(
+          state.storage.sql
+            .exec("SELECT email_hash FROM login_attempts WHERE email_hash = ?", emailHash)
+            .toArray(),
+        ).toHaveLength(1);
+      },
+    );
+  });
+
+  it("enforces blocked email policy in local fixed-code login", async () => {
+    const email = uniqueEmail();
+    const { env: testEnv, sentEmails } = makeEnv(true, {
+      LOCAL_DEV_LOGIN_CODE: "123456",
+      PUBLISHED_GLOBAL_CONFIG: publishedBlockedEmails({
+        version: 1,
+        patterns: [{ pattern: "@example\\.com$", reason: "Local policy reason." }],
+      }),
+    });
+
+    const attempt = await dispatch(
+      "/login/attempt",
+      testEnv,
+      jsonPost({ email }),
+      "http://127.0.0.1:5173",
+    );
+    expect(attempt.status).toBe(403);
+    expect(await attempt.json()).toEqual({
+      error: "email_not_supported",
+      reason: "Local policy reason.",
+    });
+    expect(sentEmails).toHaveLength(0);
+
+    const verify = await dispatch(
+      "/login/verify",
+      testEnv,
+      jsonPost(loginVerifyBody(email, "123456", generateLoginAttemptId())),
+      "http://127.0.0.1:5173",
+    );
+    expect(verify.status).toBe(403);
+    expect(await verify.json()).toEqual({
+      error: "email_not_supported",
+      reason: "Local policy reason.",
+    });
+    expect(verify.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("fails open when published blocked email configuration cannot be used", async () => {
+    const malformedEmail = uniqueEmail();
+    const malformed = makeEnv(true, {
+      PUBLISHED_GLOBAL_CONFIG: publishedGlobalConfigValue("{"),
+    });
+    const malformedResponse = await dispatch(
+      "/login/attempt",
+      malformed.env,
+      jsonPost(loginAttemptBody(malformedEmail)),
+    );
+    expect(malformedResponse.status).toBe(202);
+    await readLoginAttemptId(malformedResponse);
+    expect(malformed.sentEmails).toHaveLength(1);
+
+    const schemaMismatchEmail = uniqueEmail();
+    const schemaMismatch = makeEnv(true, {
+      PUBLISHED_GLOBAL_CONFIG: publishedGlobalConfigValue(
+        JSON.stringify({ version: 1, patterns: ["@example\\.com$"] }),
+      ),
+    });
+    const schemaMismatchResponse = await dispatch(
+      "/login/attempt",
+      schemaMismatch.env,
+      jsonPost(loginAttemptBody(schemaMismatchEmail)),
+    );
+    expect(schemaMismatchResponse.status).toBe(202);
+    await readLoginAttemptId(schemaMismatchResponse);
+    expect(schemaMismatch.sentEmails).toHaveLength(1);
+
+    const failingEmail = uniqueEmail();
+    const failing = makeEnv(true, {
+      PUBLISHED_GLOBAL_CONFIG: publishedGlobalConfigFailure(),
+    });
+    const failingResponse = await dispatch(
+      "/login/attempt",
+      failing.env,
+      jsonPost(loginAttemptBody(failingEmail)),
+    );
+    expect(failingResponse.status).toBe(202);
+    await readLoginAttemptId(failingResponse);
+    expect(failing.sentEmails).toHaveLength(1);
+
+    const localEmail = uniqueEmail();
+    const local = makeEnv(true, {
+      LOCAL_DEV_LOGIN_CODE: "123456",
+      PUBLISHED_GLOBAL_CONFIG: publishedGlobalConfigValue("{"),
+    });
+    const localVerify = await dispatch(
+      "/login/verify",
+      local.env,
+      jsonPost(loginVerifyBody(localEmail, "123456", generateLoginAttemptId())),
+      "http://localhost:5173",
+    );
+    expect(localVerify.status).toBe(200);
+    expect(localVerify.headers.get("set-cookie")).toContain(`${SESSION_COOKIE_NAME}=`);
   });
 
   it("formats login emails with a prominent code and request location", async () => {
@@ -715,3 +890,21 @@ describe("auth worker", () => {
     expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
   });
 });
+
+function publishedBlockedEmails(document: BlockedEmailsDocument): KVNamespace {
+  return publishedGlobalConfigValue(BlockedEmailsDocumentCodec.serialize(document));
+}
+
+function publishedGlobalConfigValue(value: string | null): KVNamespace {
+  return {
+    get: vi.fn(async () => value),
+  } as unknown as KVNamespace;
+}
+
+function publishedGlobalConfigFailure(): KVNamespace {
+  return {
+    get: vi.fn(async () => {
+      throw new Error("KV unavailable");
+    }),
+  } as unknown as KVNamespace;
+}

@@ -20,9 +20,10 @@ Browser sessions are created through the email-code login flow under `/api/login
 Flow:
 
 1. `POST /api/login/attempt` validates the email and, outside local dev, verifies Turnstile before sending a login code.
-2. `POST /api/login/verify` verifies the attempt ID, email, and code, then sets the `__Host-seisan_session` cookie.
-3. Authenticated browser requests use the session cookie.
-4. `POST /api/logout` writes the session token hash to `REVOKED_TOKENS` and clears the cookie.
+2. Login attempt and verification routes reject emails matching the published `blocked_emails` policy.
+3. `POST /api/login/verify` verifies the attempt ID, email, and code, then sets the `__Host-seisan_session` cookie.
+4. Authenticated browser requests use the session cookie.
+5. `POST /api/logout` writes the session token hash to `REVOKED_TOKENS` and clears the cookie.
 
 Session tokens are signed with `AUTH_SECRET`. Session revocation uses KV and is eventually consistent in the same way as other KV-backed checks.
 
@@ -50,7 +51,25 @@ Login attempt rules:
 - Verification must include the attempt ID, email, and code.
 - Keep login cooldown and failed-attempt state in `LoginAttemptStore`.
 - Do not delete attempts on failed verification in a way that bypasses cooldowns.
-- Login registration is not email-allowlisted. Any syntactically valid email may request a code.
+- Login registration is not email-allowlisted. Any syntactically valid email may request a code
+  unless it matches the published blocked-email regex policy.
+
+Blocked-email rules:
+
+- Both login-code requests and code verification check `blocked_emails` in
+  `PUBLISHED_GLOBAL_CONFIG`; this also applies to local fixed-code login.
+- Deployed login attempts verify Turnstile before checking the email policy, but blocked attempts
+  are rejected before creating attempt state or sending email.
+- A blocked request returns `403 { "error": "email_not_supported", "reason"?: string }`. The
+  browser displays `This email is not supported.` and appends the configured reason when present.
+- Missing, unreadable, or invalid published configuration fails open so a KV/configuration problem
+  cannot prevent browser login. Failures are logged and the login path does not fall back to the
+  strongly consistent Durable Object.
+- The policy governs new browser sessions only. Existing sessions and API-key authentication are
+  unaffected.
+- Publication is eventually consistent and may take up to the GlobalConfig KV cache window to
+  reach login requests. An already-issued code cannot create a session once the published policy
+  observed by verification blocks its email.
 
 Turnstile rules:
 

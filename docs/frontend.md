@@ -166,3 +166,15 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 - Account entry links identify their source page so the account shell can label and pop back to that browser-history entry. Account tab changes replace the current entry so this destination stays stable; direct account loads fall back to `/projects`.
 - Account logout controls require confirmation before ending the browser session.
 - Authenticated project-list and project-detail surfaces should keep a visible Account entry point. Public project views must not show an account action without a resolved session identity.
+
+## Admin Dashboard
+
+- `/admin/blocked-emails` manages the versioned blocked-email regex document through the admin API.
+- Show rules in stored order with pattern, optional user-facing reason, and remove controls. Add Rule
+  appends an empty row up to the 100-rule limit. Omit completely empty rows on save, reject a reason
+  without a pattern, and omit whitespace-only reasons from the saved document. Validate patterns
+  and reasons before saving, stack row controls on mobile, and require dirty changes to be saved
+  before using the email test form.
+- Admin tests use the strongly consistent saved configuration and report the normalized email plus
+  the first matching pattern and configured reason when present. Remind admins that login
+  enforcement uses published KV and may take up to five minutes to reflect a save.

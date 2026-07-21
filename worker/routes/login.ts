@@ -14,6 +14,7 @@ import {
   requireSameOriginWhenPresent,
   requireSessionAuth,
 } from "../auth";
+import { PublishedBlockedEmailPolicy } from "../blockedEmailPolicy";
 import { LOGIN_CODE_TTL_MS, SESSION_COOKIE_NAME, SESSION_TTL_SECONDS } from "../constants";
 import {
   generateLoginAttemptId,
@@ -60,7 +61,7 @@ loginApp.post(
     requestBody: OpenApiRequests.LoginAttempt,
     responses: {
       202: OpenApiResponses.LoginAttemptAccepted,
-      ...errorResponses(400),
+      ...errorResponses(400, 403),
     },
   }),
   async (context) => {
@@ -70,13 +71,20 @@ loginApp.post(
     }
 
     const { email } = parsed.data;
-    const attemptId = generateLoginAttemptId();
     const isLocalDevAttempt = isLocalDevLogin(context);
+    if (!isLocalDevAttempt && !(await verifyTurnstileToken(context, parsed.data.turnstileToken))) {
+      return ErrorResponse.invalidRequest();
+    }
+
+    const blockedEmail = await publishedBlockedEmailPolicy(context).test(email);
+    if (blockedEmail.blocked) {
+      return ErrorResponse.emailNotSupported(blockedEmail.reason);
+    }
+
+    const attemptId = generateLoginAttemptId();
     if (isLocalDevAttempt) {
       console.log("local dev login code requested", { email });
       return context.json({ ok: true, id: attemptId }, 202);
-    } else if (!(await verifyTurnstileToken(context, parsed.data.turnstileToken))) {
-      return ErrorResponse.invalidRequest();
     }
 
     const nowMs = Date.now();
@@ -136,6 +144,11 @@ loginApp.post(
     }
 
     const { id, email, code } = parsed.data;
+    const blockedEmail = await publishedBlockedEmailPolicy(context).test(email);
+    if (blockedEmail.blocked) {
+      return ErrorResponse.emailNotSupported(blockedEmail.reason);
+    }
+
     if (isLocalDevLogin(context, code)) {
       const { token } = await signSessionToken(email, context.env.AUTH_SECRET);
       setSessionCookie(context, token);
@@ -160,6 +173,10 @@ loginApp.post(
     return context.json({ ok: true });
   },
 );
+
+function publishedBlockedEmailPolicy(context: AppContext): PublishedBlockedEmailPolicy {
+  return new PublishedBlockedEmailPolicy(context.env.PUBLISHED_GLOBAL_CONFIG);
+}
 
 loginApp.post(
   "/logout",

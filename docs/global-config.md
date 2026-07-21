@@ -15,6 +15,11 @@ Current bindings:
 - `GLOBAL_CONFIG`: Durable Object namespace for `worker/do/GlobalConfig.ts`, reached with `getByName("global-config")`.
 - `PUBLISHED_GLOBAL_CONFIG`: KV namespace containing published JSON values by global config key.
 
+Current keys:
+
+- `categories`: versioned category-classification configuration.
+- `blocked_emails`: versioned regex policy used to reject unsupported emails during browser login.
+
 `GlobalConfig` stores values in SQLite:
 
 ```sql
@@ -69,6 +74,39 @@ Admin reads should use the relevant `GlobalConfig` method so they observe strong
 Hot-path reads should use `PublishedGlobalConfigKvStore`, which applies a 5 minute KV cache TTL and validates values with the same key/value codec registered in `worker/globalConfig.ts`.
 
 Each feature decides how KV failures map to user behavior. Category classification intentionally has no Durable Object fallback for hot-path KV failures.
+
+## Blocked Emails
+
+`blocked_emails` stores this strict document:
+
+```json
+{
+  "version": 1,
+  "patterns": [
+    {
+      "pattern": "@example\\.com$",
+      "reason": "Please use your organization email."
+    }
+  ]
+}
+```
+
+The document allows at most 100 ordered rule objects. Each rule has a required `pattern` of at most
+512 characters and an optional user-facing `reason` of at most 256 characters. Both fields are
+trimmed and single-line; patterns must be non-empty and compile as JavaScript regular expressions
+with fixed `iu` flags. Empty reasons are omitted. The version-1 object shape intentionally does not
+accept the earlier, undeployed string-array draft and has no compatibility parser or migration.
+Emails are normalized before matching. Substring matching is allowed, and the first matching rule,
+including its reason when present, is reported by admin tests.
+
+Admin GET, PUT, and test operations use `GLOBAL_CONFIG` for strongly consistent behavior. A missing
+value reads as `{ "version": 1, "patterns": [] }`. PUT writes SQLite and schedules publication to
+`PUBLISHED_GLOBAL_CONFIG`; login edges can therefore take up to the five-minute KV cache window to
+observe a change.
+
+Login reads only `PUBLISHED_GLOBAL_CONFIG`. Missing, unreadable, or invalid published values fail
+open and do not block login; read and validation failures are logged. There is no Durable Object
+fallback on the login path.
 
 ## Bindings And Migrations
 

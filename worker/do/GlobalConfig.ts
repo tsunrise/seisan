@@ -2,6 +2,13 @@ import { DurableObject } from "cloudflare:workers";
 import type { ZodType } from "zod";
 
 import {
+  BLOCKED_EMAILS_CONFIG_KEY,
+  BlockedEmailsDocument,
+  createEmptyBlockedEmailsDocument,
+  testBlockedEmail,
+  type BlockedEmailsDocument as BlockedEmailsDocumentValue,
+} from "../blockedEmails";
+import {
   createEmptyCategoriesDocument,
   deleteCategoryFromDocument,
   normalizeCategoriesDocument,
@@ -16,6 +23,7 @@ import {
   type GlobalConfigKey,
   type GlobalConfigValue,
 } from "../globalConfig";
+import { normalizedEmailSchema } from "../email";
 import type { Result } from "../result";
 import { runSqlMigrations, type SqlMigration } from "./migrations";
 
@@ -44,6 +52,45 @@ export class GlobalConfig extends DurableObject<Env> {
 
   listCategories(): Result<{ document: CategoriesDocument }, "invalid_value"> {
     return this.readCategoriesDocument();
+  }
+
+  getBlockedEmails(): Result<{ document: BlockedEmailsDocumentValue }, "invalid_value"> {
+    return this.readBlockedEmailsDocument();
+  }
+
+  setBlockedEmails(
+    document: BlockedEmailsDocumentValue,
+  ): Result<{ document: BlockedEmailsDocumentValue }, "invalid_input" | "invalid_value"> {
+    const current = this.readBlockedEmailsDocument();
+    if (!current.ok) {
+      return current;
+    }
+
+    const parsed = BlockedEmailsDocument.safeParse(document);
+    if (!parsed.success) {
+      return { ok: false, error: "invalid_input" };
+    }
+
+    this.writeKey(BLOCKED_EMAILS_CONFIG_KEY, parsed.data);
+    return { ok: true, document: parsed.data };
+  }
+
+  testBlockedEmail(
+    email: string,
+  ): Result<
+    { email: string; blocked: boolean; matchedPattern: string | null; reason?: string },
+    "invalid_input" | "invalid_value"
+  > {
+    const parsedEmail = normalizedEmailSchema.safeParse(email);
+    if (!parsedEmail.success) {
+      return { ok: false, error: "invalid_input" };
+    }
+
+    const loaded = this.readBlockedEmailsDocument();
+    if (!loaded.ok) {
+      return loaded;
+    }
+    return { ok: true, ...testBlockedEmail(loaded.document, parsedEmail.data) };
   }
 
   setCategories(
@@ -121,6 +168,24 @@ export class GlobalConfig extends DurableObject<Env> {
       return {
         ok: true,
         document: normalized,
+      };
+    } catch (error) {
+      if (error instanceof InvalidGlobalConfigValue) {
+        return { ok: false, error: "invalid_value" };
+      }
+      throw error;
+    }
+  }
+
+  private readBlockedEmailsDocument(): Result<
+    { document: BlockedEmailsDocumentValue },
+    "invalid_value"
+  > {
+    try {
+      const document = this.readKey(BLOCKED_EMAILS_CONFIG_KEY, BlockedEmailsDocument);
+      return {
+        ok: true,
+        document: document ?? createEmptyBlockedEmailsDocument(),
       };
     } catch (error) {
       if (error instanceof InvalidGlobalConfigValue) {

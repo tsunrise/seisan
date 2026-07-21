@@ -46,7 +46,10 @@ In the sandbox, Wrangler may print a log-write warning for `~/Library/Preference
 - `LOGIN_EMAIL_FROM` is a non-secret environment variable in `wrangler.jsonc`.
 - The default local environment in `wrangler.jsonc` sets `LOCAL_DEV_LOGIN_CODE` to `123456`; use that code for localhost browser and live API login checks without adding it to `.dev.vars`. Deployed and test environments set this binding to an empty string.
 - Local fixed-code login must only work for localhost-style requests.
-- Login registration is not email-allowlisted. Any syntactically valid email may request a code.
+- Login registration is not email-allowlisted. Any syntactically valid email may request a code
+  unless it matches the published blocked-email regex policy documented in `docs/auth.md`.
+  Administrators may attach a single-line user-facing reason to each rule; the login UI appends it
+  to the generic unsupported-email message.
 
 ## CLI API Client
 

@@ -8,6 +8,7 @@ import {
 import { expect, vi } from "vitest";
 
 import type { IconName } from "../shared/icon-names";
+import { BLOCKED_EMAILS_CONFIG_KEY } from "../worker/blockedEmails";
 import { CATEGORY_CONFIG_KEY, CategoriesDocument, type Category } from "../worker/category";
 import { SESSION_COOKIE_NAME } from "../worker/constants";
 import { signSessionToken } from "../worker/crypto";
@@ -111,6 +112,7 @@ function makeAllowingRateLimit(): RateLimit {
 export async function cleanupWorkerTestState(): Promise<void> {
   vi.restoreAllMocks();
   await env.CONFIGS.delete(LimitsKvStore.defaultKey());
+  await env.PUBLISHED_GLOBAL_CONFIG.delete(BLOCKED_EMAILS_CONFIG_KEY);
   await env.PUBLISHED_GLOBAL_CONFIG.delete(CATEGORY_CONFIG_KEY);
   await runInDurableObject(
     env.LIMITS_STORE.getByName(LIMITS_STORE_NAME),

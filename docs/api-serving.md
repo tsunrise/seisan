@@ -104,6 +104,7 @@ Routes should treat bindings as edges to owned state:
 - `PUBLISHED_GLOBAL_CONFIG` is the eventually consistent KV projection for hot-path global config reads.
 - Known GlobalConfig keys and published value codecs are documented in `docs/global-config.md`.
 - Category classification owns the `categories` global config key and is documented in `docs/category-classification.md`.
+- Browser login owns the `blocked_emails` global config key and is documented in `docs/auth.md`.
 - Rate-limit bindings protect record creation, replacement, and deletion at 10 requests per minute
   per account and 120 requests per minute per project, and category classification at 30 requests
   per minute per account.

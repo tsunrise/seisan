@@ -1,4 +1,5 @@
 import type { IconName } from "../shared/icon-names";
+import { ApiError } from "./apiError";
 import type {
   MoneyByMemberId,
   Project,
@@ -29,6 +30,7 @@ export type {
   WritableRecordDescription,
   WithSyncTime,
 } from "./projectTypes";
+export { ApiError } from "./apiError";
 
 export interface Category {
   id: string;
@@ -106,6 +108,23 @@ export interface AdminOwnerSummary {
   updatedAt: number;
 }
 
+export interface BlockedEmailRule {
+  pattern: string;
+  reason?: string;
+}
+
+export interface BlockedEmailsDocument {
+  version: 1;
+  patterns: BlockedEmailRule[];
+}
+
+export interface AdminBlockedEmailTestResult {
+  email: string;
+  blocked: boolean;
+  matchedPattern: string | null;
+  reason?: string;
+}
+
 export interface ApiKeyMetadata {
   id: string;
   label: string;
@@ -117,28 +136,6 @@ export interface ApiKeyMetadata {
 export interface CreatedApiKey {
   apiKey: string;
   key: ApiKeyMetadata;
-}
-
-interface ParsedApiErrorBody {
-  code: string;
-  reason: string | null;
-}
-
-export class ApiError extends Error {
-  readonly status: number;
-  readonly code: string | null;
-  readonly reason: string | null;
-  readonly responseBody: string;
-
-  constructor(status: number, responseBody: string) {
-    const parsed = parseApiErrorBody(responseBody);
-    super(parsed?.code ?? (responseBody || `Request failed with status ${status}`));
-    this.name = "ApiError";
-    this.status = status;
-    this.code = parsed?.code ?? null;
-    this.reason = parsed?.reason ?? null;
-    this.responseBody = responseBody;
-  }
 }
 
 export async function whoami(): Promise<{ email: string; sessionExpiresAt?: number }> {
@@ -195,6 +192,25 @@ export async function putAdminUserLimits(email: string, limits: LimitsDocument):
     method: "PUT",
     body: limits,
     expectedStatus: 204,
+  });
+}
+
+export async function getAdminBlockedEmails(): Promise<BlockedEmailsDocument> {
+  return requestJson("/api/admin/blocked_emails");
+}
+
+export async function putAdminBlockedEmails(document: BlockedEmailsDocument): Promise<void> {
+  await requestEmpty("/api/admin/blocked_emails", {
+    method: "PUT",
+    body: document,
+    expectedStatus: 204,
+  });
+}
+
+export async function testAdminBlockedEmail(email: string): Promise<AdminBlockedEmailTestResult> {
+  return requestJson("/api/admin/blocked_emails/test", {
+    method: "POST",
+    body: { email },
   });
 }
 
@@ -558,30 +574,4 @@ async function request(
     throw new ApiError(response.status, await response.text());
   }
   return response;
-}
-
-function parseApiErrorBody(responseBody: string): ParsedApiErrorBody | null {
-  if (!responseBody) {
-    return null;
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(responseBody);
-  } catch {
-    return null;
-  }
-
-  if (!isObjectRecord(parsed) || typeof parsed.error !== "string" || parsed.error.length === 0) {
-    return null;
-  }
-
-  return {
-    code: parsed.error,
-    reason: typeof parsed.reason === "string" && parsed.reason.length > 0 ? parsed.reason : null,
-  };
-}
-
-function isObjectRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

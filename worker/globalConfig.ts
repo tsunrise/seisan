@@ -1,15 +1,21 @@
 import { z } from "zod";
 
+import {
+  BLOCKED_EMAILS_CONFIG_KEY,
+  BlockedEmailsDocumentCodec,
+  type BlockedEmailsDocument,
+} from "./blockedEmails";
 import { CATEGORY_CONFIG_KEY, CategoriesDocumentCodec } from "./category/document";
 import { type CategoriesDocument as CategoriesDocumentValue } from "./category/schema";
 
 export const GLOBAL_CONFIG_STORE_NAME = "global-config";
 
-export const GlobalConfigKey = z.enum([CATEGORY_CONFIG_KEY]);
+export const GlobalConfigKey = z.enum([CATEGORY_CONFIG_KEY, BLOCKED_EMAILS_CONFIG_KEY]);
 export type GlobalConfigKey = z.infer<typeof GlobalConfigKey>;
 
 export interface GlobalConfigValueByKey {
   [CATEGORY_CONFIG_KEY]: CategoriesDocumentValue;
+  [BLOCKED_EMAILS_CONFIG_KEY]: BlockedEmailsDocument;
 }
 
 export type GlobalConfigValue<K extends GlobalConfigKey> = GlobalConfigValueByKey[K];
@@ -28,6 +34,14 @@ const GlobalConfigValueCodecs = {
       return CategoriesDocumentCodec.serialize(value);
     },
   },
+  [BLOCKED_EMAILS_CONFIG_KEY]: {
+    parseStored(value) {
+      return BlockedEmailsDocumentCodec.parseStored(value);
+    },
+    serialize(value) {
+      return BlockedEmailsDocumentCodec.serialize(value);
+    },
+  },
 } satisfies { [K in GlobalConfigKey]: GlobalConfigCodec<K> };
 
 export type PublishedGlobalConfigGetResult<K extends GlobalConfigKey> =
@@ -39,11 +53,13 @@ export class GlobalConfigValueCodec {
     key: K,
     value: string,
   ): GlobalConfigValue<K> | null {
-    return GlobalConfigValueCodecs[key].parseStored(value);
+    const codec = GlobalConfigValueCodecs[key] as GlobalConfigCodec<K>;
+    return codec.parseStored(value);
   }
 
   static serialize<K extends GlobalConfigKey>(key: K, value: GlobalConfigValue<K>): string {
-    return GlobalConfigValueCodecs[key].serialize(value);
+    const codec = GlobalConfigValueCodecs[key] as GlobalConfigCodec<K>;
+    return codec.serialize(value);
   }
 }
 

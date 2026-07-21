@@ -1,6 +1,8 @@
 import AddIcon from "@mui/icons-material/Add";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import BlockIcon from "@mui/icons-material/Block";
 import CheckIcon from "@mui/icons-material/Check";
+import DeleteIcon from "@mui/icons-material/Delete";
 import PeopleIcon from "@mui/icons-material/People";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import SecurityIcon from "@mui/icons-material/Security";
@@ -51,6 +53,9 @@ import { formatRelativeTime } from "../domain";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 const ADMIN_PAGE_LIMIT = 25;
+const MAX_BLOCKED_EMAIL_PATTERNS = 100;
+const MAX_BLOCKED_EMAIL_PATTERN_LENGTH = 512;
+const MAX_BLOCKED_EMAIL_REASON_LENGTH = 256;
 
 const projectSortOptions: Array<{ value: api.AdminProjectSort; label: string }> = [
   { value: "records_desc", label: "Most records" },
@@ -62,6 +67,11 @@ const sections = [
   { label: "Projects", path: "/admin/projects", icon: <AddIcon fontSize="small" /> },
   { label: "Users", path: "/admin/users", icon: <PeopleIcon fontSize="small" /> },
   { label: "Limits", path: "/admin/limit", icon: <SecurityIcon fontSize="small" /> },
+  {
+    label: "Blocked emails",
+    path: "/admin/blocked-emails",
+    icon: <BlockIcon fontSize="small" />,
+  },
 ] as const;
 
 type Loadable<T> =
@@ -181,6 +191,7 @@ export default function AdminApp() {
                 <Route path="users" element={<AdminUsersPage />} />
                 <Route path="limit" element={<AdminLimitsPage target="default" />} />
                 <Route path="limit/:email" element={<AdminUserLimitsRoute />} />
+                <Route path="blocked-emails" element={<AdminBlockedEmailsPage />} />
                 <Route path="*" element={<Navigate to="/admin/projects" replace />} />
               </Routes>
             </Box>
@@ -189,6 +200,374 @@ export default function AdminApp() {
       </Stack>
     </Box>
   );
+}
+
+type BlockedEmailTestState =
+  | { status: "idle"; result: null; error: null }
+  | { status: "loading"; result: null; error: null }
+  | { status: "ready"; result: api.AdminBlockedEmailTestResult; error: null }
+  | { status: "error"; result: null; error: string };
+
+interface BlockedEmailRuleDraft {
+  id: string;
+  pattern: string;
+  reason: string;
+}
+
+function AdminBlockedEmailsPage() {
+  const [state, setState] = useState<Loadable<api.BlockedEmailsDocument>>({
+    status: "loading",
+    data: null,
+    error: null,
+  });
+  const [draft, setDraft] = useState<BlockedEmailRuleDraft[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedOpen, setSavedOpen] = useState(false);
+  const [testEmail, setTestEmail] = useState("");
+  const [testState, setTestState] = useState<BlockedEmailTestState>({
+    status: "idle",
+    result: null,
+    error: null,
+  });
+  const dirty =
+    state.status === "ready" &&
+    JSON.stringify(comparableBlockedEmailDraft(draft)) !==
+      JSON.stringify(
+        state.data.patterns.map((rule) => ({
+          pattern: rule.pattern,
+          reason: rule.reason ?? "",
+        })),
+      );
+
+  useEffect(() => {
+    let active = true;
+    api
+      .getAdminBlockedEmails()
+      .then((document) => {
+        if (active) {
+          setState({ status: "ready", data: document, error: null });
+          setDraft(documentToBlockedEmailDraft(document));
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setState({
+            status: "error",
+            data: null,
+            error: "Could not load blocked email patterns.",
+          });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function savePatterns(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (state.status !== "ready") {
+      return;
+    }
+
+    const parsed = parseBlockedEmailDraft(draft);
+    if (!parsed.ok) {
+      setSaveError(parsed.error);
+      setSavedOpen(false);
+      return;
+    }
+
+    setSaving(true);
+    setSaveError(null);
+    setSavedOpen(false);
+    try {
+      await api.putAdminBlockedEmails(parsed.document);
+      setState({ status: "ready", data: parsed.document, error: null });
+      setDraft(documentToBlockedEmailDraft(parsed.document));
+      setTestState({ status: "idle", result: null, error: null });
+      setSavedOpen(true);
+    } catch {
+      setSaveError("Could not save blocked email patterns.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitTestEmail(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (dirty) {
+      return;
+    }
+
+    setTestState({ status: "loading", result: null, error: null });
+    try {
+      const result = await api.testAdminBlockedEmail(testEmail);
+      setTestState({ status: "ready", result, error: null });
+    } catch {
+      setTestState({
+        status: "error",
+        result: null,
+        error: "Could not test this email.",
+      });
+    }
+  }
+
+  return (
+    <AdminSurface title="Blocked emails">
+      <Stack spacing={2.5}>
+        {state.status === "loading" ? <CircularProgress size={24} /> : null}
+        {state.status === "error" ? <InlineAlert>{state.error}</InlineAlert> : null}
+        {state.status === "ready" ? (
+          <>
+            <Stack component="form" spacing={1.5} onSubmit={(event) => void savePatterns(event)}>
+              {draft.length === 0 ? (
+                <Typography color="text.secondary">No blocked email rules configured.</Typography>
+              ) : (
+                <Stack spacing={1.5}>
+                  {draft.map((rule, index) => (
+                    <Box
+                      key={rule.id}
+                      sx={{
+                        borderBottom: 1,
+                        borderColor: "divider",
+                        pb: 1.5,
+                      }}
+                    >
+                      <Typography
+                        color="text.secondary"
+                        sx={{ mb: 1, fontSize: 12, fontWeight: 700 }}
+                      >
+                        Rule {index + 1}
+                      </Typography>
+                      <Stack
+                        direction={{ xs: "column", md: "row" }}
+                        spacing={1.25}
+                        sx={{ alignItems: { xs: "stretch", md: "flex-start" } }}
+                      >
+                        <TextField
+                          label="Regex pattern"
+                          value={rule.pattern}
+                          onChange={(event) =>
+                            updateBlockedEmailRuleDraft(rule.id, { pattern: event.target.value })
+                          }
+                          slotProps={{
+                            htmlInput: {
+                              maxLength: MAX_BLOCKED_EMAIL_PATTERN_LENGTH,
+                              spellCheck: false,
+                            },
+                          }}
+                          sx={{ flex: 1.2, "& input": { fontFamily: "monospace" } }}
+                        />
+                        <TextField
+                          label="Reason (optional)"
+                          value={rule.reason}
+                          onChange={(event) =>
+                            updateBlockedEmailRuleDraft(rule.id, { reason: event.target.value })
+                          }
+                          slotProps={{
+                            htmlInput: { maxLength: MAX_BLOCKED_EMAIL_REASON_LENGTH },
+                          }}
+                          sx={{ flex: 1 }}
+                        />
+                        <Tooltip title="Remove rule">
+                          <IconButton
+                            aria-label={`Remove blocked email rule ${index + 1}`}
+                            onClick={() => removeBlockedEmailRuleDraft(rule.id)}
+                            sx={{ alignSelf: { xs: "flex-end", md: "center" } }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </Box>
+                  ))}
+                </Stack>
+              )}
+              <Button
+                type="button"
+                variant="outlined"
+                startIcon={<AddIcon />}
+                disabled={draft.length >= MAX_BLOCKED_EMAIL_PATTERNS}
+                onClick={addBlockedEmailRuleDraft}
+                sx={{ alignSelf: "start" }}
+              >
+                Add rule
+              </Button>
+              <Typography color="text.secondary" sx={{ fontSize: 13 }}>
+                Emails are normalized to lowercase and tested with case-insensitive Unicode regexes.
+                Use ^ and $ to match the complete address. Reasons are optional and shown to blocked
+                users.
+              </Typography>
+              {saveError ? <InlineAlert>{saveError}</InlineAlert> : null}
+              <Button
+                type="submit"
+                variant="contained"
+                startIcon={<CheckIcon />}
+                disabled={saving || !dirty}
+                sx={{ alignSelf: "start" }}
+              >
+                Save
+              </Button>
+            </Stack>
+
+            <Divider />
+
+            <Stack component="form" spacing={1.5} onSubmit={(event) => void submitTestEmail(event)}>
+              <Typography variant="h3">Test an email</Typography>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25}>
+                <TextField
+                  label="Email"
+                  type="email"
+                  required
+                  value={testEmail}
+                  onChange={(event) => {
+                    setTestEmail(event.target.value);
+                    setTestState({ status: "idle", result: null, error: null });
+                  }}
+                  sx={{ flex: 1 }}
+                />
+                <Button
+                  type="submit"
+                  variant="outlined"
+                  disabled={dirty || testState.status === "loading"}
+                  sx={{ alignSelf: { xs: "stretch", sm: "center" } }}
+                >
+                  Test
+                </Button>
+              </Stack>
+              {dirty ? (
+                <Typography color="text.secondary" sx={{ fontSize: 13 }}>
+                  Save changes before testing them.
+                </Typography>
+              ) : null}
+              {testState.status === "loading" ? <CircularProgress size={20} /> : null}
+              {testState.status === "error" ? <InlineAlert>{testState.error}</InlineAlert> : null}
+              {testState.status === "ready" ? (
+                <Alert severity={testState.result.blocked ? "warning" : "success"}>
+                  {testState.result.blocked ? (
+                    <>
+                      {testState.result.email} is blocked by pattern{" "}
+                      <Box component="code">{testState.result.matchedPattern}</Box>.
+                      {testState.result.reason ? (
+                        <Box component="span" sx={{ display: "block", mt: 0.5 }}>
+                          Reason: {testState.result.reason}
+                        </Box>
+                      ) : null}
+                    </>
+                  ) : (
+                    `${testState.result.email} is supported.`
+                  )}
+                </Alert>
+              ) : null}
+              <Typography color="text.secondary" sx={{ fontSize: 13 }}>
+                Admin tests use the saved configuration immediately. Login enforcement can take up
+                to five minutes to reflect a save.
+              </Typography>
+            </Stack>
+
+            <Snackbar
+              open={savedOpen}
+              autoHideDuration={3000}
+              onClose={() => setSavedOpen(false)}
+              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+            >
+              <Alert severity="success" variant="filled">
+                Saved.
+              </Alert>
+            </Snackbar>
+          </>
+        ) : null}
+      </Stack>
+    </AdminSurface>
+  );
+
+  function updateBlockedEmailRuleDraft(
+    id: string,
+    patch: Partial<Pick<BlockedEmailRuleDraft, "pattern" | "reason">>,
+  ) {
+    setDraft((current) => current.map((rule) => (rule.id === id ? { ...rule, ...patch } : rule)));
+    clearBlockedEmailFeedback();
+  }
+
+  function addBlockedEmailRuleDraft() {
+    if (draft.length >= MAX_BLOCKED_EMAIL_PATTERNS) {
+      return;
+    }
+    setDraft((current) => [...current, createBlockedEmailRuleDraft()]);
+    clearBlockedEmailFeedback();
+  }
+
+  function removeBlockedEmailRuleDraft(id: string) {
+    setDraft((current) => current.filter((rule) => rule.id !== id));
+    clearBlockedEmailFeedback();
+  }
+
+  function clearBlockedEmailFeedback() {
+    setSaveError(null);
+    setSavedOpen(false);
+    setTestState({ status: "idle", result: null, error: null });
+  }
+}
+
+function createBlockedEmailRuleDraft(rule?: api.BlockedEmailRule): BlockedEmailRuleDraft {
+  return {
+    id: crypto.randomUUID(),
+    pattern: rule?.pattern ?? "",
+    reason: rule?.reason ?? "",
+  };
+}
+
+function documentToBlockedEmailDraft(document: api.BlockedEmailsDocument) {
+  return document.patterns.map(createBlockedEmailRuleDraft);
+}
+
+function comparableBlockedEmailDraft(draft: BlockedEmailRuleDraft[]) {
+  return draft.map(({ pattern, reason }) => ({ pattern, reason }));
+}
+
+function parseBlockedEmailDraft(
+  draft: BlockedEmailRuleDraft[],
+): { ok: true; document: api.BlockedEmailsDocument } | { ok: false; error: string } {
+  const patterns: api.BlockedEmailRule[] = [];
+  for (const [index, rule] of draft.entries()) {
+    const pattern = rule.pattern.trim();
+    const reason = rule.reason.trim();
+    if (!pattern && !reason) {
+      continue;
+    }
+    if (!pattern) {
+      return { ok: false, error: `Rule ${index + 1} needs a regex pattern.` };
+    }
+    if (pattern.length > MAX_BLOCKED_EMAIL_PATTERN_LENGTH) {
+      return {
+        ok: false,
+        error: `Rule ${index + 1} pattern exceeds ${MAX_BLOCKED_EMAIL_PATTERN_LENGTH} characters.`,
+      };
+    }
+    try {
+      new RegExp(pattern, "iu");
+    } catch {
+      return { ok: false, error: `Rule ${index + 1} has an invalid regex pattern.` };
+    }
+    if (/[\r\n]/u.test(reason)) {
+      return { ok: false, error: `Rule ${index + 1} reason must be a single line.` };
+    }
+    if (reason.length > MAX_BLOCKED_EMAIL_REASON_LENGTH) {
+      return {
+        ok: false,
+        error: `Rule ${index + 1} reason exceeds ${MAX_BLOCKED_EMAIL_REASON_LENGTH} characters.`,
+      };
+    }
+    patterns.push({ pattern, ...(reason ? { reason } : {}) });
+  }
+
+  if (patterns.length > MAX_BLOCKED_EMAIL_PATTERNS) {
+    return {
+      ok: false,
+      error: `Enter no more than ${MAX_BLOCKED_EMAIL_PATTERNS} patterns.`,
+    };
+  }
+  return { ok: true, document: { version: 1, patterns } };
 }
 
 function AdminNav({ currentSection }: { currentSection: (typeof sections)[number] }) {
