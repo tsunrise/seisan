@@ -28,7 +28,12 @@ const LOGIN_EMAIL_FROM = "login@example.com";
 const TURNSTILE_SECRET_KEY = "1x0000000000000000000000000000000AA";
 const TURNSTILE_TOKEN = "test-turnstile-token";
 const TURNSTILE_SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+const CLOUDFLARE_DOH_URL = "https://cloudflare-dns.com/dns-query";
+const INVALID_EMAIL_DOMAIN_REASON =
+  "The email domain does not appear to support receiving email. Check that the domain name is correct.";
 const ATTEMPT_ID_PATTERN = /^[0-9A-Za-z]{32}$/u;
+
+type FetchImplementation = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 interface TestEnv {
   env: Env;
@@ -40,6 +45,7 @@ interface TestEnv {
     html?: string;
   }>;
   turnstileFetch: ReturnType<typeof vi.fn>;
+  dohFetch: ReturnType<typeof vi.fn>;
 }
 
 function uniqueEmail(): string {
@@ -51,7 +57,12 @@ function emailWithLength(length: number): string {
   return `${"a".repeat(length - suffix.length)}${suffix}`;
 }
 
-function makeEnv(turnstileSuccess = true, overrides: Partial<Env> = {}): TestEnv {
+function makeEnv(
+  turnstileSuccess = true,
+  overrides: Partial<Env> = {},
+  dohImplementation: FetchImplementation = async () =>
+    dnsResponse(0, [{ type: 15, data: "10 mx.example.com." }]),
+): TestEnv {
   const sentEmails: TestEnv["sentEmails"] = [];
   const send = vi.fn(async (message: TestEnv["sentEmails"][number]) => {
     sentEmails.push(message);
@@ -65,7 +76,18 @@ function makeEnv(turnstileSuccess = true, overrides: Partial<Env> = {}): TestEnv
     expect(body.response).toBe(TURNSTILE_TOKEN);
     return Response.json({ success: turnstileSuccess, "error-codes": [] });
   });
-  vi.stubGlobal("fetch", turnstileFetch);
+  const dohFetch = vi.fn(dohImplementation);
+  const outboundFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === TURNSTILE_SITEVERIFY_URL) {
+      return turnstileFetch(input, init);
+    }
+    if (url.startsWith(CLOUDFLARE_DOH_URL)) {
+      return dohFetch(input, init);
+    }
+    throw new Error(`unexpected outbound request: ${url}`);
+  });
+  vi.stubGlobal("fetch", outboundFetch);
 
   return {
     env: {
@@ -78,7 +100,20 @@ function makeEnv(turnstileSuccess = true, overrides: Partial<Env> = {}): TestEnv
     } as unknown as Env,
     sentEmails,
     turnstileFetch,
+    dohFetch,
   };
+}
+
+function dnsResponse(
+  status = 0,
+  answers?: Array<{ type: number; data: string }>,
+  truncated = false,
+): Response {
+  return Response.json({
+    Status: status,
+    TC: truncated,
+    ...(answers ? { Answer: answers } : {}),
+  });
 }
 
 async function dispatch(
@@ -249,9 +284,9 @@ describe("auth worker", () => {
     expect(failedEnv.turnstileFetch).toHaveBeenCalledTimes(1);
   });
 
-  it("accepts any valid email after turnstile verification", async () => {
+  it("accepts a deliverable email domain after Turnstile verification", async () => {
     const email = uniqueEmail();
-    const { env: testEnv, sentEmails, turnstileFetch } = makeEnv();
+    const { env: testEnv, sentEmails, turnstileFetch, dohFetch } = makeEnv();
     const response = await dispatch("/login/attempt", testEnv, jsonPost(loginAttemptBody(email)));
 
     expect(response.status).toBe(202);
@@ -259,6 +294,74 @@ describe("auth worker", () => {
     expect(sentEmails).toHaveLength(1);
     expect(sentEmails[0].to).toBe(email);
     expect(turnstileFetch).toHaveBeenCalledTimes(1);
+    expect(dohFetch).toHaveBeenCalledTimes(1);
+    const dohUrl = new URL(String(dohFetch.mock.calls[0][0]));
+    expect(`${dohUrl.origin}${dohUrl.pathname}`).toBe(CLOUDFLARE_DOH_URL);
+    expect(dohUrl.searchParams.get("name")).toBe("example.com");
+    expect(dohUrl.searchParams.get("type")).toBe("MX");
+  });
+
+  it("rejects an invalid email domain without storing or sending", async () => {
+    const email = uniqueEmail();
+    const {
+      env: testEnv,
+      sentEmails,
+      turnstileFetch,
+      dohFetch,
+    } = makeEnv(true, {}, async () => dnsResponse(3));
+
+    const response = await dispatch("/login/attempt", testEnv, jsonPost(loginAttemptBody(email)));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "email_not_supported",
+      reason: INVALID_EMAIL_DOMAIN_REASON,
+    });
+    expect(turnstileFetch).toHaveBeenCalledTimes(1);
+    expect(dohFetch).toHaveBeenCalledTimes(1);
+    expect(sentEmails).toHaveLength(0);
+
+    const emailHash = await sha256Hex(email);
+    await runInDurableObject(
+      testEnv.LOGIN_ATTEMPT_STORE.getByName(emailHash),
+      async (_instance, state) => {
+        expect(
+          state.storage.sql
+            .exec("SELECT email_hash FROM login_attempts WHERE email_hash = ?", emailHash)
+            .toArray(),
+        ).toHaveLength(0);
+      },
+    );
+  });
+
+  it("returns a temporary failure when email-domain DNS is unavailable", async () => {
+    const email = uniqueEmail();
+    const {
+      env: testEnv,
+      sentEmails,
+      turnstileFetch,
+      dohFetch,
+    } = makeEnv(true, {}, async () => dnsResponse(2));
+
+    const response = await dispatch("/login/attempt", testEnv, jsonPost(loginAttemptBody(email)));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "internal_server_error" });
+    expect(turnstileFetch).toHaveBeenCalledTimes(1);
+    expect(dohFetch).toHaveBeenCalledTimes(1);
+    expect(sentEmails).toHaveLength(0);
+
+    const emailHash = await sha256Hex(email);
+    await runInDurableObject(
+      testEnv.LOGIN_ATTEMPT_STORE.getByName(emailHash),
+      async (_instance, state) => {
+        expect(
+          state.storage.sql
+            .exec("SELECT email_hash FROM login_attempts WHERE email_hash = ?", emailHash)
+            .toArray(),
+        ).toHaveLength(0);
+      },
+    );
   });
 
   it("rejects blocked login attempts after Turnstile without storing or sending", async () => {
@@ -267,6 +370,7 @@ describe("auth worker", () => {
       env: testEnv,
       sentEmails,
       turnstileFetch,
+      dohFetch,
     } = makeEnv(true, {
       PUBLISHED_GLOBAL_CONFIG: publishedBlockedEmails({
         version: 1,
@@ -281,6 +385,7 @@ describe("auth worker", () => {
       reason: "Please use your organization email.",
     });
     expect(turnstileFetch).toHaveBeenCalledTimes(1);
+    expect(dohFetch).not.toHaveBeenCalled();
     expect(sentEmails).toHaveLength(0);
 
     const emailHash = await sha256Hex(email);
@@ -342,7 +447,11 @@ describe("auth worker", () => {
 
   it("enforces blocked email policy in local fixed-code login", async () => {
     const email = uniqueEmail();
-    const { env: testEnv, sentEmails } = makeEnv(true, {
+    const {
+      env: testEnv,
+      sentEmails,
+      dohFetch,
+    } = makeEnv(true, {
       LOCAL_DEV_LOGIN_CODE: "123456",
       PUBLISHED_GLOBAL_CONFIG: publishedBlockedEmails({
         version: 1,
@@ -362,6 +471,7 @@ describe("auth worker", () => {
       reason: "Local policy reason.",
     });
     expect(sentEmails).toHaveLength(0);
+    expect(dohFetch).not.toHaveBeenCalled();
 
     const verify = await dispatch(
       "/login/verify",
@@ -375,6 +485,7 @@ describe("auth worker", () => {
       reason: "Local policy reason.",
     });
     expect(verify.headers.get("set-cookie")).toBeNull();
+    expect(dohFetch).not.toHaveBeenCalled();
   });
 
   it("fails open when published blocked email configuration cannot be used", async () => {
@@ -732,9 +843,55 @@ describe("auth worker", () => {
     expect(retryWithoutOrigin.headers.get("set-cookie")).toContain(`${SESSION_COOKIE_NAME}=`);
   });
 
-  it("allows a configured fixed code for any local dev email only on localhost", async () => {
+  it.each([
+    [
+      "an invalid domain",
+      3,
+      403,
+      { error: "email_not_supported", reason: INVALID_EMAIL_DOMAIN_REASON },
+    ],
+    ["an unavailable DNS lookup", 2, 503, { error: "internal_server_error" }],
+  ])(
+    "rejects local fixed-code attempts for %s",
+    async (_name, dnsStatus, expectedStatus, expectedBody) => {
+      const email = uniqueEmail();
+      const {
+        env: testEnv,
+        sentEmails,
+        turnstileFetch,
+        dohFetch,
+      } = makeEnv(true, { LOCAL_DEV_LOGIN_CODE: "123456" }, async () => dnsResponse(dnsStatus));
+
+      const response = await dispatch(
+        "/login/attempt",
+        testEnv,
+        jsonPost({ email }),
+        "http://127.0.0.1:5173",
+      );
+
+      expect(response.status).toBe(expectedStatus);
+      expect(await response.json()).toEqual(expectedBody);
+      expect(turnstileFetch).not.toHaveBeenCalled();
+      expect(dohFetch).toHaveBeenCalledTimes(1);
+      expect(sentEmails).toHaveLength(0);
+
+      const emailHash = await sha256Hex(email);
+      await runInDurableObject(
+        testEnv.LOGIN_ATTEMPT_STORE.getByName(emailHash),
+        async (_instance, state) => {
+          expect(
+            state.storage.sql
+              .exec("SELECT email_hash FROM login_attempts WHERE email_hash = ?", emailHash)
+              .toArray(),
+          ).toHaveLength(0);
+        },
+      );
+    },
+  );
+
+  it("allows a configured fixed code for a deliverable local email only on localhost", async () => {
     const email = uniqueEmail();
-    const { env: testEnv, sentEmails } = makeEnv();
+    const { env: testEnv, sentEmails, dohFetch } = makeEnv();
     const localDevEnv = {
       ...testEnv,
       LOCAL_DEV_LOGIN_CODE: "123456",
@@ -749,6 +906,7 @@ describe("auth worker", () => {
     expect(remoteAttempt.status).toBe(202);
     const remoteAttemptId = await readLoginAttemptId(remoteAttempt);
     expect(sentEmails).toHaveLength(1);
+    expect(dohFetch).toHaveBeenCalledTimes(1);
 
     const remoteVerify = await dispatch(
       "/login/verify",
@@ -757,6 +915,7 @@ describe("auth worker", () => {
       "https://seisan.test",
     );
     expect(remoteVerify.status).toBe(401);
+    expect(dohFetch).toHaveBeenCalledTimes(1);
 
     const localAttempt = await dispatch(
       "/login/attempt",
@@ -767,6 +926,7 @@ describe("auth worker", () => {
     expect(localAttempt.status).toBe(202);
     const localAttemptId = await readLoginAttemptId(localAttempt);
     expect(sentEmails).toHaveLength(1);
+    expect(dohFetch).toHaveBeenCalledTimes(2);
 
     const localWrongCode = await dispatch(
       "/login/verify",
@@ -775,6 +935,7 @@ describe("auth worker", () => {
       "http://127.0.0.1:5173",
     );
     expect(localWrongCode.status).toBe(401);
+    expect(dohFetch).toHaveBeenCalledTimes(2);
 
     const localVerify = await dispatch(
       "/login/verify",
@@ -784,6 +945,7 @@ describe("auth worker", () => {
     );
     expect(localVerify.status).toBe(200);
     expect(await localVerify.json()).toEqual({ ok: true });
+    expect(dohFetch).toHaveBeenCalledTimes(2);
 
     const token = getSessionToken(localVerify);
     const whoami = await dispatch("/whoami", localDevEnv, {

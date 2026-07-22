@@ -757,10 +757,13 @@ export const OpenApiResponses = {
   InternalServerError: jsonResponse("Unexpected server error.", ErrorBody, {
     error: "internal_server_error",
   }),
+  ServiceUnavailable: jsonResponse("A required service is temporarily unavailable.", ErrorBody, {
+    error: "internal_server_error",
+  }),
   NoContent: { description: "Successful no-content response." },
 } satisfies Record<string, OpenApiResponse>;
 
-export function errorResponses(...statuses: Array<400 | 401 | 403 | 404 | 409 | 429 | 500>) {
+export function errorResponses(...statuses: Array<400 | 401 | 403 | 404 | 409 | 429 | 500 | 503>) {
   const responses: OpenApiResponses = {};
   for (const status of statuses) {
     responses[status] = errorResponseByStatus(status);
@@ -768,7 +771,9 @@ export function errorResponses(...statuses: Array<400 | 401 | 403 | 404 | 409 | 
   return responses;
 }
 
-function errorResponseByStatus(status: 400 | 401 | 403 | 404 | 409 | 429 | 500): OpenApiResponse {
+function errorResponseByStatus(
+  status: 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503,
+): OpenApiResponse {
   switch (status) {
     case 400:
       return OpenApiResponses.InvalidRequest;
@@ -784,6 +789,8 @@ function errorResponseByStatus(status: 400 | 401 | 403 | 404 | 409 | 429 | 500):
       return OpenApiResponses.RateLimited;
     case 500:
       return OpenApiResponses.InternalServerError;
+    case 503:
+      return OpenApiResponses.ServiceUnavailable;
   }
 }
 

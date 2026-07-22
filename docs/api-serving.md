@@ -82,6 +82,8 @@ Use `ErrorResponse` from `worker/error.ts` for stable JSON error bodies:
 - `409 { error: "<stable_conflict_code>" }`
 - `429 { error: "rate_limited", reason: "account" | "project" }`
 - `500 { error: "internal_server_error" }`
+- `503 { error: "internal_server_error" }` when a required external service is temporarily
+  unavailable
 
 Return `204` with an empty body for successful no-content mutations. For JSON success bodies, use `context.json(...)` or `Response.json(...)` consistently with surrounding code.
 
@@ -105,6 +107,8 @@ Routes should treat bindings as edges to owned state:
 - Known GlobalConfig keys and published value codecs are documented in `docs/global-config.md`.
 - Category classification owns the `categories` global config key and is documented in `docs/category-classification.md`.
 - Browser login owns the `blocked_emails` global config key and is documented in `docs/auth.md`.
+- Browser login validates recipient domains through Cloudflare DNS over HTTPS before creating
+  login-attempt state or calling `SEND_EMAIL`.
 - Rate-limit bindings protect record creation, replacement, and deletion at 10 requests per minute
   per account and 120 requests per minute per project, and category classification at 30 requests
   per minute per account.

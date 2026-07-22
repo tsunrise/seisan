@@ -19,9 +19,11 @@ Browser sessions are created through the email-code login flow under `/api/login
 
 Flow:
 
-1. `POST /api/login/attempt` validates the email and, outside local dev, verifies Turnstile before sending a login code.
-2. Login attempt and verification routes reject emails matching the published `blocked_emails` policy.
-3. `POST /api/login/verify` verifies the attempt ID, email, and code, then sets the `__Host-seisan_session` cookie.
+1. `POST /api/login/attempt` validates the email and, outside local dev, verifies Turnstile.
+2. Login attempts reject emails matching the published `blocked_emails` policy, then validate the
+   recipient domain through Cloudflare DNS over HTTPS before storing an attempt or sending a code.
+3. Login verification rejects emails matching the published `blocked_emails` policy, then verifies
+   the attempt ID, email, and code and sets the `__Host-seisan_session` cookie.
 4. Authenticated browser requests use the session cookie.
 5. `POST /api/logout` writes the session token hash to `REVOKED_TOKENS` and clears the cookie.
 
@@ -45,14 +47,15 @@ Public auth endpoints live under `/api/login/*`.
 
 Login attempt rules:
 
-- Login attempt validation uses zod in `worker/auth.ts`.
+- Login attempt validation uses zod in `worker/routes/login.ts`.
 - Login attempt and verification email inputs are limited to 255 characters and rejected before Turnstile, hashing, Durable Object, or Send Email work.
 - Login attempts return an opaque attempt ID.
 - Verification must include the attempt ID, email, and code.
 - Keep login cooldown and failed-attempt state in `LoginAttemptStore`.
 - Do not delete attempts on failed verification in a way that bypasses cooldowns.
-- Login registration is not email-allowlisted. Any syntactically valid email may request a code
-  unless it matches the published blocked-email regex policy.
+- Login registration is not email-allowlisted. A syntactically valid email may request a code when
+  its domain passes the mail-routing validation below and it does not match the published
+  blocked-email regex policy.
 
 Blocked-email rules:
 
@@ -71,6 +74,23 @@ Blocked-email rules:
   reach login requests. An already-issued code cannot create a session once the published policy
   observed by verification blocks its email.
 
+Email-domain rules:
+
+- Every login attempt validates the normalized recipient domain after Turnstile and blocked-email
+  checks. This includes localhost fixed-code login, even though that path does not store an attempt
+  or send email.
+- Validation queries Cloudflare's `https://cloudflare-dns.com/dns-query` JSON endpoint for MX
+  records. An ordinary MX record is accepted, while NXDOMAIN and explicit Null MX are rejected.
+- If the domain has no MX record, validation queries A and AAAA concurrently and accepts either as
+  SMTP's implicit-MX fallback. A domain with no MX, A, or AAAA record is rejected.
+- Invalid domains return `403` with `error: "email_not_supported"` and the reason “The email domain
+  does not appear to support receiving email. Check that the domain name is correct.” Temporary or
+  inconclusive DNS failures return `503 { "error": "internal_server_error" }`. Neither result
+  creates login-attempt state or sends email; DNS validation does not fail open.
+- Login verification does not repeat DNS validation because no new email is sent on that path.
+- Domain validation establishes only that DNS advertises a possible mail route. It does not prove
+  that a recipient mailbox exists.
+
 Turnstile rules:
 
 - In deployed or otherwise non-local login attempts, the server must verify Turnstile before sending or storing a login code.
@@ -79,7 +99,9 @@ Turnstile rules:
 
 Local fixed-code login is controlled by `LOCAL_DEV_LOGIN_CODE` and must only work for localhost-style requests.
 
-For local fixed-code login, `/api/login/attempt` returns an attempt ID without storing an attempt or sending email. Local `/api/login/verify` accepts the configured fixed code without consulting `LoginAttemptStore`.
+For local fixed-code login, `/api/login/attempt` returns an attempt ID after domain validation
+without storing an attempt or sending email. Local `/api/login/verify` accepts the configured fixed
+code without consulting `LoginAttemptStore`.
 
 ## API Keys
 

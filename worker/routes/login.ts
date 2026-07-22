@@ -26,6 +26,7 @@ import {
   verifySessionToken,
 } from "../crypto";
 import { normalizedEmailSchema } from "../email";
+import { EmailDomainValidator, getEmailDomain } from "../emailDomainValidation";
 import { ErrorResponse } from "../error";
 import { errorResponses, OpenApiRequests, OpenApiResponses, OpenApiSecurity } from "../model";
 import { verifyTurnstileToken } from "../turnstile";
@@ -37,6 +38,9 @@ interface LocalDevLoginConfig {
 type LocalDevLoginEnv = Env & {
   LOCAL_DEV_LOGIN_CODE?: string;
 };
+
+const INVALID_EMAIL_DOMAIN_REASON =
+  "The email domain does not appear to support receiving email. Check that the domain name is correct.";
 
 // TODO(schema-source): share login request schemas with worker/model.ts instead of duplicating the
 // runtime and OpenAPI definitions.
@@ -61,7 +65,7 @@ loginApp.post(
     requestBody: OpenApiRequests.LoginAttempt,
     responses: {
       202: OpenApiResponses.LoginAttemptAccepted,
-      ...errorResponses(400, 403),
+      ...errorResponses(400, 403, 503),
     },
   }),
   async (context) => {
@@ -81,9 +85,20 @@ loginApp.post(
       return ErrorResponse.emailNotSupported(blockedEmail.reason);
     }
 
+    const domainValidation = await new EmailDomainValidator().validate(email);
+    if (!domainValidation.ok) {
+      console.warn("email domain validation rejected login attempt", {
+        domain: getEmailDomain(email),
+        error: domainValidation.error,
+      });
+      return domainValidation.error === "invalid_domain"
+        ? ErrorResponse.emailNotSupported(INVALID_EMAIL_DOMAIN_REASON)
+        : ErrorResponse.serviceUnavailable();
+    }
+
     const attemptId = generateLoginAttemptId();
     if (isLocalDevAttempt) {
-      console.log("local dev login code requested", { email });
+      console.log("local dev login code requested", { domain: getEmailDomain(email) });
       return context.json({ ok: true, id: attemptId }, 202);
     }
 

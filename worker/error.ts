@@ -10,4 +10,5 @@ export const ErrorResponse = {
   rateLimited: (reason: "account" | "project") =>
     Response.json({ error: "rate_limited", reason }, { status: 429 }),
   internalServerError: () => Response.json({ error: "internal_server_error" }, { status: 500 }),
+  serviceUnavailable: () => Response.json({ error: "internal_server_error" }, { status: 503 }),
 };
