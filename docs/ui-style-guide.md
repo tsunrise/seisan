@@ -68,6 +68,9 @@ Panels should feel related, not like separate products:
 - Same warm surface, same thin dividers, same restrained selection blue.
 - Detail and rail panels should use the same title hierarchy and spacing rhythm as the timeline.
 - Avoid nested cards. Use full-width bands, dividers, and unframed groups unless the content is a repeated item, modal, or actual framed tool.
+- Keep the linked member's nonzero-balance `View transfer plan` action beside their standard
+  accounting balance as a compact, text-only, underlined link so it is discoverable without adding
+  button height or weight.
 - Put the linked member's full-width `View settlement plan` action near the top of Project info so
   it remains discoverable even when their zero balance hides the project-header shortcut.
 

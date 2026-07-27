@@ -120,10 +120,11 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
   confirmation or customization actions. When the current member has a zero balance while other
   members remain unsettled, show a member-specific completion state while retaining the collapsed
   full-plan control.
-- Keep the linked member's `Settle up` entry beside their balance in the project header at every
-  breakpoint when their balance is nonzero. Hide it for a zero balance, and do not duplicate it
-  below the desktop rail's full member-balance list. Project info provides linked members with an
-  always-visible `View settlement plan` action regardless of their balance.
+- Keep a compact, text-only, underlined `View transfer plan` link beside the linked member's
+  nonzero balance at all breakpoints. Preserve the standard accounting balance presentation, hide
+  the header link for a zero balance, and do not duplicate it below the desktop rail's full
+  member-balance list. Project info provides linked members with an always-visible
+  `View settlement plan` action regardless of their balance.
 - `shared/icon-names.ts` is the backend/frontend icon contract, and `NamedIcon` is the only frontend
   name-to-MUI mapping. Keep category icons semantically distinct; unknown names use the expense icon.
 

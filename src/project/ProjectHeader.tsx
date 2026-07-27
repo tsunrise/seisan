@@ -1,7 +1,6 @@
-import BalanceOutlinedIcon from "@mui/icons-material/BalanceOutlined";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
-import { Box, Button, IconButton, Stack, Typography } from "@mui/material";
-import { Link } from "react-router";
+import { Box, IconButton, Link, Stack, Typography } from "@mui/material";
+import { Link as RouterLink } from "react-router";
 
 import type * as api from "../api";
 import { accountLinkState } from "../account/navigation";
@@ -50,7 +49,7 @@ export function ProjectHeader({
         <BrandLink size="compact" />
         {currentEmail ? (
           <Typography
-            component={Link}
+            component={RouterLink}
             to="/account"
             state={accountLinkState(project.name)}
             aria-label={`Open account for ${currentEmail}`}
@@ -84,8 +83,16 @@ export function ProjectHeader({
           </Typography>
         ) : null}
       </Stack>
-      <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2 }}>
-        <Box sx={{ minWidth: 0 }}>
+      <Stack
+        direction="row"
+        sx={{
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 2,
+          position: "relative",
+        }}
+      >
+        <Box sx={{ minWidth: 0, width: "100%" }}>
           <Typography
             variant="h1"
             sx={{
@@ -95,6 +102,7 @@ export function ProjectHeader({
               letterSpacing: "-0.035em",
               lineHeight: 1,
               overflowWrap: "normal",
+              pr: 7,
               wordBreak: "normal",
             }}
           >
@@ -109,29 +117,44 @@ export function ProjectHeader({
                 {identityLabel} {balance !== null ? <Amount amount={balance} /> : null}
               </Typography>
               {balance !== null && balance !== 0 ? (
-                <Button
-                  component={Link}
+                <Link
+                  component={RouterLink}
                   to={`/project/${project.id}/settle`}
-                  variant="text"
-                  size="small"
-                  startIcon={<BalanceOutlinedIcon />}
+                  underline="always"
                   sx={{
+                    alignItems: "center",
+                    color: ledgerColors.blue,
+                    display: "inline-flex",
+                    flexShrink: 0,
                     fontSize: 13,
                     fontWeight: 750,
                     lineHeight: 1,
                     minHeight: 28,
-                    p: 0,
-                    "& .MuiButton-startIcon": { mr: 0.5 },
-                    "& .MuiSvgIcon-root": { fontSize: 17 },
+                    textDecorationColor: "currentColor",
+                    textUnderlineOffset: "0.22em",
+                    transition: "color 160ms ease, text-decoration-thickness 160ms ease",
+                    "&:hover": {
+                      color: ledgerColors.blueDark,
+                      textDecorationThickness: "0.12em",
+                    },
+                    "&:focus-visible": {
+                      borderRadius: 0.5,
+                      outline: `2px solid ${ledgerColors.blue}`,
+                      outlineOffset: 2,
+                    },
                   }}
                 >
-                  Settle up
-                </Button>
+                  View transfer plan
+                </Link>
               ) : null}
             </Stack>
           ) : null}
         </Box>
-        <Stack direction="row" spacing={1}>
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{ position: "absolute", right: 0, top: { xs: -0.5, md: 0 } }}
+        >
           <IconButton onClick={onSettings} aria-label="Project settings">
             <MoreHorizIcon />
           </IconButton>
