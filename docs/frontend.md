@@ -176,8 +176,10 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
   display casing. Payers are always liability members. Removing a payer leaves that member as
   liability-only, and an active payer cannot be deleted from liability.
 - Keep liability members in compact flat rows rather than connected or individually framed blocks.
-  Each row keeps its participation checkbox, truncated name, live allocated share, optional ratio
-  or custom input, and borderless Edit and Delete actions on one line. Active payer rows keep their
+  Each row keeps its participation checkbox, truncated name, Equal or Ratio allocated-share
+  preview, optional ratio or custom input, and borderless Edit and Delete actions on one line.
+  Custom rows use the amount input itself as the allocated share and do not repeat that amount in a
+  separate preview. Active payer rows keep their
   checkbox and split input enabled, but their name Edit and Delete actions stay disabled because
   payer names are owned by the Who paid section.
 - Checkboxes control split participation without removing members. Unchecked members display a zero
@@ -186,9 +188,9 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 - Liability-only names use an explicit single-row editor with Cancel and Confirm actions. Only one
   existing or pending member name can be edited at a time. A pending Add member row remains
   UI-only until a valid, unique name is confirmed.
-- Preview allocated liability shares live. Equal and valid Ratio allocations resolve across selected
-  members; an unresolved Ratio shows zero for every member. Custom shows each valid selected share
-  even before the custom total matches the paid total.
+- Preview allocated liability shares live for Equal and Ratio. Equal and valid Ratio allocations
+  resolve across selected members; an unresolved Ratio shows zero for every member. In Custom, the
+  directly editable amount is the share, so do not render a duplicate preview beside it.
 - Save a version 2 draft under the calculator-specific v2 local-storage key 400 ms after the latest
   edit. Version 1 data is intentionally removed and reset rather than migrated. Do not persist
   temporary name editors or computed plans. Unsupported or malformed versions reset safely, and

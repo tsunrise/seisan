@@ -425,8 +425,7 @@ export function GroupExpenseCalculatorPage() {
                     How should the total be shared?
                   </Typography>
                   <Typography color="text.secondary" sx={{ fontSize: 14 }}>
-                    Check each person who shares the expense. Paying and sharing are controlled
-                    separately.
+                    Check each person who shares the expense, and customize the amount.
                   </Typography>
                 </Box>
 
@@ -838,7 +837,9 @@ function CalculatorLiabilityRows({
   const rowColumns =
     draft.splitMode === "equal"
       ? "32px minmax(36px, 1fr) minmax(62px, auto) 32px 32px"
-      : "32px minmax(36px, 1fr) minmax(62px, auto) minmax(58px, 76px) 32px 32px";
+      : draft.splitMode === "ratio"
+        ? "32px minmax(36px, 1fr) minmax(62px, auto) minmax(58px, 76px) 32px 32px"
+        : "32px minmax(36px, 1fr) minmax(78px, 100px) 32px 32px";
   const rowSx = {
     display: "grid",
     gridTemplateColumns: rowColumns,
@@ -936,23 +937,25 @@ function CalculatorLiabilityRows({
               </Typography>
             )}
 
-            <Typography
-              aria-label={`${member.name} allocated share ${formatCents(
-                allocation[member.id] ?? 0,
-              )}`}
-              sx={{
-                minWidth: 0,
-                overflow: "hidden",
-                fontSize: { xs: 13.5, sm: 14.5 },
-                fontVariantNumeric: "tabular-nums",
-                fontWeight: 750,
-                textAlign: "right",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {formatCents(allocation[member.id] ?? 0)}
-            </Typography>
+            {draft.splitMode !== "custom" ? (
+              <Typography
+                aria-label={`${member.name} allocated share ${formatCents(
+                  allocation[member.id] ?? 0,
+                )}`}
+                sx={{
+                  minWidth: 0,
+                  overflow: "hidden",
+                  fontSize: { xs: 13.5, sm: 14.5 },
+                  fontVariantNumeric: "tabular-nums",
+                  fontWeight: 750,
+                  textAlign: "right",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {formatCents(allocation[member.id] ?? 0)}
+              </Typography>
+            ) : null}
 
             {draft.splitMode === "ratio" ? (
               <Tooltip title={splitIssue ?? ""}>
@@ -1150,18 +1153,20 @@ function CalculatorLiabilityRows({
               "& .MuiInputBase-input": { px: 1 },
             }}
           />
-          <Typography
-            aria-label="New member allocated share $0.00"
-            sx={{
-              fontSize: { xs: 13.5, sm: 14.5 },
-              fontVariantNumeric: "tabular-nums",
-              fontWeight: 750,
-              textAlign: "right",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {formatCents(0)}
-          </Typography>
+          {draft.splitMode !== "custom" ? (
+            <Typography
+              aria-label="New member allocated share $0.00"
+              sx={{
+                fontSize: { xs: 13.5, sm: 14.5 },
+                fontVariantNumeric: "tabular-nums",
+                fontWeight: 750,
+                textAlign: "right",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {formatCents(0)}
+            </Typography>
+          ) : null}
           {draft.splitMode === "ratio" ? (
             <TextField
               size="small"

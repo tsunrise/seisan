@@ -175,8 +175,9 @@ fields, faint vertical rules connect repeated clauses, and verbs/connectors use 
 - Public calculator: use `[member] paid [amount]` connected payer bands followed by a separate
   equal, ratio, or custom liability section. Payer names are plain text inputs, not member
   dropdowns. Keep Add payer continuously available. Render liability members as compact flat rows,
-  with a checkbox, truncated plain name, tabular allocated share, optional inline split input, and
-  borderless Edit and Delete actions on one line at every breakpoint. Checkboxes control split
+  with a checkbox, truncated plain name, tabular Equal or Ratio allocated share, optional inline
+  split input, and borderless Edit and Delete actions on one line at every breakpoint. Custom uses
+  its amount input as the share and omits a duplicate amount preview. Checkboxes control split
   participation without deleting members; unchecked rows show zero while retaining their saved
   ratio and custom values. Active payer rows keep their checkbox and split input editable, but
   disable name Edit and Delete with explanatory labels and tooltips.
@@ -186,8 +187,8 @@ fields, faint vertical rules connect repeated clauses, and verbs/connectors use 
   with a zero share; it does not enter the persisted draft until confirmed. Permit only one
   liability name editor at a time, while leaving other rows' participation and split values usable.
 - Public calculator allocation previews: show the liability share, not the settlement balance.
-  Update Equal and valid Ratio previews live, show zero across unresolved Ratio rows, and show each
-  valid Custom amount even while the custom total remains unbalanced.
+  Update Equal and valid Ratio previews live and show zero across unresolved Ratio rows. Custom
+  amount inputs already show each liability share, so do not repeat those values in a preview.
 - Public calculator persistence: keep only committed rows and split participation in the version 2
   local draft. Discard the legacy version 1 key and present a blank calculator instead of surfacing
   migration UI or partially reconstructed edit state.
