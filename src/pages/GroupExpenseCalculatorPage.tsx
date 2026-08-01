@@ -621,17 +621,17 @@ export function GroupExpenseCalculatorPage() {
                 {[
                   {
                     title: "Track every expense together.",
-                    copy: "Add each item with its payers and split. Everyone shares the same expense history, running balances, and settlement records.",
+                    copy: "Stop computing the total by hand. Record every expense and collaborate.",
                     Icon: GroupsOutlinedIcon,
                   },
                   {
                     title: "Everyone gets a personalized transfer plan.",
-                    copy: "Each member sees who to pay, who will pay them, and exactly how much.",
+                    copy: "It is more powerful than the calculator above, for sure.",
                     Icon: AltRouteOutlinedIcon,
                   },
                   {
-                    title: "Free, with no daily posting cap.",
-                    copy: "No paid upgrade. Create a shared project and keep recording expenses as they happen.",
+                    title: "Free without daily posting cap.",
+                    copy: "A PRO subscription just for tracking expenses? Come on. You don't need it. We don't offer it.",
                     Icon: MoneyOffOutlinedIcon,
                   },
                 ].map(({ title, copy, Icon }) => (
