@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import type {
+  MoneyByMemberId as SharedMoneyByMemberId,
+  TransferBatch as SharedTransferBatch,
+  TransferDestination as SharedTransferDestination,
+} from "../shared/settlement";
 import { CategoryId } from "./category/schema";
 import { normalizeEmail, normalizedEmailSchema } from "./email";
 import { ABSOLUTE_LIST_LIMIT, ABSOLUTE_TEXT_LIMIT } from "./limits";
@@ -95,7 +100,7 @@ export const MoneyByMemberId = makeMoneyByMemberId({ nonNegative: false }).meta(
   description: "Signed integer-cent amounts keyed by project-local member ID.",
   examples: [{ "1": -6_200, "2": 6_200 }],
 });
-export type MoneyByMemberId = z.infer<typeof MoneyByMemberId>;
+export type MoneyByMemberId = SharedMoneyByMemberId;
 
 export const NonNegativeMoneyByMemberId = makeMoneyByMemberId({ nonNegative: true }).meta({
   description: "Non-negative integer-cent amounts keyed by project-local member ID.",
@@ -280,7 +285,7 @@ export const TransferDestination = z
   })
   .strict()
   .meta({ description: "One recipient and amount in a multi-recipient transfer." });
-export type TransferDestination = z.infer<typeof TransferDestination>;
+export type TransferDestination = SharedTransferDestination;
 
 export const TransferBatch = z
   .object({
@@ -329,7 +334,7 @@ export const TransferBatch = z
     description: "A grouped transfer from one member to one or more recipients.",
     examples: [{ src: 2, dests: [{ id: 1, amount: 6_200 }] }],
   });
-export type TransferBatch = z.infer<typeof TransferBatch>;
+export type TransferBatch = SharedTransferBatch;
 
 export const LegacyTransferDescription = z
   .object({
@@ -391,185 +396,6 @@ export const TransferDescription = z
     ],
   });
 export type TransferDescription = z.infer<typeof TransferDescription>;
-
-export class SettlementPlanUtils {
-  static create(balance: MoneyByMemberId): TransferBatch[] | null {
-    // Positive balances owe money; negative balances are owed money.
-    const senders: SettlementParty[] = [];
-    const recipients: SettlementParty[] = [];
-    const seenMemberIds = new Set<number>();
-    let totalSent = 0n;
-    let totalReceived = 0n;
-
-    for (const [rawMemberId, amount] of Object.entries(balance)) {
-      const memberId = Number(rawMemberId);
-      if (
-        !Number.isSafeInteger(memberId) ||
-        memberId <= 0 ||
-        seenMemberIds.has(memberId) ||
-        !Number.isSafeInteger(amount)
-      ) {
-        return null;
-      }
-      seenMemberIds.add(memberId);
-
-      if (amount > 0) {
-        senders.push({ id: memberId, amount });
-        totalSent += BigInt(amount);
-      } else if (amount < 0) {
-        recipients.push({ id: memberId, amount: -amount });
-        totalReceived += BigInt(-amount);
-      }
-    }
-
-    // BigInt totals avoid losing the zero-sum invariant when many safe integers are added.
-    if (totalSent !== totalReceived) {
-      return null;
-    }
-
-    // Accumulate payment legs by sender so the final plan uses the TransferBatch wire shape.
-    const destinationsBySender = new Map<MemberId, TransferDestination[]>();
-    const addTransfer = (src: MemberId, id: MemberId, amount: Cents): void => {
-      const destinations = destinationsBySender.get(src) ?? [];
-      destinations.push({ id, amount });
-      destinationsBySender.set(src, destinations);
-    };
-
-    // Settle equal balances first: one payment removes two participants and often reduces the plan.
-    const recipientsByAmount = new Map<number, SettlementParty[]>();
-    for (const recipient of recipients) {
-      const matches = recipientsByAmount.get(recipient.amount) ?? [];
-      matches.push(recipient);
-      recipientsByAmount.set(recipient.amount, matches);
-    }
-    for (const matches of recipientsByAmount.values()) {
-      matches.sort((left, right) => right.id - left.id);
-    }
-
-    const remainingSenders: SettlementParty[] = [];
-    const matchedRecipientIds = new Set<MemberId>();
-    for (const sender of [...senders].sort(compareSettlementParties)) {
-      const exactMatches = recipientsByAmount.get(sender.amount);
-      const recipient = exactMatches?.pop();
-      if (!recipient) {
-        remainingSenders.push(sender);
-        continue;
-      }
-      matchedRecipientIds.add(recipient.id);
-      addTransfer(sender.id, recipient.id, sender.amount);
-    }
-
-    // Greedily match the largest remaining sender and recipient. Each payment clears at least one
-    // outstanding balance, while heap ordering keeps the process efficient and deterministic.
-    const senderHeap = new SettlementPartyMaxHeap(remainingSenders);
-    const recipientHeap = new SettlementPartyMaxHeap(
-      recipients.filter((recipient) => !matchedRecipientIds.has(recipient.id)),
-    );
-    while (senderHeap.size > 0 && recipientHeap.size > 0) {
-      const sender = senderHeap.pop();
-      const recipient = recipientHeap.pop();
-      if (!sender || !recipient) {
-        return null;
-      }
-
-      const amount = Math.min(sender.amount, recipient.amount);
-      addTransfer(sender.id, recipient.id, amount);
-      sender.amount -= amount;
-      recipient.amount -= amount;
-      if (sender.amount > 0) {
-        senderHeap.push(sender);
-      }
-      if (recipient.amount > 0) {
-        recipientHeap.push(recipient);
-      }
-    }
-
-    if (senderHeap.size > 0 || recipientHeap.size > 0) {
-      return null;
-    }
-
-    // Canonical ordering makes uncached and recomputed responses byte-for-byte stable.
-    return [...destinationsBySender.entries()]
-      .sort(([left], [right]) => left - right)
-      .map(([src, dests]) => ({
-        src,
-        dests: dests.sort((left, right) => left.id - right.id),
-      }));
-  }
-}
-
-interface SettlementParty {
-  id: MemberId;
-  amount: Cents;
-}
-
-function compareSettlementParties(left: SettlementParty, right: SettlementParty): number {
-  return right.amount - left.amount || left.id - right.id;
-}
-
-class SettlementPartyMaxHeap {
-  private readonly values: SettlementParty[] = [];
-
-  constructor(values: SettlementParty[]) {
-    for (const value of values) {
-      this.push(value);
-    }
-  }
-
-  get size(): number {
-    return this.values.length;
-  }
-
-  // https://en.wikipedia.org/wiki/Binary_heap
-
-  push(value: SettlementParty): void {
-    this.values.push(value);
-    let index = this.values.length - 1;
-    while (index > 0) {
-      const parentIndex = Math.floor((index - 1) / 2);
-      if (compareSettlementParties(this.values[parentIndex], value) <= 0) {
-        break;
-      }
-      this.values[index] = this.values[parentIndex];
-      index = parentIndex;
-    }
-    this.values[index] = value;
-  }
-
-  pop(): SettlementParty | null {
-    const first = this.values[0];
-    const last = this.values.pop();
-    if (!first || !last) {
-      return first ?? null;
-    }
-    if (this.values.length === 0) {
-      return first;
-    }
-
-    let index = 0;
-    while (true) {
-      const leftIndex = index * 2 + 1;
-      const rightIndex = leftIndex + 1;
-      if (leftIndex >= this.values.length) {
-        break;
-      }
-      let nextIndex = leftIndex;
-      if (
-        rightIndex < this.values.length &&
-        compareSettlementParties(this.values[rightIndex], this.values[leftIndex]) < 0
-      ) {
-        nextIndex = rightIndex;
-      }
-      if (compareSettlementParties(this.values[nextIndex], last) >= 0) {
-        break;
-      }
-      this.values[index] = this.values[nextIndex];
-      index = nextIndex;
-    }
-    this.values[index] = last;
-    return first;
-  }
-}
 
 export const PromiseDescription = z
   .object({

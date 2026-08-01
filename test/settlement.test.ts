@@ -1,7 +1,11 @@
 import { runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { SettlementPlanUtils, type MoneyByMemberId, type TransferBatch } from "../worker/project";
+import {
+  createSettlementPlan,
+  type MoneyByMemberId,
+  type TransferBatch,
+} from "../shared/settlement";
 import {
   incomingSettlementPaymentsForMember,
   settlementBatchForMember,
@@ -22,7 +26,7 @@ interface SettlementPlanResponse {
 }
 
 function requirePlan(balance: MoneyByMemberId): TransferBatch[] {
-  const plan = SettlementPlanUtils.create(balance);
+  const plan = createSettlementPlan(balance);
   expect(plan).not.toBeNull();
   if (!plan) {
     throw new Error("expected a valid settlement plan");
@@ -219,13 +223,13 @@ describe("settlement edge and adversarial cases", () => {
   afterEach(cleanupWorkerTestState);
 
   it("handles empty, zero, one-cent, and maximum-safe balances", () => {
-    expect(SettlementPlanUtils.create({})).toEqual([]);
-    expect(SettlementPlanUtils.create({ "1": 0, "2": -0 })).toEqual([]);
-    expect(SettlementPlanUtils.create({ "1": 1, "2": -1 })).toEqual([
+    expect(createSettlementPlan({})).toEqual([]);
+    expect(createSettlementPlan({ "1": 0, "2": -0 })).toEqual([]);
+    expect(createSettlementPlan({ "1": 1, "2": -1 })).toEqual([
       { src: 1, dests: [{ id: 2, amount: 1 }] },
     ]);
     expect(
-      SettlementPlanUtils.create({
+      createSettlementPlan({
         "1": Number.MAX_SAFE_INTEGER,
         "2": -Number.MAX_SAFE_INTEGER,
       }),
@@ -286,7 +290,7 @@ describe("settlement edge and adversarial cases", () => {
   });
 
   it("breaks equal-amount ties by member ID", () => {
-    expect(SettlementPlanUtils.create({ "9": -500, "7": 500, "4": -500, "2": 500 })).toEqual([
+    expect(createSettlementPlan({ "9": -500, "7": 500, "4": -500, "2": 500 })).toEqual([
       { src: 2, dests: [{ id: 4, amount: 500 }] },
       { src: 7, dests: [{ id: 9, amount: 500 }] },
     ]);
@@ -336,7 +340,7 @@ describe("settlement edge and adversarial cases", () => {
     ];
 
     for (const balance of invalidBalances) {
-      expect(SettlementPlanUtils.create(balance)).toBeNull();
+      expect(createSettlementPlan(balance)).toBeNull();
     }
   });
 
@@ -518,7 +522,7 @@ describe("settlement edge and adversarial cases", () => {
     const { projectId, senderEmail } = await createStablePlanProject(testEnv);
 
     expect(
-      SettlementPlanUtils.create({
+      createSettlementPlan({
         "1": 100,
         "3": 300,
         "4": -200,
@@ -736,13 +740,13 @@ describe("settlement randomized properties", () => {
       const snapshot = structuredClone(balance);
       const plan = requirePlan(balance);
 
-      expect(SettlementPlanUtils.create(balance)).toEqual(plan);
+      expect(createSettlementPlan(balance)).toEqual(plan);
       expect(balance).toEqual(snapshot);
       assertSettlementProperties(balance, plan);
 
       const memberId = Object.keys(balance)[seed % Object.keys(balance).length];
       const unbalanced = { ...balance, [memberId]: balance[memberId] + 1 };
-      expect(SettlementPlanUtils.create(unbalanced)).toBeNull();
+      expect(createSettlementPlan(unbalanced)).toBeNull();
     }
   });
 

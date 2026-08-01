@@ -1,12 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
+import { createSettlementPlan } from "../../shared/settlement";
 import { normalizeEmail, normalizedEmailSchema } from "../email";
 import {
   PROJECTS_REGISTRY_NAME,
   PROJECT_SUMMARY_SYNC_DELAY_MS,
   MoneyByMemberIdUtils,
-  SettlementPlanUtils,
   ProjectNameUtils,
   ProjectId,
   ProjectEmailsUtils,
@@ -504,7 +504,7 @@ export class ProjectStore extends DurableObject<Env> {
         .toArray()
         .map((row) => [String(row.member_id), row.amount_cents]),
     );
-    const transfers = SettlementPlanUtils.create(balance);
+    const transfers = createSettlementPlan(balance);
     if (!transfers) {
       return { ok: false, error: "invalid_balance" };
     }

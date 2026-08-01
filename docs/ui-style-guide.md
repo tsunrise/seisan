@@ -12,6 +12,11 @@ Design dials:
 - `MOTION_INTENSITY 3`: mostly static, with quiet hover, focus, and state transitions.
 - `VISUAL_DENSITY 5`: information-rich enough for daily use, but still readable.
 
+The public calculator homepage uses the same system with `DESIGN_VARIANCE 6`: an asymmetric
+introduction and working calculator on desktop, collapsing to one column on mobile. This is an
+explicit marketing and utility route, so concise semantic landing-page sections are allowed below
+the primary tool.
+
 ## Source Files
 
 Use these implementation files as the design source of truth:
@@ -167,6 +172,25 @@ fields, faint vertical rules connect repeated clauses, and verbs/connectors use 
   zero balance, and keep the full-plan control available beneath it.
 - Promise: the first band reads `[debtor] should pay [creditor] [amount]`; a linked `for` reason band
   completes the sentence.
+- Public calculator: use `[member] paid [amount]` connected payer bands followed by a separate
+  equal, ratio, or custom liability section. Payer names are plain text inputs, not member
+  dropdowns. Keep Add payer continuously available. Render liability members as compact flat rows,
+  with a checkbox, truncated plain name, tabular allocated share, optional inline split input, and
+  borderless Edit and Delete actions on one line at every breakpoint. Checkboxes control split
+  participation without deleting members; unchecked rows show zero while retaining their saved
+  ratio and custom values. Active payer rows keep their checkbox and split input editable, but
+  disable name Edit and Delete with explanatory labels and tooltips.
+- Public calculator liability names: enter a compact inline edit state only after Edit is pressed.
+  Replace Edit and Delete with borderless Cancel and Confirm actions, autofocus the name field, and
+  keep invalid edits open with a nearby error. Add member creates the same temporary selected row
+  with a zero share; it does not enter the persisted draft until confirmed. Permit only one
+  liability name editor at a time, while leaving other rows' participation and split values usable.
+- Public calculator allocation previews: show the liability share, not the settlement balance.
+  Update Equal and valid Ratio previews live, show zero across unresolved Ratio rows, and show each
+  valid Custom amount even while the custom total remains unbalanced.
+- Public calculator persistence: keep only committed rows and split participation in the version 2
+  local draft. Discard the legacy version 1 key and present a blank calculator instead of surfacing
+  migration UI or partially reconstructed edit state.
 
 Form rules:
 
@@ -212,6 +236,14 @@ Avoid these unless explicitly approved:
 - Making the empty timeline lane clickable.
 - Duplicating scroll restoration or mobile CTA clearance logic outside `timelineScroll.ts`.
 - Adding a new UI framework, icon set, animation dependency, or font-loading strategy for a local UI change.
+
+The public `/` calculator is the approved exception to the app-route marketing-section rule. It
+must still use the same paper palette, one blue accent, thin rules, compact radii, MUI controls,
+serif display hierarchy, and restrained state-only motion. Its full-app conversion section pairs
+one concise text column with three flat, divider-separated benefit rows for shared tracking,
+member-specific transfer plans, and free use without a daily posting cap rather than cards. Keep a
+single session-aware project-creation CTA, include a subdued server-storage disclosure with a
+Privacy Policy link, and do not repeat the conversion content inside settlement results.
 
 ## Change Checklist
 

@@ -152,8 +152,8 @@ export async function adminWhoami(): Promise<{
     headers: new Headers({ Accept: "application/json" }),
     credentials: "same-origin",
     redirect: "manual",
-  });
-  if (response.type === "opaqueredirect" || isRedirectResponse(response)) {
+  } as RequestInit & { credentials: "same-origin"; redirect: "manual" });
+  if (String(response.type) === "opaqueredirect" || isRedirectResponse(response)) {
     return redirectToAdminAccessLogin();
   }
 
@@ -507,18 +507,40 @@ function appendPageParams(
 }
 
 function redirectToAdminAccessLogin(): Promise<never> {
-  const loginUrl = new URL("/api/admin/login", window.location.href);
+  const location = browserLocation();
+  const loginUrl = new URL("/api/admin/login", location.href);
   loginUrl.searchParams.set("returnTo", currentBrowserPath());
-  window.location.assign(`${loginUrl.pathname}${loginUrl.search}`);
+  location.assign(`${loginUrl.pathname}${loginUrl.search}`);
   return new Promise<never>(() => {});
 }
 
 function currentBrowserPath(): string {
-  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const location = browserLocation();
+  return `${location.pathname}${location.search}${location.hash}`;
 }
 
 function isRedirectResponse(response: Response): boolean {
   return response.status >= 300 && response.status < 400;
+}
+
+function browserLocation(): {
+  href: string;
+  pathname: string;
+  search: string;
+  hash: string;
+  assign(url: string): void;
+} {
+  return (
+    globalThis as typeof globalThis & {
+      location: {
+        href: string;
+        pathname: string;
+        search: string;
+        hash: string;
+        assign(url: string): void;
+      };
+    }
+  ).location;
 }
 
 async function requestJson<T>(
@@ -568,7 +590,7 @@ async function request(
     body,
     signal: options.signal,
     credentials: "same-origin",
-  });
+  } as RequestInit & { credentials: "same-origin" });
   const expectedStatus = options.expectedStatus ?? 200;
   if (response.status !== expectedStatus) {
     throw new ApiError(response.status, await response.text());

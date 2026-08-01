@@ -61,6 +61,8 @@ Use this before changing project, member, record, ACL, or balance behavior.
 
 ## Settlement Plans
 
+- `shared/settlement.ts` owns the pure deterministic settlement types and computation used by the
+  Worker and React. Worker Zod schemas remain the runtime validation and API documentation boundary.
 - Positive balances send money and negative balances receive money.
 - Settlement planning pairs equal balances first, then greedily matches the largest remaining
   sender and recipient. Amount and member-ID tie breakers keep the plan deterministic.
@@ -73,6 +75,9 @@ Use this before changing project, member, record, ACL, or balance behavior.
 - Cache advancement is best effort. Missing, stale, malformed, partial, or nonmatching cached
   batches do not reject an otherwise valid transfer; the new record ID makes the old cache stale and
   the next settlement read recomputes. Any ordinary record may therefore generate a new plan.
+- The public root calculator applies the same engine to one aggregate browser-local snapshot. Its
+  local members and draft do not create projects, records, balances, settlement caches, or API
+  traffic.
 
 ## Access
 

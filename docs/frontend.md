@@ -11,6 +11,9 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 ## Module Boundaries
 
 - Keep app pages in `src/pages`, account dashboard UI in `src/account`, project-specific UI in `src/project`, shared UI in `src/components`, hooks in `src/hooks`, and admin-only UI in `src/admin`.
+- Keep the public group-expense calculator's pure draft, identity, allocation, validation, and
+  local-storage helpers in `src/calculator`. It may consume the pure settlement engine in
+  `shared/settlement.ts`, but it must not call an API to calculate or persist a draft.
 - API calls from the browser go through `src/api.ts` and use relative `/api/*` URLs.
 - Shared record text, money, timestamp, and title formatting belongs in `src/domain.ts`.
 - Components should call helpers such as `recordTitle`, `recordDetailTitle`, `formatCents`, and timestamp formatters instead of duplicating formatting rules.
@@ -150,10 +153,54 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 - Use `BrandLink` for the logo plus `SEISAN` brand mark.
 - The logo asset is `public/seisan-logo.svg`, and `index.html` uses it as the favicon.
 - Set page titles with `useDocumentTitle` for routes that should own `document.title`.
-- Existing title-setting routes include `/projects`, `/account`, `/account/api-keys`, `/api-docs`, project routes, `/login`, `/privacy`, and `/admin/*`; root redirects to `/projects`.
+- `/` is the public Group Expense Calculator for logged-out and authenticated visitors. `/projects`
+  remains the authenticated project list, and `/projects/new` remains project creation. The
+  session-aware root header links anonymous visitors to sign in and authenticated visitors to My
+  Projects without blocking calculator use.
+- The root calculator owns the title, canonical, description, Open Graph, Twitter, and
+  `SoftwareApplication` structured data for the production root URL. Keep FAQ content visible but
+  do not add FAQ rich-result markup.
+- Existing title-setting routes also include `/projects`, `/account`, `/account/api-keys`,
+  `/api-docs`, project routes, `/login`, `/privacy`, and `/admin/*`.
 - `public/sitemap.xml` lists only stable public pages on the production origin. Keep authenticated, admin, and dynamic project URLs out of it, and keep its absolute URL advertised in `public/robots.txt`.
 - Avoid in-app explanatory text about how the UI works unless it is actual product copy.
-- For SEO-facing shell content, update `index.html` metadata rather than adding marketing-only UI to app routes.
+- Keep root SEO shell metadata in `index.html`; root-only structured data is attached by the
+  calculator page and removed when it unmounts.
+
+## Public Calculator
+
+- The calculator models one aggregate USD snapshot, not an anonymous multi-expense ledger.
+- Member IDs and payer-row keys are local positive integers. Persist them so equal-split rounding
+  and settlement tie breakers remain stable across refreshes.
+- Normalize member identity by trimming and case-insensitive comparison while preserving committed
+  display casing. Payers are always liability members. Removing a payer leaves that member as
+  liability-only, and an active payer cannot be deleted from liability.
+- Keep liability members in compact flat rows rather than connected or individually framed blocks.
+  Each row keeps its participation checkbox, truncated name, live allocated share, optional ratio
+  or custom input, and borderless Edit and Delete actions on one line. Active payer rows keep their
+  checkbox and split input enabled, but their name Edit and Delete actions stay disabled because
+  payer names are owned by the Who paid section.
+- Checkboxes control split participation without removing members. Unchecked members display a zero
+  allocated share and retain their ratio and custom values. Equal, Ratio, and Custom allocate and
+  validate selected members only; Calculate requires at least one selected member.
+- Liability-only names use an explicit single-row editor with Cancel and Confirm actions. Only one
+  existing or pending member name can be edited at a time. A pending Add member row remains
+  UI-only until a valid, unique name is confirmed.
+- Preview allocated liability shares live. Equal and valid Ratio allocations resolve across selected
+  members; an unresolved Ratio shows zero for every member. Custom shows each valid selected share
+  even before the custom total matches the paid total.
+- Save a version 2 draft under the calculator-specific v2 local-storage key 400 ms after the latest
+  edit. Version 1 data is intentionally removed and reset rather than migrated. Do not persist
+  temporary name editors or computed plans. Unsupported or malformed versions reset safely, and
+  storage failures must not prevent in-memory calculation.
+- Any draft edit hides the computed result. A new result appears only after the visitor explicitly
+  calculates again.
+- Keep one always-visible, session-aware conversion section below the calculator for visitors who
+  need to track individual expenses in a shared Seisan project. Use one CTA to project creation,
+  present shared itemized tracking, member-specific transfer plans, and the free
+  no-daily-posting-cap model as flat divider-separated rows, and disclose that full projects store
+  expense data on Seisan's servers with a link to the Privacy Policy. Settlement results contain
+  only the calculated transfer plan and must not repeat this marketing content.
 
 ## Account Dashboard
 

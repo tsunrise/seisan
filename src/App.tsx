@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router";
 
 import { CreateProjectPage } from "./pages/CreateProjectPage";
 import { AppSnackbarProvider } from "./components/AppSnackbar";
+import { GroupExpenseCalculatorPage } from "./pages/GroupExpenseCalculatorPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { ProjectPage } from "./pages/ProjectPage";
@@ -17,7 +18,7 @@ export default function App() {
   return (
     <AppSnackbarProvider>
       <Routes>
-        <Route path="/" element={<Navigate to="/projects" replace />} />
+        <Route path="/" element={<GroupExpenseCalculatorPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route

@@ -1,15 +1,7 @@
+export type { MoneyByMemberId, TransferBatch, TransferDestination } from "../shared/settlement";
+import type { MoneyByMemberId, TransferBatch } from "../shared/settlement";
+
 export type ProjectAcl = { type: "public" } | { type: "restricted"; emails: string[] };
-export type MoneyByMemberId = Record<string, number>;
-
-export interface TransferDestination {
-  id: number;
-  amount: number;
-}
-
-export interface TransferBatch {
-  src: number;
-  dests: TransferDestination[];
-}
 
 export interface ProjectMemberConfig {
   size?: number;
