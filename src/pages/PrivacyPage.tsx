@@ -130,7 +130,6 @@ export function PrivacyPage() {
                 pb: { xs: 7, md: 10 },
               },
               "& .privacy-policy__header h1": {
-                maxWidth: "12ch",
                 m: 0,
                 mb: 3,
                 fontFamily: ledgerFonts.serif,
