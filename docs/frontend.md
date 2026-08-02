@@ -151,6 +151,11 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 ## Branding, Titles, And SEO
 
 - Use `BrandLink` for the logo plus `SEISAN` brand mark.
+- On project routes, both the compact project header and wide project rail brand links return
+  authenticated visitors to `/projects` and anonymous visitors to the public calculator at `/`.
+  Brand links on other surfaces continue to target `/` by default.
+- Every client-side navigation to `/` resets the document scroll position to the top, including
+  browser-history navigation and repeated navigation entries for the index route.
 - The logo asset is `public/seisan-logo.svg`, and `index.html` uses it as the favicon.
 - Set page titles with `useDocumentTitle` for routes that should own `document.title`.
 - `/` is the public Group Expense Calculator for logged-out and authenticated visitors. `/projects`

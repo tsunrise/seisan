@@ -6,9 +6,13 @@ import { ledgerColors } from "../theme";
 
 export function BrandLink({
   size = "default",
+  to = "/",
+  ariaLabel = "Go to Seisan home",
   sx,
 }: {
   size?: "default" | "compact";
+  to?: string;
+  ariaLabel?: string;
   sx?: SxProps<Theme>;
 }) {
   const compact = size === "compact";
@@ -16,9 +20,9 @@ export function BrandLink({
   return (
     <Stack
       component={Link}
-      to="/"
+      to={to}
       direction="row"
-      aria-label="Go to Seisan home"
+      aria-label={ariaLabel}
       sx={{
         alignItems: "center",
         color: ledgerColors.ink,

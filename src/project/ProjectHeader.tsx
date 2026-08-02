@@ -46,7 +46,11 @@ export function ProjectHeader({
           display: { xs: "flex", lg: "none" },
         }}
       >
-        <BrandLink size="compact" />
+        <BrandLink
+          size="compact"
+          to={currentEmail ? "/projects" : "/"}
+          ariaLabel={currentEmail ? "Go to projects" : "Go to Seisan home"}
+        />
         {currentEmail ? (
           <Typography
             component={RouterLink}

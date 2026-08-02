@@ -95,7 +95,10 @@ export function ProjectRail({
           },
         }}
       >
-        <BrandLink />
+        <BrandLink
+          to={currentEmail ? "/projects" : "/"}
+          ariaLabel={currentEmail ? "Go to projects" : "Go to Seisan home"}
+        />
         {currentEmail ? (
           <Stack
             component={Link}

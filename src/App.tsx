@@ -1,5 +1,5 @@
-import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes } from "react-router";
+import { lazy, Suspense, useEffect } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router";
 
 import { CreateProjectPage } from "./pages/CreateProjectPage";
 import { AppSnackbarProvider } from "./components/AppSnackbar";
@@ -14,9 +14,22 @@ const AdminApp = lazy(() => import("./admin/AdminApp"));
 const AccountApp = lazy(() => import("./account/AccountApp"));
 const ApiDocsPage = lazy(() => import("./pages/ApiDocsPage"));
 
+function ResetIndexScroll() {
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.pathname === "/") {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    }
+  }, [location.key, location.pathname]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <AppSnackbarProvider>
+      <ResetIndexScroll />
       <Routes>
         <Route path="/" element={<GroupExpenseCalculatorPage />} />
         <Route path="/login" element={<LoginPage />} />
