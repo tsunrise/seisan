@@ -73,7 +73,7 @@ import { LinkedBlockList, LinkedBlockVerb } from "../project/LinkedBlockForm";
 import { ledgerColors, ledgerFonts } from "../theme";
 import type { SplitMode } from "../types";
 
-const PAGE_TITLE = "Free Group Expense Calculator: See Who Pays Whom | Seisan";
+const PAGE_TITLE = "Seisan: Free Group Expense Calculator, See Who Pays Whom";
 const PAGE_DESCRIPTION =
   "Split a group expense equally, by ratio, or with custom amounts and get a clear settlement plan. Free, private to your browser, and no sign-up required.";
 const SOFTWARE_APPLICATION_ID = "seisan-calculator-structured-data";
