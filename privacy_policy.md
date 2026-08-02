@@ -1,199 +1,223 @@
 # Seisan Privacy Policy
 
-**Effective date:** June 21, 2026
+**Effective date:** August 1, 2026
 
-**Last updated:** June 21, 2026
+**Last updated:** August 1, 2026
 
-Seisan is a service for managing shared expense projects. Seisan is operated by [tsunrise](https://github.com/tsunrise). This Privacy Policy explains what personal information Seisan collects, how it is used, how it may be disclosed, and how you can contact us about privacy requests.
+Seisan is a service for managing shared expense projects. The service is operated in the United States by Conghao Shen, operating as tsunrise. This Privacy Policy explains what personal information Seisan processes, why it is processed, who can receive it, how long it may be kept, and how to make a privacy request.
 
-For privacy questions or requests, contact: [me@tomshen.io](mailto:me@tomshen.io).
+For privacy questions or requests, contact [me@tomshen.io](mailto:me@tomshen.io).
 
-## 1. Scope
+## 1. At a glance
 
-This policy applies to Seisan and to the website and application at seisan.waga.me. It does not apply to websites, services, or applications that Seisan does not operate.
+- **The public calculator stays in your browser.** Names, amounts, split settings, and calculated results entered in the calculator are stored in your browser and are not sent to Seisan's servers unless you choose to create a shared project from them. Loading the site still produces ordinary network and security data.
+- **Shared projects are stored online.** Project names, members, payment instructions, expense records, balances, and related information are processed on Cloudflare infrastructure so the people with access to a project can collaborate.
+- **Public project links are not private.** Logged-out visitors can see substantial project information, including the owner email. A signed-in visitor to a public project can also see linked member emails and member profile information, including payment instructions.
+- **Seisan does not sell personal information or run advertising or client-side analytics SDKs.** Cloudflare still processes traffic, security, and service data needed to host and protect Seisan. Expense names are also processed by Cloudflare Workers AI when Seisan suggests an expense category.
 
-## 2. Personal Information We Collect
+## 2. Scope and controller
 
-The personal information we collect depends on how you use Seisan and which features are available. We collect information that you provide, information created through your use of Seisan, information provided by other users in shared projects, and technical information processed to operate and secure the service.
+This policy applies to the Seisan website, application, and API at seisan.waga.me. It does not apply to websites, services, or applications that Seisan does not operate, including services linked from Seisan.
 
-Examples include the following categories.
+Conghao Shen, operating as tsunrise, is the controller responsible for Seisan's processing of personal information. The controller is established in the United States and can be contacted at [me@tomshen.io](mailto:me@tomshen.io).
 
-### Account, Authentication, and Contact Information
+## 3. Information we collect and where it comes from
 
-This may include identifiers and contact details such as email address, login and verification information, session and cookie information, account status, and security or authentication records.
+The information Seisan processes depends on the features you use. It may come from you, another person using a shared project, your browser or API client, or Cloudflare services used to deliver and protect Seisan.
 
-### Project, Collaboration, and User-Provided Content
+### Browser-only calculator information
 
-This may include information connected to projects and shared workspaces, such as project names, project settings, access controls, member profiles or display names, linked or invited users, ledger entries, descriptions, notes, comments, attachments, history, timestamps, and other information that users choose to enter or generate while using Seisan.
+The public calculator can store member names, payer names, amounts, split selections, ratios, custom shares, and its draft structure in your browser's local storage. Seisan does not receive the calculator draft or result unless you choose to create a project from it. A session check may still be sent to determine whether to offer a signed-in project-creation action.
 
-### Financial, Ledger, and Activity Information
+### Account, authentication, and API-key information
 
-This may include information used to track shared expenses and settlement activity, such as amounts, splits, reimbursements, balances, transfers, reversals, record authors, participation, and related project activity. Seisan is not intended to collect payment-card numbers, bank account credentials, or other payment account credentials.
+This includes email address, login-attempt identifier, hashed login code, failed-attempt count, attempt timestamps, session-token information, revoked-session token hashes, and authentication status.
 
-### Administrative, Support, and Abuse-Prevention Information
+If you create API keys, Seisan stores the key ID, label, hashed verifier, account email, creation and expiration times, and any revocation time. Seisan shows the full API-key secret only when the key is created; it stores a cryptographic hash for later verification.
 
-This may include information used to operate, moderate, support, secure, and administer Seisan, such as service limits, configuration, temporary blocks, user or project summaries, request history, support or privacy-request correspondence, abuse-prevention signals, and operational records.
+Before sending a login code, Seisan sends the domain portion of the email address to Cloudflare's DNS-over-HTTPS resolver to check whether the domain advertises a possible mail route. This check does not confirm that a specific mailbox exists.
 
-### Technical Information
+### Project, member, and ledger information
 
-This may include information about the browser, device, network, request, and application interaction, such as IP address, user-agent, request headers, request metadata, logs, error data, security signals, rate-limit data, and local browser storage used for service functionality.
+This includes project identifiers and names, owner email, public or restricted access settings, allowed email addresses, member names and linked emails, represented-group size, payment instructions, membership state, balances, and timestamps.
 
-We do not intentionally collect government ID numbers, payment-card numbers, bank account credentials, precise geolocation, health information, biometric identifiers, or account passwords.
+Ledger information includes expenses, expense names, categories, payer and liability splits, transfers, promises to pay, reasons, amounts, record authors and editors, edits, deletion tombstones, settlement plans, and related project activity. Seisan is not intended to collect payment-card numbers, bank-login credentials, government identifiers, health information, biometric identifiers, or precise geolocation.
 
-Free-text fields such as project names, member names, and ledger descriptions may contain information that users choose to enter. Please do not include sensitive personal information in Seisan unless you are comfortable with it being processed and shown to people who can access the relevant project.
+Payment instructions and free-text fields can contain personal information that you or another project member chooses to enter. Do not enter sensitive information that is not needed to coordinate the shared expense project.
 
-## 3. Sources of Personal Information
+### Category-suggestion information
 
-We collect personal information from:
+When a signed-in user types an expense name, Seisan may send that name to its category-classification endpoint. Cloudflare Workers AI converts the name into an embedding and Seisan queries its category index for suggested matches. The suggested category, confidence information, and candidate categories are returned to the browser.
 
-- You, when you sign in, create or join projects, add member names, configure project access, or post ledger records.
-- Other Seisan users, when they add you to a project access list, link or unlink a member email, create member display names, or create records that reference project members.
-- Your browser or device, when you access the service.
-- Cloudflare, our service provider and processor, as needed to host, secure, deliver, and operate Seisan.
+### Technical, security, and operational information
 
-## 4. How We Use Personal Information
+This may include IP address, user-agent and request headers, request URL and time, network and application metadata, errors, service logs, cache entries, rate-limit state, abuse-prevention status, and administrative activity needed to operate and secure Seisan.
 
-We use personal information to:
+Cloudflare Turnstile processes signals such as IP address, TLS fingerprint, user-agent, site key, associated origin, and browser-environment or interaction signals to distinguish people from bots. Cloudflare may also generate short-lived security identifiers or use strictly necessary security storage as described in its notices.
 
-- Provide, maintain, and improve Seisan.
-- Authenticate users and maintain sessions.
-- Send login codes and security-related messages.
-- Create, display, update, and synchronize shared expense projects.
-- Show project lists, project members, ledger records, balances, and settlement information to authorized viewers.
-- Enforce project access controls and service limits.
-- Prevent abuse, spam, automated attacks, unauthorized access, and excessive use.
-- Debug errors, monitor reliability, and operate administrative tools.
-- Respond to privacy, security, support, or legal requests.
-- Comply with legal obligations and protect the rights, privacy, safety, and security of Seisan, users, and others.
+### Support and privacy-request information
 
-## 5. How Project Information Is Visible to Others
+If you contact Seisan, we process your contact details, correspondence, verification information, project or account identifiers you provide, and information needed to investigate and respond.
 
-Seisan is a shared-ledger tool, so project information is intentionally visible to other people who can access the same project.
+## 4. How we use information and our legal bases
 
-### Public Projects
+Seisan processes personal information for the following purposes:
 
-- Anyone with the project link may be able to view the project name, owner email, member display names, ledger records, expense names, amounts, balances, timestamps, and related project information.
-- Logged-in viewers of a public project may be able to see linked member email addresses.
-- Public project links are not private. Anyone who receives or obtains the link may view project information, and people with access may copy or re-share information outside Seisan. Use restricted projects for information you do not want link-holders to access.
+- Provide the calculator, authentication, API, shared projects, ledger, balances, and settlement features you request.
+- Authenticate users, issue and verify API keys, send login codes, and maintain sessions.
+- Display project and member information to people permitted by the project's access settings.
+- Suggest expense categories and let users confirm or replace the suggestion.
+- Enforce access controls, service limits, and project invariants.
+- Detect bots, prevent abuse, investigate errors, maintain reliability, and protect Seisan and its users.
+- Respond to privacy, support, security, or legal requests.
+- Comply with legal obligations and establish, exercise, or defend legal claims.
 
-### Restricted Projects
+Where the EEA or UK data-protection rules apply, Seisan relies on one or more of these legal bases:
 
-- Restricted projects are intended to be visible only to the owner, linked members, and authenticated email addresses allowed by the owner.
-- Those authorized viewers may be able to see project name, owner email, allowed email list, member display names, linked member emails, ledger records, expense names, amounts, balances, timestamps, and related project information.
+- **Contract and requested steps:** processing needed to provide an account, project, API, or other feature you request.
+- **Legitimate interests:** operating a reliable shared-ledger service; protecting accounts and projects; preventing abuse; debugging; improving ordinary service functionality; and responding to users. We balance these interests against the effects on individuals.
+- **Legal obligation:** processing needed to comply with applicable law or valid legal process.
+- **Consent:** processing based on consent if Seisan specifically asks for it for a future optional purpose. Seisan does not currently rely on consent for advertising or analytics.
 
-### Owners and Admins
+You are not legally required to provide personal information to Seisan. Email and authentication information are needed to sign in, and project information is needed to use the corresponding shared-project features. Without that information, those features will not work.
 
-- Project owners can manage project visibility, allowed emails, member names, linked emails, and project membership.
-- Seisan administrators may access project, account, limit, and technical information when needed to operate, secure, debug, or support the service.
+## 5. Project visibility and other users
 
-Do not put information in a project, member name, or ledger record that you do not want visible to other people who can access that project.
+**A public project should be treated as publicly accessible, even when its link is difficult to guess. Do not put information in a public project that you do not want link holders or signed-in visitors to see and copy.**
 
-## 6. How We Disclose Personal Information
+### Public projects
 
-We may disclose personal information:
+- A logged-out visitor with the link can see the project name, owner email, member display names, ledger records, expense and promise text, amounts, splits, balances, record authorship, timestamps, and settlement information.
+- A signed-in visitor with the link can also see linked member email addresses and member profile information, including represented-group size and payment instructions.
+- People who can view a project may copy, export, screenshot, or re-share its information outside Seisan. Seisan cannot control copies made by other users.
 
-- To other users who can access the same project, as described above.
-- To Seisan administrators and operators who need access to operate, secure, debug, or support the service.
-- To Cloudflare, our service provider and processor, as needed to host, secure, deliver, and operate Seisan. Cloudflare's Privacy Policy is available at [https://www.cloudflare.com/privacypolicy/](https://www.cloudflare.com/privacypolicy/).
-- To comply with law, legal process, or government requests.
+### Restricted projects
+
+- Restricted projects are available to the owner, linked members, and authenticated email addresses allowed by the owner.
+- Authorized viewers can see the project name, owner email, allowed email list, member names and linked emails, member profile information, ledger records, amounts, balances, timestamps, and settlement information.
+
+### Owners, members, and administrators
+
+- Project owners can manage access settings, allowed emails, member names, linked emails, member profiles, and membership.
+- Other active linked members may be able to edit records and certain member information under Seisan's current collaboration rules.
+- Seisan administrators may access account, project, limit, and technical information when reasonably needed to operate, secure, debug, or support the service.
+
+## 6. How we disclose information
+
+Seisan may disclose personal information:
+
+- To people who can access the same project, as described in the project-visibility section.
+- To Seisan's operator and administrators when needed to operate, secure, debug, or support the service.
+- To Cloudflare, which provides network delivery, Workers, Durable Objects, KV, Cache, rate limiting, email sending, Turnstile, Workers AI, and Vectorize services used by Seisan. Cloudflare generally acts as Seisan's processor or service provider for these services. See [Cloudflare's Privacy Policy](https://www.cloudflare.com/privacypolicy/) and [Data Processing Addendum](https://www.cloudflare.com/cloudflare-customer-dpa/).
+- To the recipient's email service when Seisan sends a requested login code.
+- To comply with applicable law, valid legal process, or government requests.
 - To protect the rights, privacy, safety, or security of Seisan, users, or others.
-- In connection with a merger, acquisition, financing, reorganization, bankruptcy, sale of assets, or similar transaction involving Seisan, subject to appropriate protections for personal information.
+- In connection with a merger, financing, reorganization, transfer of the service, sale of assets, or similar transaction, subject to appropriate protections.
 - With your direction or consent.
 
-We do not sell personal information. We do not share personal information for cross-context behavioral advertising. We do not use advertising SDKs or analytics SDKs in the Seisan application.
+For Turnstile, Cloudflare acts as Seisan's processor when it uses signals to protect Seisan. Cloudflare also describes itself as an independent controller when it uses those signals to improve Turnstile's bot-detection capabilities. See the [Cloudflare Turnstile Privacy Addendum](https://www.cloudflare.com/turnstile-privacy-policy/).
 
-## 7. Cookies, Local Storage, and Tracking Choices
+Seisan does not sell personal information. Seisan does not share personal information for cross-context behavioral advertising and does not use advertising SDKs or client-side analytics SDKs in the application.
 
-Seisan uses a session cookie to keep you signed in. The session cookie is configured as HTTP-only, secure, same-site, and scoped to the site path. Seisan also uses browser sessionStorage for short-lived timeline scroll restoration.
+## 7. AI-assisted category suggestions
 
-Seisan does not use third-party advertising cookies or analytics SDKs in the application. Because Seisan does not sell personal information or share it for cross-context behavioral advertising, there is no sale or sharing activity for Global Privacy Control or "Do Not Track" signals to disable. If Seisan later begins selling or sharing personal information as those terms are used under California law, we will update this policy and honor applicable opt-out signals before that change takes effect.
+Seisan uses the Cloudflare Workers AI model identified in its current implementation to generate an embedding from an expense name and compare it with category vectors in Cloudflare Vectorize. This produces a suggestion, not a decision about a person. Users can select a different category, and the category does not affect project access, price, eligibility, credit, employment, or another legal or similarly significant outcome.
 
-## 8. Retention
+Seisan does not write the query embedding or candidate list to its category index. If the user posts the expense, the expense name and selected category become part of the project record under the project's access settings.
 
-We keep personal information for as long as reasonably necessary for the purposes described in this policy, including to provide Seisan, maintain shared ledger integrity, secure the service, comply with legal obligations, resolve disputes, and enforce agreements or policies.
+Cloudflare states that it does not use Workers AI customer content to train AI models or improve Cloudflare or third-party services without explicit consent. See [Cloudflare's Workers AI data-use documentation](https://developers.cloudflare.com/workers-ai/platform/data-usage/). Cloudflare may update its services and terms, so its current documentation also applies to its processing.
 
-### Examples of Retention Criteria
+## 8. Cookies and browser storage
 
-- Login codes are intended for short-term authentication and expire after a short validity period. Related login-attempt records may be retained as needed for cooldowns, failed-attempt tracking, abuse prevention, replacement by later attempts, or operational cleanup.
-- Session cookies are intended to last up to 30 days unless you log out, the session expires, or the token is revoked.
-- Revoked-session token hashes may be retained until the related session would otherwise expire.
-- Project and ledger information may be retained while the project exists and as needed to preserve shared expense history, member balances, reversals, auditability, and dispute resolution.
-- Operational logs, cache entries, rate-limit records, and security records are generally retained only as long as needed for security, debugging, reliability, abuse prevention, and operational purposes, subject to service-provider settings and legal requirements.
-- Browser sessionStorage timeline scroll state is intended to be short-lived and may be cleared by the application or by your browser.
+Seisan uses the following browser storage and access technologies:
 
-Deletion requests may be limited where retaining information is necessary for shared-ledger integrity, security, legal compliance, debugging, fraud prevention, or other permitted reasons. Deleting or unlinking one person's information may not delete shared project records where those records are needed for other members' balances, auditability, or dispute resolution.
+- The `__Host-seisan_session` HTTP-only, secure, same-site cookie keeps a browser signed in for up to 30 days unless the user logs out, the session expires, or the token is revoked.
+- Cloudflare Turnstile may use strictly necessary security cookies, short-lived identifiers, and browser signals to prevent automated abuse.
+- The public calculator stores non-empty drafts in `localStorage`. A draft remains until the user clears it in Seisan, clears site data in the browser, or Seisan removes an incompatible stored format. A blank calculator removes the current draft.
+- The project timeline uses `sessionStorage` for a short-lived scroll-restoration hint. Seisan treats the hint as expired after 10 minutes and the browser may also clear it when the browsing session ends.
 
-## 9. Security
+Seisan does not use third-party advertising cookies or client-side analytics SDKs. Because Seisan does not sell personal information or share it for cross-context behavioral advertising, there is currently no sale or sharing activity for Global Privacy Control to opt out of. Seisan does not respond differently to legacy "Do Not Track" signals, for which there is no uniform response standard.
 
-We use technical and organizational measures designed to protect personal information, including authentication, secure cookies, access controls, validation at service boundaries, rate limits, and service-provider security controls. No method of transmission or storage is completely secure, so we cannot guarantee absolute security.
+## 9. Retention
 
-## 10. Children
+Seisan keeps personal information only for as long as reasonably needed for the purposes described in this policy, subject to the present technical behavior below, service-provider settings, legal obligations, security needs, dispute resolution, and protection of other project members' records.
 
-Seisan is intended for users who are at least 13 years old. Seisan is not directed to children under 13, and we do not knowingly collect personal information from children under 13. If you believe a child under 13 has provided personal information to Seisan, contact me@tomshen.io so we can review and take appropriate action.
+- Login codes expire after 10 minutes. Related login-attempt records are removed after successful verification, when an expired attempt is verified, or when a later attempt replaces them; an expired row may remain until one of those events or operational cleanup occurs.
+- Session cookies last up to 30 days. A revoked-session token hash may remain until the original session would have expired.
+- API keys cannot authenticate after expiration or revocation. Verification projections use expiration controls. Expired and revoked source metadata may remain until later API-key maintenance removes it.
+- Seisan does not currently apply a fixed automatic expiration to project and ledger data. It may be retained to preserve shared balances, history, edits, deletion tombstones, auditability, and disputes involving other members.
+- Deleting a live ledger record removes its balance effect and replaces its stored content with a tombstone rather than erasing the record identifier, author, and audit timing. Deleted members are also retained in a limited form so historical records can still render.
+- Project-list cache entries are short-lived. Configuration, rate-limit, security, application, and Cloudflare operational records are retained according to their function and applicable service-provider settings.
+- Browser calculator drafts and timeline scroll state follow the browser-storage behavior described above.
+- Support and privacy-request correspondence may be retained as needed to respond, keep an appropriate record of the request, comply with law, and resolve disputes.
 
-We do not knowingly sell or share personal information of consumers under 16.
+Deletion requests may be limited where retaining information is necessary to protect another person's rights, preserve a shared ledger, maintain security, comply with law, or exercise another applicable exception. Seisan will assess requests individually rather than treating shared-ledger retention as an automatic exception.
 
-## 11. Users in the EEA, UK, or Switzerland
+## 10. Security
 
-Where applicable, Seisan acts as a controller of personal information processed to provide and operate the service. We process personal information to provide Seisan, secure the service, comply with legal obligations, and pursue legitimate interests such as abuse prevention, reliability, debugging, and protecting users and projects.
+Seisan uses measures designed to protect personal information, including authenticated access, secure cookies, hashed credentials and codes, access controls, validation at service boundaries, rate limits, anti-bot checks, and Cloudflare security controls. No transmission or storage method is completely secure, so Seisan cannot guarantee absolute security.
 
-Where processing is necessary to provide Seisan, failing to provide required information may prevent use of the service. Personal information may be processed in the United States and other countries where our service providers operate. Where required, we rely on appropriate safeguards for international transfers.
+If you believe information in Seisan has been accessed or disclosed improperly, contact [me@tomshen.io](mailto:me@tomshen.io).
 
-Depending on applicable law, users in the European Economic Area, United Kingdom, or Switzerland may have rights to access, correct, delete, restrict, object to processing of, or request portability of their personal information. They may also have the right to lodge a complaint with a supervisory authority. To make a request, contact me@tomshen.io.
+## 11. International data transfers
 
-Seisan does not make decisions based solely on automated processing that produce legal or similarly significant effects. Seisan may use automated systems for security, abuse prevention, rate limiting, reliability, and service operation.
+Seisan's controller is in the United States. Cloudflare operates a global network, so personal information may be processed in the United States and other countries where Cloudflare and its subprocessors operate. Those countries may have data-protection rules different from the rules where you live.
 
-## 12. California Privacy Rights
+Where European data-transfer rules apply, Seisan relies on Cloudflare's contractual transfer mechanisms, which may include the EU Standard Contractual Clauses, the UK Addendum, Swiss adaptations, the Data Privacy Framework, and additional safeguards described in Cloudflare's [Data Processing Addendum](https://www.cloudflare.com/cloudflare-customer-dpa/). Contact [me@tomshen.io](mailto:me@tomshen.io) to request more information about applicable safeguards.
 
-California privacy laws, including the California Consumer Privacy Act as amended by the California Privacy Rights Act, may provide California residents with rights regarding personal information. These rights apply to Seisan only to the extent required by applicable law.
+## 12. Your privacy rights
 
-Some rights described in this section apply only where required by law, but you may still contact us with privacy requests and we will review them.
+Privacy rights depend on where you live and whether a particular law applies to Seisan's processing. You may contact [me@tomshen.io](mailto:me@tomshen.io) to request access, correction, deletion, restriction, objection, or portability, or to ask how Seisan handles your information. Seisan will review the request even when a particular statutory right does not apply.
 
-Depending on your relationship with Seisan and the law that applies, you may have the right to:
+### Right to object
 
-- Know the categories and specific pieces of personal information collected about you.
-- Know the categories of sources, purposes of collection and use, and categories of recipients of personal information.
-- Request deletion of personal information, subject to exceptions.
-- Request correction of inaccurate personal information.
-- Opt out of sale or sharing of personal information. Seisan does not sell personal information or share it for cross-context behavioral advertising.
-- Limit use or disclosure of sensitive personal information where required by law. Seisan does not use or disclose sensitive personal information for purposes that would require a separate limit-use choice under California law.
-- Not be discriminated or retaliated against for exercising privacy rights.
+**Where EEA or UK law applies and Seisan relies on legitimate interests, you may object to that processing based on your particular situation. You may also object at any time to direct marketing; Seisan does not currently use personal information for direct marketing.**
 
-In the preceding 12 months, Seisan may have collected the following categories of personal information under California law:
+### EEA, UK, and Switzerland
 
-- Identifiers, such as email address, online identifiers, IP address, project IDs, member IDs, and session identifiers.
-- Internet or other electronic network activity information, such as request metadata, user-agent, security logs, and service interaction data.
-- Commercial or transaction-like information, such as shared expense records, amounts, balances, project membership, and settlement records.
-- User-generated content and other information you or other users provide in projects, such as project names, member display names, allowed emails, and expense names.
-- Inferences or summaries used for service operation, such as project summaries, user/project counts, limits, and abuse-prevention status.
-- Sensitive personal information, to the extent session credentials or account access information qualify. Seisan uses this information for authentication, security, and service operation.
+Where applicable, you may have rights to access, correct, erase, restrict, object to processing, or receive a portable copy of personal information. If processing relies on consent, you may withdraw that consent without affecting earlier processing. You may complain to the data-protection authority where you live or work or where you believe a violation occurred.
 
-In the preceding 12 months, Seisan has not sold personal information and has not shared personal information for cross-context behavioral advertising.
+Seisan does not make decisions based solely on automated processing that produce legal or similarly significant effects. Automated category suggestions, rate limits, security checks, and abuse-prevention systems do not make such decisions.
 
-In the preceding 12 months, Seisan may have disclosed personal information to:
+### California
 
-- Other users with access to the relevant project.
-- Cloudflare as a service provider and processor.
-- Legal, security, or administrative recipients where necessary to operate, secure, or comply with law.
+California privacy law may provide rights to know, access, delete, correct, and receive information about categories, sources, purposes, and recipients; to opt out of sale or sharing; to limit certain uses of sensitive personal information; and not to receive discriminatory treatment for exercising privacy rights. These rights apply to Seisan only to the extent required by applicable law.
 
-## 13. How to Make a Privacy Request
+In the preceding 12 months, Seisan may have collected these California categories:
 
-To make a privacy request, contact [me@tomshen.io](mailto:me@tomshen.io). Please describe the request and provide enough information for us to identify the account, project, or personal information involved.
+- Identifiers, including email addresses, online identifiers, IP addresses, project and member identifiers, session identifiers, and API-key identifiers.
+- Internet or electronic network activity, including request metadata, user-agent, security signals, errors, and service interaction data.
+- Commercial or transaction-like information, including shared expense records, amounts, balances, project membership, and settlement records.
+- User-provided content, including project and member names, payment instructions, allowed emails, expense names, promise reasons, and calculator drafts stored only in the browser.
+- Inferences or service-operation summaries, including category suggestions, project summaries, counts, limits, and abuse-prevention status.
+- Sensitive personal information to the extent authentication credentials, account access information, or user-entered payment instructions qualify. Seisan uses this information only for service, authentication, security, and user-requested project functions.
 
-We may need to verify your identity before fulfilling a request. Verification may include asking you to sign in, confirm control of an email address, identify relevant project IDs, or provide other information reasonably needed to match you to the records involved. We will use information provided for verification only to verify and respond to the request.
+In the preceding 12 months, Seisan has not sold personal information and has not shared personal information for cross-context behavioral advertising. Seisan may have disclosed the categories above to project viewers, Cloudflare, email providers, administrators, or legal and security recipients for the purposes described in this policy.
 
-You may use an authorized agent to submit a request where applicable law allows. We may require proof that you authorized the agent and may also require you to verify your identity directly.
+### Other United States privacy rights
 
-We will respond to privacy requests within the time required by applicable law.
+Residents of certain U.S. states may have similar rights to access, correct, delete, or obtain a portable copy of personal information, opt out of sale, targeted advertising, or qualifying profiling, and appeal a denied request. Seisan does not sell personal information, use it for targeted advertising, or perform profiling that produces legal or similarly significant effects.
 
-We may deny or limit a request where we cannot verify it, where the information belongs to another person, where fulfilling the request would compromise shared project records or another person's privacy, or where an exception applies.
+### Making a request
 
-## 14. Changes to This Policy
+Send requests to [me@tomshen.io](mailto:me@tomshen.io) and describe the account, project, or information involved. Seisan may ask you to sign in, confirm control of an email address, identify relevant project IDs, or provide other information reasonably needed to verify the request. Verification information is used only to verify and respond to the request.
 
-We may update this Privacy Policy from time to time. If we make material changes, we will update the effective date or last updated date and provide notice in a manner appropriate to the change.
+You may use an authorized agent where applicable law allows. Seisan may require proof of the authorization and may ask you to verify your identity directly. Seisan will respond within the time required by applicable law and will explain any denial and available appeal process where required.
+
+## 13. Children
+
+Seisan is intended for people who are at least 13 years old. It is not directed to children under 13, and Seisan does not knowingly collect personal information from children under 13. If you believe a child under 13 provided personal information to Seisan, contact [me@tomshen.io](mailto:me@tomshen.io) so the information can be reviewed and appropriate action taken.
+
+Seisan does not knowingly sell or share personal information of consumers under 16.
+
+## 14. Changes to this policy
+
+Seisan may update this Privacy Policy when the service, providers, or legal requirements change. Material changes will be reflected in the effective or last-updated date and communicated in a manner appropriate to the change.
 
 ## 15. Contact
 
-For privacy questions, requests, or concerns, contact:
+Controller: Conghao Shen, operating as tsunrise
 
-[me@tomshen.io](mailto:me@tomshen.io)
+Location: United States
+
+Privacy contact: [me@tomshen.io](mailto:me@tomshen.io)

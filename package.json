@@ -16,6 +16,7 @@
     "format:check": "prettier . --check",
     "test": "vitest run",
     "test:client": "node --import tsx --test scripts/client.node-test.ts",
+    "test:privacy": "node --test scripts/build-privacy-policy.node-test.mjs",
     "api": "tsx scripts/client-cli.ts",
     "categories:populate": "tsx scripts/populate-categories.ts",
     "categories:cleanup": "tsx scripts/cleanup-categories.ts",

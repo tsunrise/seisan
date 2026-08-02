@@ -1,6 +1,8 @@
 import { spawnSync } from "node:child_process";
 
-import "./build-privacy-policy.mjs";
+import { buildPrivacyPolicy } from "./build-privacy-policy.mjs";
+
+await buildPrivacyPolicy();
 
 const openApi = spawnSync("pnpm", ["exec", "tsx", "scripts/generate-openapi.ts"], {
   stdio: "inherit",
