@@ -56,10 +56,11 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 ## Project Settings
 
 - `/project/:id/settings` is a compact settings menu rather than a single long form. It links to the
-  current member's profile, settlement plan, members, and access control.
-- Profile, members, and access control use nested settings routes and return to the settings menu.
-  Keep the profile page scoped to the current linked member. Editing another eligible member belongs
-  in member settings so there is only one administrative edit surface.
+  project name, current member's profile, settlement plan, members, and access control. The project
+  name row opens a focused editor for the owner and remains read-only for other viewers.
+- Project name, profile, members, and access control use nested settings routes and return to the
+  settings menu. Keep the profile page scoped to the current linked member. Editing another eligible
+  member belongs in member settings so there is only one administrative edit surface.
 - Member settings expose management mode to the owner and active linked members. Both can add
   placeholders and edit unlinked members' names, represented sizes, and payment methods. A linked
   member may also edit their own row, while only the owner sees administrative unlink and delete

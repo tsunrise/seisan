@@ -1,6 +1,7 @@
 import AccountCircleOutlinedIcon from "@mui/icons-material/AccountCircleOutlined";
 import BalanceOutlinedIcon from "@mui/icons-material/BalanceOutlined";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import GroupOutlinedIcon from "@mui/icons-material/GroupOutlined";
 import LaunchIcon from "@mui/icons-material/Launch";
 import SecurityOutlinedIcon from "@mui/icons-material/SecurityOutlined";
@@ -90,6 +91,12 @@ export function ProjectSettings({
           aria-label="Project settings"
           sx={{ borderBlock: `1px solid ${ledgerColors.line}` }}
         >
+          <SettingsRow
+            to={isOwner ? `/project/${project.id}/settings/name` : undefined}
+            icon={<EditOutlinedIcon />}
+            title="Project name"
+            description={project.name}
+          />
           {currentMember ? (
             <SettingsRow
               to={`/project/${project.id}/settle`}
@@ -165,36 +172,15 @@ function SettingsRow({
   trailing,
   large = false,
 }: {
-  to: string;
+  to?: string;
   icon: ReactNode;
   title: string;
   description: string;
   trailing?: ReactNode;
   large?: boolean;
 }) {
-  return (
-    <ButtonBase
-      component={Link}
-      to={to}
-      sx={{
-        display: "grid",
-        gridTemplateColumns: `${large ? 52 : 38}px minmax(0, 1fr) 24px`,
-        gap: 1.5,
-        minHeight: large ? 88 : 68,
-        px: large ? 1.5 : 1,
-        py: 1.25,
-        textAlign: "left",
-        width: "100%",
-        border: large ? `1px solid ${ledgerColors.line}` : 0,
-        borderBottom: large ? undefined : `1px solid ${ledgerColors.line}`,
-        "&:last-child": { borderBottom: 0 },
-        "&:hover": { bgcolor: "rgba(24, 23, 19, 0.035)" },
-        "&:focus-visible": {
-          outline: `2px solid ${ledgerColors.blue}`,
-          outlineOffset: 2,
-        },
-      }}
-    >
+  const content = (
+    <>
       <Stack
         sx={{
           alignItems: "center",
@@ -217,8 +203,43 @@ function SettingsRow({
         </Typography>
       </Stack>
       <Box sx={{ color: "text.secondary", display: "flex", justifyContent: "flex-end" }}>
-        {trailing ?? <ChevronRightIcon fontSize="small" />}
+        {trailing ?? (to ? <ChevronRightIcon fontSize="small" /> : null)}
       </Box>
+    </>
+  );
+
+  const rowSx = {
+    display: "grid",
+    gridTemplateColumns: `${large ? 52 : 38}px minmax(0, 1fr) 24px`,
+    gap: 1.5,
+    minHeight: large ? 88 : 68,
+    px: large ? 1.5 : 1,
+    py: 1.25,
+    textAlign: "left",
+    width: "100%",
+    border: large ? `1px solid ${ledgerColors.line}` : 0,
+    borderBottom: `1px solid ${ledgerColors.line}`,
+    "&:last-child": { borderBottom: 0 },
+  } as const;
+
+  if (!to) {
+    return <Box sx={rowSx}>{content}</Box>;
+  }
+
+  return (
+    <ButtonBase
+      component={Link}
+      to={to}
+      sx={{
+        ...rowSx,
+        "&:hover": { bgcolor: "rgba(24, 23, 19, 0.035)" },
+        "&:focus-visible": {
+          outline: `2px solid ${ledgerColors.blue}`,
+          outlineOffset: 2,
+        },
+      }}
+    >
+      {content}
     </ButtonBase>
   );
 }

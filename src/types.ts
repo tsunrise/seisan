@@ -18,6 +18,7 @@ export type ProjectPanel =
   | "settle"
   | "recordDetail"
   | "settings"
+  | "settingsName"
   | "settingsProfile"
   | "settingsMembers"
   | "settingsAccess";

@@ -57,10 +57,12 @@ export function ProjectRail({
     setSeenProjectsState(nextSeenProjectsState);
   }
 
-  const rows =
+  const rows = upsertProjectRow(
     projects.status === "ready"
       ? mergeProjectRows(projects.data.map(summaryProjectRow), seenProjects)
-      : seenProjects;
+      : seenProjects,
+    activeFallback,
+  );
 
   return (
     <Box

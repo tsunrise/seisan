@@ -79,6 +79,10 @@ export default function App() {
           element={<ProjectPage panel="settingsProfile" />}
         />
         <Route
+          path="/project/:projectId/settings/name"
+          element={<ProjectPage panel="settingsName" />}
+        />
+        <Route
           path="/project/:projectId/settings/members"
           element={<ProjectPage panel="settingsMembers" />}
         />

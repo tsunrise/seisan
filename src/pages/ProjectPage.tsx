@@ -1,7 +1,7 @@
 import AddIcon from "@mui/icons-material/Add";
 import { Box, Button, CircularProgress, useMediaQuery, useTheme } from "@mui/material";
 import { useEffect, useReducer, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router";
+import { Link, Navigate, useLocation, useNavigate, useParams } from "react-router";
 
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { useCategories } from "../hooks/useCategories";
@@ -17,6 +17,7 @@ import { ProjectHeader } from "../project/ProjectHeader";
 import { ProjectRail } from "../project/ProjectRail";
 import { ProjectAccessSettings } from "../project/ProjectAccessSettings";
 import { ProjectMembersSettings } from "../project/ProjectMembersSettings";
+import { ProjectNameSettings } from "../project/ProjectNameSettings";
 import { ProjectProfileSettings } from "../project/ProjectProfileSettings";
 import { ProjectSettings } from "../project/ProjectSettings";
 import { RecordDetail } from "../project/RecordDetail";
@@ -137,6 +138,7 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
   }
 
   const currentMember = findLinkedMember(project.data.members, currentEmail);
+  const isOwner = currentEmail === project.data.owner;
   const showPanel = panel !== "timeline";
   const timelineIsVisible = panel === "timeline" || timelineIsVisibleOnDesktop;
   const recordPanelIsLoading =
@@ -326,6 +328,21 @@ export function ProjectPage({ panel }: { panel: ProjectPanel }) {
             />
           ) : (
             <JoinPromptPanel project={project.data} currentEmail={currentEmail} />
+          )
+        ) : null}
+        {panel === "settingsName" ? (
+          user.status === "loading" ? (
+            <Box sx={{ display: "grid", minHeight: 240, placeItems: "center" }}>
+              <CircularProgress />
+            </Box>
+          ) : isOwner ? (
+            <ProjectNameSettings
+              key={`${project.data.id}:${project.data.name}`}
+              project={project.data}
+              onReload={reload}
+            />
+          ) : (
+            <Navigate to={`/project/${projectId}/settings`} replace />
           )
         ) : null}
         {panel === "settingsMembers" ? (
