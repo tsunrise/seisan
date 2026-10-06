@@ -1,4 +1,0 @@
-interface:
-  display_name: "Seisan Security Analysis"
-  short_description: "Scan and resolve Worker abuse reports"
-  default_prompt: "Use $seisan-security-analysis to run a local-only scan or resolve one active red-team issue."
