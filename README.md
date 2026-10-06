@@ -1,6 +1,10 @@
 # Seisan
 
-Seisan is a Cloudflare Worker and React application for splitting shared expenses. It supports passwordless login, project-local members, shared ledgers, balances, and settlement records.
+Seisan is a tool for splitting shared expenses, hosted on Cloudflare Workers. Think about popular tools like Splitwise, but open source.
+
+You can use it at [seisan.waga.me](https://seisan.waga.me).
+
+Or follow instructions below to deploy it yourself.
 
 ## Development
 
