@@ -29,7 +29,7 @@ Keep `worker/index.ts` thin. It should export Durable Object classes and delegat
 
 Prefer new route modules under `worker/routes/` when an area has more than a trivial number of handlers. Use `new Hono<EnvWithIdentity>()` for sub-apps so bindings and Hono variables stay typed.
 
-Mount paths are part of the public API surface. Before changing a mount point, check browser calls in `src/api.ts`, CLI calls in `scripts/client.ts`, tests, and `public/openapi.json` generation.
+Mount paths are part of the public API surface. Before changing a mount point, check browser calls in `src/api/`, CLI calls in `scripts/client.ts`, tests, and `public/openapi.json` generation.
 
 ## Route Module Responsibilities
 
@@ -158,6 +158,6 @@ Before changing an API route:
 - Keep stable error strings and update mapper tests when adding new domain errors.
 - Add or update `describeRoute(...)` metadata for public API-key-client routes.
 - Update `public/openapi.json` when generated API docs change.
-- Check `src/api.ts`, `scripts/client.ts`, and tests for client contract updates.
+- Check `src/api/`, `scripts/client.ts`, and tests for client contract updates.
 
 For narrow backend changes, run the relevant Worker typecheck and focused Worker tests. For public contract changes, also run OpenAPI generation/checks.

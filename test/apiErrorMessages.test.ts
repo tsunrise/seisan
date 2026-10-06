@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { ApiError } from "../src/apiError";
-import { getApiErrorMessage } from "../src/apiErrorMessages";
+import { ApiError } from "../src/api/errors";
+import { getApiErrorMessage } from "../src/api/errorMessages";
 
 describe("API error messages", () => {
   it("uses the generic blocked-email message when no reason is provided", () => {

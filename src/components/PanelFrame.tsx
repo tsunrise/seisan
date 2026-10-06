@@ -6,6 +6,16 @@ import { Link } from "react-router";
 import { panelFrameSx } from "./styles";
 import { ledgerColors } from "../theme";
 
+const backButtonSx = {
+  alignSelf: "flex-start",
+  color: ledgerColors.ink,
+  fontSize: 18,
+  fontWeight: 760,
+  minHeight: 36,
+  px: 0,
+} as const;
+
+/** Standard side panel: the title doubles as a back action to `backTo`, or `onBack` when given. */
 export function PanelFrame({
   title,
   backTo,
@@ -27,14 +37,7 @@ export function PanelFrame({
             color="inherit"
             startIcon={<ArrowBackIcon />}
             onClick={onBack}
-            sx={{
-              alignSelf: "flex-start",
-              color: ledgerColors.ink,
-              fontSize: 18,
-              fontWeight: 760,
-              minHeight: 36,
-              px: 0,
-            }}
+            sx={backButtonSx}
           >
             {title}
           </Button>
@@ -45,14 +48,7 @@ export function PanelFrame({
             variant="text"
             color="inherit"
             startIcon={<ArrowBackIcon />}
-            sx={{
-              alignSelf: "flex-start",
-              color: ledgerColors.ink,
-              fontSize: 18,
-              fontWeight: 760,
-              minHeight: 36,
-              px: 0,
-            }}
+            sx={backButtonSx}
           >
             {title}
           </Button>

@@ -1,5 +1,3 @@
-import type * as api from "./api";
-
 export type Loadable<T> =
   | { status: "loading"; data: null; error: null }
   | { status: "ready"; data: T; error: null }
@@ -10,21 +8,4 @@ export interface User {
   sessionExpiresAt?: number;
 }
 
-export type ProjectPanel =
-  | "timeline"
-  | "join"
-  | "newRecord"
-  | "editRecord"
-  | "settle"
-  | "recordDetail"
-  | "settings"
-  | "settingsName"
-  | "settingsProfile"
-  | "settingsMembers"
-  | "settingsAccess";
-
 export type SplitMode = "equal" | "ratio" | "custom";
-
-export interface ProjectChildProps {
-  project: api.Project;
-}

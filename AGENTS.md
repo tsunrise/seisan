@@ -31,7 +31,7 @@ When working on an area covered by a Markdown file in `docs/`, read the relevant
 | `docs/project-list-caching.md`    | `/api/registry`, Cache API behavior, registry summaries, and project-list invalidation strategy.                                           |
 | `docs/frontend.md`                | React implementation boundaries, API client usage, route titles, brand assets, timeline behavior, and SEO shell work.                      |
 | `docs/ui-style-guide.md`          | Frontend visual system for the warm ledger-style project UI, including timeline, panel, form, and responsive rules.                        |
-| `docs/privacy.md`                 | Privacy-policy claim-to-code traceability, data/provider/retention evidence, operational gaps, and privacy release checks.                 |
+| `docs/privacy.md`                 | Map from each public privacy-policy claim to the code behind it, when to update it, and release steps.                                     |
 | `docs/testing.md`                 | Worker test helpers, Durable Object test patterns, frontend checks, and browser verification expectations.                                 |
 
 ## Privacy Change Rule

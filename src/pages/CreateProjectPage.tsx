@@ -5,17 +5,21 @@ import { useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router";
 
 import * as api from "../api";
-import { getApiErrorMessage } from "../apiErrorMessages";
+import { getApiErrorMessage } from "../api/errorMessages";
 import { BackLink } from "../components/BackLink";
 import { BrandLink } from "../components/BrandLink";
-import { MemberConfigFields } from "../components/MemberConfigFields";
+import { MemberConfigFields } from "../components/memberConfig/MemberConfigFields";
 import { panelFrameSx } from "../components/styles";
 import { useAppSnackbar } from "../hooks/useAppSnackbar";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { memberConfigDraft, memberConfigFromDraft } from "../memberConfig";
+import {
+  memberConfigDraft,
+  memberConfigFromDraft,
+} from "../components/memberConfig/memberConfigDraft";
 import { ledgerColors, ledgerFonts } from "../theme";
 import { loginPath } from "../utils";
+import { projectPaths } from "../project/paths";
 
 export function CreateProjectPage() {
   const navigate = useNavigate();
@@ -62,11 +66,11 @@ export function CreateProjectPage() {
         showError(
           `Project created, but profile details were not saved. Update them from Project info. ${getApiErrorMessage(error)}`,
         );
-        navigate(`/project/${project.id}`);
+        navigate(projectPaths.timeline(project.id));
         return;
       }
       showSuccess("Project created.");
-      navigate(`/project/${project.id}`);
+      navigate(projectPaths.timeline(project.id));
     } catch (error) {
       showError(getApiErrorMessage(error));
     } finally {

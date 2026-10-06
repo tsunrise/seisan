@@ -9,7 +9,7 @@ import {
 import {
   incomingSettlementPaymentsForMember,
   settlementBatchForMember,
-} from "../src/project/settlementPlan";
+} from "../src/project/settlement/settlementPlan";
 import {
   authHeaders,
   cleanupWorkerTestState,

@@ -1,14 +1,15 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 
-import { CreateProjectPage } from "./pages/CreateProjectPage";
+import { GroupExpenseCalculatorPage } from "./calculator/GroupExpenseCalculatorPage";
 import { AppSnackbarProvider } from "./components/AppSnackbar";
-import { GroupExpenseCalculatorPage } from "./pages/GroupExpenseCalculatorPage";
+import { CreateProjectPage } from "./pages/CreateProjectPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
-import { ProjectPage } from "./pages/ProjectPage";
-import { ProjectsPage } from "./pages/ProjectsPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
+import { ProjectsPage } from "./pages/ProjectsPage";
+import { projectPanelRoutes } from "./project/paths";
+import { ProjectPage } from "./project/ProjectPage";
 
 const AdminApp = lazy(() => import("./admin/AdminApp"));
 const AccountApp = lazy(() => import("./account/AccountApp"));
@@ -26,6 +27,10 @@ function ResetIndexScroll() {
   return null;
 }
 
+function Lazy({ children }: { children: ReactNode }) {
+  return <Suspense fallback={null}>{children}</Suspense>;
+}
+
 export default function App() {
   return (
     <AppSnackbarProvider>
@@ -37,59 +42,33 @@ export default function App() {
         <Route
           path="/api-docs"
           element={
-            <Suspense fallback={null}>
+            <Lazy>
               <ApiDocsPage />
-            </Suspense>
+            </Lazy>
           }
         />
         <Route path="/account/api-docs" element={<Navigate to="/api-docs" replace />} />
         <Route
           path="/admin/*"
           element={
-            <Suspense fallback={null}>
+            <Lazy>
               <AdminApp />
-            </Suspense>
+            </Lazy>
           }
         />
         <Route
           path="/account/*"
           element={
-            <Suspense fallback={null}>
+            <Lazy>
               <AccountApp />
-            </Suspense>
+            </Lazy>
           }
         />
         <Route path="/projects" element={<ProjectsPage />} />
         <Route path="/projects/new" element={<CreateProjectPage />} />
-        <Route path="/project/:projectId" element={<ProjectPage panel="timeline" />} />
-        <Route path="/project/:projectId/join" element={<ProjectPage panel="join" />} />
-        <Route path="/project/:projectId/records/new" element={<ProjectPage panel="newRecord" />} />
-        <Route path="/project/:projectId/settle" element={<ProjectPage panel="settle" />} />
-        <Route
-          path="/project/:projectId/records/:recordId"
-          element={<ProjectPage panel="recordDetail" />}
-        />
-        <Route
-          path="/project/:projectId/records/:recordId/edit"
-          element={<ProjectPage panel="editRecord" />}
-        />
-        <Route path="/project/:projectId/settings" element={<ProjectPage panel="settings" />} />
-        <Route
-          path="/project/:projectId/settings/profile"
-          element={<ProjectPage panel="settingsProfile" />}
-        />
-        <Route
-          path="/project/:projectId/settings/name"
-          element={<ProjectPage panel="settingsName" />}
-        />
-        <Route
-          path="/project/:projectId/settings/members"
-          element={<ProjectPage panel="settingsMembers" />}
-        />
-        <Route
-          path="/project/:projectId/settings/access"
-          element={<ProjectPage panel="settingsAccess" />}
-        />
+        {projectPanelRoutes.map(({ path, panel }) => (
+          <Route key={path} path={path} element={<ProjectPage panel={panel} />} />
+        ))}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </AppSnackbarProvider>

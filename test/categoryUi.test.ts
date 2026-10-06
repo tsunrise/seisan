@@ -11,7 +11,7 @@ import {
   resolveRecordCategory,
   selectionAfterClassification,
   selectionAfterClassificationFailure,
-} from "../src/categories";
+} from "../src/domain/categories";
 import { ICON_NAME_VALUES, isIconName } from "../shared/icon-names";
 
 describe("category UI helpers", () => {

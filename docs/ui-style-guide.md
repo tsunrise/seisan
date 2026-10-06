@@ -24,12 +24,14 @@ Use these implementation files as the design source of truth:
 - `src/theme.ts`: shared palette, typography stacks, component-level MUI defaults.
 - `src/components/styles.ts`: shared panel and surface styles.
 - `src/components/PanelFrame.tsx`: standard panel title, back action, and frame behavior.
-- `src/project/RecordTimeline.tsx`: day-group timeline composition.
-- `src/project/RecordCard.tsx`: full record rows and minor system events, including category/type markers.
-- `src/project/LinkedBlockForm.tsx`: linked composer bands, connectors, and secondary verbs.
-- `src/project/timelineLayout.ts`: date/marker column widths, rail position, row heights, marker offsets, and transition constants.
-- `src/project/timelineScroll.ts`: scroll restoration, sticky header offset, fixed mobile CTA clearance.
-- `src/project/timelineGroups.ts`: local-day grouping and day labels.
+- `src/project/timeline/RecordTimeline.tsx`: day-group timeline composition.
+- `src/project/timeline/RecordCard.tsx`: full record rows, including category/type markers.
+- `src/project/timeline/MinorRecordMessage.tsx`: compact revert and deleted-post events.
+- `src/project/timeline/timelineRowSx.ts`: shared hover, focus, and selected styling for clickable timeline rows.
+- `src/components/LinkedBlockForm.tsx`: linked composer bands, connectors, and secondary verbs.
+- `src/project/timeline/timelineLayout.ts`: date/marker column widths, rail position, row heights, marker offsets, and transition constants.
+- `src/project/timeline/timelineScroll.ts` and `useTimelineScroll.ts`: scroll restoration, sticky header offset, fixed mobile CTA clearance.
+- `src/project/timeline/timelineGroups.ts`: local-day grouping and day labels.
 
 ## Visual System
 
@@ -100,7 +102,7 @@ Date timeline rules:
 - Let the label release at the day-group boundary.
 - Date labels should push one another at day boundaries. A later day label should move the previous sticky label upward rather than overlaying its lower text.
 - Keep the date column size-contained so a tall vertical label does not create extra blank space before the next day.
-- Keep sticky top measurement in `src/project/timelineScroll.ts`; do not add scroll listeners in render components.
+- Keep sticky top measurement in `src/project/timeline/timelineScroll.ts`; do not add scroll listeners in render components.
 
 Full record rows:
 
@@ -132,7 +134,7 @@ Minor system events:
 
 ## Dates, Money, And Copy
 
-Use shared domain helpers from `src/domain.ts`.
+Use shared domain helpers from `src/domain/`.
 
 - Timeline and list surfaces use relative time such as `8 minutes ago`, `3 hours ago`, `27 days ago`, `2 months ago`; day, month, and year counts are based on local calendar boundaries.
 - Detail panels use exact timestamps for auditability.

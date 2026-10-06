@@ -24,6 +24,7 @@ import { useCurrentUser } from "../hooks/useCurrentUser";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useProjects } from "../hooks/useProjects";
 import { loginPath } from "../utils";
+import { projectPaths } from "../project/paths";
 
 export function ProjectsPage() {
   const navigate = useNavigate();
@@ -142,7 +143,7 @@ function ProjectListRow({ project }: { project: api.WithSyncTime<api.ProjectSumm
   return (
     <Paper
       component={Link}
-      to={`/project/${project.id}`}
+      to={projectPaths.timeline(project.id)}
       square
       sx={{
         ...paperFrameSx,

@@ -17,7 +17,7 @@ test("slugifyHeading creates stable, readable anchors", () => {
   assert.equal(slugifyHeading("***"), "section");
 });
 
-test("renderPrivacyPolicy creates semantic sections and a matching table of contents", () => {
+test("renderPrivacyPolicy renders plain HTML with anchored section headings", () => {
   const html = renderPrivacyPolicy(`# Privacy
 
 Intro.
@@ -35,18 +35,13 @@ Text.
 
 More text.`);
 
-  assert.match(html, /<article class="privacy-policy" aria-labelledby="privacy-policy-title">/u);
-  assert.match(html, /<header class="privacy-policy__header">/u);
-  assert.match(html, /<div class="privacy-policy__sections" id="privacy-policy-content">/u);
-  assert.match(
-    html,
-    /<section class="privacy-policy__section privacy-policy__section--summary" aria-labelledby="at-a-glance">/u,
-  );
+  assert.match(html, /^<h1>Privacy<\/h1>/u);
+  assert.match(html, /<p>Intro\.<\/p>/u);
+  assert.match(html, /<h2 id="at-a-glance">1\. At a glance<\/h2>/u);
+  assert.match(html, /<ul>\n {2}<li>One<\/li>\n {2}<li>Two<\/li>\n<\/ul>/u);
   assert.match(html, /id="details"/u);
   assert.match(html, /id="details-2"/u);
-  assert.match(html, /href="#details"/u);
-  assert.match(html, /href="#details-2"/u);
-  assert.match(html, /On this page <span>3 sections<\/span>/u);
+  assert.doesNotMatch(html, /<nav|<section|<article/u);
 });
 
 test("renderPrivacyPolicy escapes text and allows only safe links", () => {

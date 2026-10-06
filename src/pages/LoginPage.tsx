@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 
 import * as api from "../api";
-import { getApiErrorMessage } from "../apiErrorMessages";
+import { getApiErrorMessage } from "../api/errorMessages";
 import { BrandLink } from "../components/BrandLink";
 import { InlineAlert } from "../components/InlineAlert";
 import { pageCenterSx, panelFrameSx } from "../components/styles";

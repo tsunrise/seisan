@@ -1,6 +1,7 @@
 import { Stack, Typography } from "@mui/material";
 
 import type * as api from "../api";
+import { findMember } from "../domain";
 import { Amount, type AmountColorMode } from "./Amount";
 import { MemberNameWithRepresentation } from "./MemberNameWithRepresentation";
 
@@ -28,7 +29,7 @@ export function MoneyTable({
         {title}
       </Typography>
       {entries.map(([memberId, amount]) => {
-        const member = project.members.find((candidate) => candidate.id === Number(memberId));
+        const member = findMember(project.members, Number(memberId));
 
         return (
           <Stack

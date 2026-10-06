@@ -1,6 +1,6 @@
 import { Typography } from "@mui/material";
 
-import type { ProjectMemberFull } from "../projectTypes";
+import type { ProjectMemberFull } from "../api/types";
 
 export function MemberPaymentMethod({
   member,

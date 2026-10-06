@@ -5,7 +5,8 @@ import {
   memberConfigDraftIsValid,
   memberConfigFromDraft,
   representedGroupCopy,
-} from "../src/memberConfig";
+} from "../src/components/memberConfig/memberConfigDraft";
+import { memberProfileEdit } from "../src/project/settings/memberProfile";
 
 describe("member config UI helpers", () => {
   it("builds editable drafts from existing config", () => {
@@ -71,5 +72,32 @@ describe("member config UI helpers", () => {
       helperText:
         "Include this member in the total. The people this member represents should not join this project independently.",
     });
+  });
+
+  it("detects member profile changes against the stored member", () => {
+    const member = { id: 1, name: "Alice", deleted: false, config: { size: 3 } };
+    const unchanged = memberProfileEdit(member, " Alice ", memberConfigDraft(member.config));
+    expect(unchanged).toMatchObject({ nameChanged: false, configChanged: false, canSave: false });
+
+    const renamed = memberProfileEdit(member, "Alicia", memberConfigDraft(member.config));
+    expect(renamed).toMatchObject({ trimmedName: "Alicia", nameChanged: true, canSave: true });
+
+    const withMethod = memberProfileEdit(member, "Alice", {
+      ...memberConfigDraft(member.config),
+      paymentMethod: "venmo",
+    });
+    expect(withMethod).toMatchObject({
+      configChanged: true,
+      config: { size: 3, paymentMethod: "venmo" },
+      canSave: true,
+    });
+
+    const invalid = memberProfileEdit(member, "Alicia", {
+      ...memberConfigDraft(),
+      size: "1",
+      representsMultiplePeople: true,
+    });
+    expect(invalid).toMatchObject({ config: null, canSave: false });
+    expect(memberProfileEdit(member, "  ", memberConfigDraft()).canSave).toBe(false);
   });
 });

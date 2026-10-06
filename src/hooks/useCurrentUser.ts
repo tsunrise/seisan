@@ -1,44 +1,23 @@
-import { useEffect, useState } from "react";
+import { useCallback } from "react";
 
 import * as api from "../api";
-import { getApiErrorMessage } from "../apiErrorMessages";
 import type { Loadable, User } from "../types";
+import { useLoadable } from "./useLoadable";
 
+/**
+ * Loads the signed-in user. When `required` is false, an unauthenticated visitor resolves to
+ * `null` instead of an error.
+ */
 export function useCurrentUser({ required }: { required: boolean }): Loadable<User | null> {
-  const [state, setState] = useState<Loadable<User | null>>({
-    status: "loading",
-    data: null,
-    error: null,
-  });
-
-  useEffect(() => {
-    let active = true;
-    api
-      .whoami()
-      .then((user) => {
-        if (active) {
-          setState({ status: "ready", data: user, error: null });
+  const load = useCallback(
+    () =>
+      api.whoami().catch((error: unknown) => {
+        if (!required && error instanceof api.ApiError && error.status === 401) {
+          return null;
         }
-      })
-      .catch((error: unknown) => {
-        if (!active) {
-          return;
-        }
-        if (error instanceof api.ApiError && error.status === 401 && !required) {
-          setState({ status: "ready", data: null, error: null });
-          return;
-        }
-        setState({
-          status: "error",
-          data: null,
-          error: getApiErrorMessage(error),
-          errorCode: error instanceof api.ApiError ? error.code : null,
-        });
-      });
-    return () => {
-      active = false;
-    };
-  }, [required]);
-
-  return state;
+        throw error;
+      }),
+    [required],
+  );
+  return useLoadable<User | null>(load);
 }

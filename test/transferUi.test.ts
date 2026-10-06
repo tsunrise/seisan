@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import type { ProjectMember, TransferBatch } from "../src/projectTypes";
-import { prefixMatchingMembers } from "../src/project/memberSearch";
+import type { ProjectMember, TransferBatch } from "../src/api/types";
+import { prefixMatchingMembers } from "../src/project/composer/memberSearch";
 import {
   availableDestinationMembers,
   parseTransferDestinations,
   transferBatchTotal,
   transferPrefillFromSearch,
   transferPrefillSearch,
-} from "../src/project/transferForm";
+} from "../src/project/composer/transferForm";
 
 const members: ProjectMember[] = [
   { id: 1, name: "Alice", deleted: false },

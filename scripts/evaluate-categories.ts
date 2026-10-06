@@ -1,5 +1,5 @@
 #!/usr/bin/env -S tsx
-import { CATEGORY_SCORE_THRESHOLD } from "../src/categories";
+import { CATEGORY_SCORE_THRESHOLD } from "../src/domain/categories";
 import { CATEGORY_CHALLENGES, type CategoryChallenge } from "./category-challenges";
 import { SEED_CATEGORIES } from "./populate-categories";
 

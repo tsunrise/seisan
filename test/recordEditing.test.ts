@@ -4,15 +4,15 @@ import {
   availablePayerMembers,
   expensePayerDrafts,
   parseExpensePayers,
-} from "../src/project/expenseForm";
+} from "../src/project/composer/expenseForm";
 import {
   deletedRecordMessage,
   recordEditMetadata,
   recordReferencesDeletedMember,
   writableRecordDescription,
-} from "../src/project/recordEditing";
-import { transferDraftFromDescription } from "../src/project/transferForm";
-import type { ProjectMember, ProjectRecord } from "../src/projectTypes";
+} from "../src/project/records/recordEditing";
+import { transferDraftFromDescription } from "../src/project/composer/transferForm";
+import type { ProjectMember, ProjectRecord } from "../src/api/types";
 
 const members: ProjectMember[] = [
   { id: 1, name: "Alice", deleted: false },

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { getProjectMemberManagementPermissions } from "../src/project/memberManagementPermissions";
-import type { ProjectMemberFull } from "../src/projectTypes";
+import { getProjectMemberManagementPermissions } from "../src/project/settings/memberManagementPermissions";
+import type { ProjectMemberFull } from "../src/api/types";
 
 const owner: ProjectMemberFull = {
   id: 1,

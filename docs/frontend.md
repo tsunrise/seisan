@@ -10,14 +10,52 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 
 ## Module Boundaries
 
-- Keep app pages in `src/pages`, account dashboard UI in `src/account`, project-specific UI in `src/project`, shared UI in `src/components`, hooks in `src/hooks`, and admin-only UI in `src/admin`.
-- Keep the public group-expense calculator's pure draft, identity, allocation, validation, and
-  local-storage helpers in `src/calculator`. It may consume the pure settlement engine in
+Organize `src/` by feature. A feature folder owns its route entry, components, feature-specific
+hooks, and pure helpers; only code shared across features lives in the top-level shared folders.
+Keep pure logic (parsing, validation, allocation, draft transforms) in `.ts` modules next to the
+components that use them so it can be unit tested, and keep stateful effects in hooks rather than
+rendering components.
+
+| Path              | Owns                                                                                                                                   |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/App.tsx`     | Top-level routes only. Project panel routes come from `projectPanelRoutes` in `src/project/paths.ts`.                                  |
+| `src/api/`        | Browser API client split by resource (`auth`, `projects`, `categories`, `apiKeys`, `admin`), wire types in `types.ts`, and API errors. |
+| `src/domain/`     | Pure money, member, record, timestamp, and category rules shared by every feature.                                                     |
+| `src/components/` | Shared UI primitives such as `PanelFrame`, `ConfirmDialog`, `LinkedBlockForm`, `MoneyTable`, and the `memberConfig/` profile fields.   |
+| `src/hooks/`      | Cross-feature hooks: `useLoadable`, `useCurrentUser`, `useProjects`, `useDocumentTitle`, `useAppSnackbar`.                             |
+| `src/pages/`      | Standalone single-screen routes: login, privacy, not found, API docs, project list, and project creation.                              |
+| `src/project/`    | `ProjectPage` (route entry), `ProjectSidePanel` (panel switch), `paths.ts`, project data hooks, and the subfolders below.              |
+| `src/calculator/` | The public calculator page, its `useGroupExpenseCalculator` state hook, UI sections, pure draft logic, and local-storage persistence.  |
+| `src/account/`    | Account shell, home, navigation state, and `apiKeys/`.                                                                                 |
+| `src/admin/`      | Admin shell and one file per admin page, with pure draft parsing in `limitsDraft.ts` and `blockedEmailsDraft.ts`.                      |
+
+Project subfolders:
+
+- `layout/`: header, wide-desktop rail, mobile CTA, and desktop placeholder.
+- `timeline/`: timeline rendering, record rows, day grouping, layout constants, and scroll behavior.
+- `records/`: record detail, new-record chooser, edit panel, and record-editing rules.
+- `composer/`: expense, transfer, and promise composers, the `RecordComposer` switch, and their pure
+  form helpers.
+- `settings/`, `settlement/`, `join/`: the corresponding project panels.
+
+Rules:
+
+- Keep the public group-expense calculator's pure draft, identity, allocation, and validation
+  helpers in `src/calculator/groupExpenseCalculator.ts` and its local-storage persistence in
+  `src/calculator/calculatorStorage.ts`. It may consume the pure settlement engine in
   `shared/settlement.ts`, but it must not call an API to calculate or persist a draft.
-- API calls from the browser go through `src/api.ts` and use relative `/api/*` URLs.
-- Shared record text, money, timestamp, and title formatting belongs in `src/domain.ts`.
-- Components should call helpers such as `recordTitle`, `recordDetailTitle`, `formatCents`, and timestamp formatters instead of duplicating formatting rules.
-- Keep record actor/subject selection in `src/project/recordActor.ts` so marker emphasis and record summaries stay consistent.
+- API calls from the browser go through `src/api/` and use relative `/api/*` URLs. Components
+  import it as `import * as api from "../api"`; pure modules import wire types from
+  `src/api/types.ts` so they stay free of browser APIs.
+- Load server data through `useLoadable` (or a feature hook built on it) instead of hand-written
+  fetch effects, unless the screen needs custom state such as editable drafts.
+- Build project URLs with `projectPaths` from `src/project/paths.ts` instead of string templates.
+- Shared record text, money, timestamp, and title formatting belongs in `src/domain/`.
+- Components should call helpers such as `recordTitle`, `recordDetailTitle`, `formatCents`,
+  `formatCentsInput`, `memberBalance`, and timestamp formatters instead of duplicating formatting
+  rules.
+- Keep record actor/subject selection in `src/project/timeline/recordActor.ts` so marker emphasis and record summaries stay consistent.
+- Use `ConfirmDialog` for cancel/confirm prompts on destructive actions.
 
 ## Responsive Project UI
 
@@ -74,7 +112,7 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
 - Initial project loads scroll to the latest record.
 - Infinite loading fetches older records when the user scrolls upward.
 - Prepending older records must preserve the visible scroll position.
-- Timeline scroll restoration and fixed-action overlap handling belong in `src/project/timelineScroll.ts`.
+- Timeline scroll restoration and fixed-action overlap handling belong in `src/project/timeline/timelineScroll.ts` (DOM and storage helpers) and `src/project/timeline/useTimelineScroll.ts` (the effects that drive them).
 - Do not duplicate sessionStorage, DOM measurement, iOS Safari safe-area, or mobile bottom CTA clearance logic inside rendering components.
 - The mobile timeline CTA is marked with `data-project-mobile-action`; keep that marker or update `timelineScroll.ts` at the same time.
 - This marker is required so initial scroll and restore logic keep the latest record content clear of the fixed action, especially on iPhone Safari.
@@ -104,7 +142,7 @@ Use this before changing React frontend code in `src/`. Read `docs/ui-style-guid
   additional recipient. Allow only one unfinished recipient row at a time. Show the aggregate sent
   amount alongside the delta preview.
 - Expense, transfer, and promise composers share the linked-block surface, connector, and secondary
-  verb primitives from `src/project/LinkedBlockForm.tsx` while retaining type-specific fields and
+  verb primitives from `src/components/LinkedBlockForm.tsx` while retaining type-specific fields and
   validation.
 - The expense composer supports repeatable unique payer/amount rows using the grammar
   `For <expense> | Categorized as <category> | , <payer> paid <amount> (| and <payer> paid

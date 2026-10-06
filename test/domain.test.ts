@@ -9,9 +9,9 @@ import {
   recordDetailTitle,
   recordTitle,
 } from "../src/domain";
-import { recordActorMemberId } from "../src/project/recordActor";
-import type { ProjectMember, ProjectMemberFull, ProjectRecord } from "../src/projectTypes";
-import { formatRelativeTime } from "../src/relativeTime";
+import { recordActorMemberId } from "../src/project/timeline/recordActor";
+import type { ProjectMember, ProjectMemberFull, ProjectRecord } from "../src/api/types";
+import { formatRelativeTime } from "../src/domain/time";
 
 const transferMembers: ProjectMember[] = [
   { id: 1, name: "Alice", deleted: false },
