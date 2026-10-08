@@ -99,15 +99,13 @@ Schema invariants:
 - The default taxonomy assigns a distinct semantic icon to every category. Re-running the population
   script updates stored icon names in place without changing category IDs.
 
-Version 1 documents came from the previous classifier and also carried `vectorNamespace`, plus
-`documentText` and `vectorId` on every category. `CategoriesDocument` still
-accepts version 1 (temporary backfill `TODO(category-v1-backfill)`) and upgrades it in memory to
-version 2 by dropping those fields. GlobalConfig writes version 2 on the next category mutation and
-publishes it to KV. Until then, published version-1 values continue to serve correctly. A worker
-version from before this change cannot parse version 2, so finish a deployment rollout before
-running a category mutation such as `categories:populate`.
+Only version 2 is accepted. Version 1 documents came from the retired Vectorize classifier and
+carried `vectorNamespace`, `documentText`, and `vectorId`; dev and production were rewritten to
+version 2 before version-1 parsing was removed. A leftover version-1 document, for example in an old
+local `.wrangler/state`, fails to parse: GlobalConfig reports `invalid_value` and every category
+route returns `500`. Reset that local state and run `categories:populate` again.
 
-Admin reads and writes go through `CategoryClassifier`. `getCategoriesForUpdate()` delegates to `GlobalConfig.listCategories()`, while mutations delegate to `GlobalConfig.upsertCategory()`, `setCategories()`, and `deleteCategory()`. The Durable Object performs category reads and mutations against SQLite and schedules the full document to be written to `PUBLISHED_GLOBAL_CONFIG` under the same `categories` key. Category mutations have no other side effects. Overlapping publication tasks converge to the latest SQLite document as described in `docs/global-config.md`.
+Admin reads and writes go through `CategoryClassifier`. `getCategoriesForUpdate()` delegates to `GlobalConfig.listCategories()`, while mutations delegate to `GlobalConfig.upsertCategory()` and `deleteCategory()`. The Durable Object performs category reads and mutations against SQLite and schedules the full document to be written to `PUBLISHED_GLOBAL_CONFIG` under the same `categories` key. Category mutations have no other side effects. Overlapping publication tasks converge to the latest SQLite document as described in `docs/global-config.md`.
 
 Public category listing, authenticated classification, and expense `categoryId` validation read only `PUBLISHED_GLOBAL_CONFIG` with a 5 minute KV cache TTL. There is intentionally no DO fallback: missing, unreadable, or invalid KV data is a hard `500`. The admin list route reads `GlobalConfig` directly so administrative read/modify/write workflows observe strongly consistent state.
 

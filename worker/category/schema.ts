@@ -71,7 +71,8 @@ export const Category = z
   .strict();
 export type Category = z.infer<typeof Category>;
 
-const CurrentCategoriesDocument = z
+/** Complete versioned category snapshot published as one value under the `categories` key. */
+export const CategoriesDocument = z
   .object({
     version: z.literal(2),
     categories: z.array(Category).max(CATEGORY_MAX_COUNT),
@@ -89,34 +90,6 @@ const CurrentCategoriesDocument = z
       "Duplicate normalized category name.",
     );
   });
-
-// TODO(category-v1-backfill): remove once every stored and published category document is version 2.
-// Version 1 also carried per-category index fields that the current classifier does not use.
-const LegacyCategoriesDocumentV1 = z
-  .object({
-    version: z.literal(1),
-    vectorNamespace: z.string(),
-    categories: z.array(
-      Category.extend({ documentText: z.string(), vectorId: z.string() }).strict(),
-    ),
-  })
-  .strict()
-  .transform((document) => ({
-    version: 2 as const,
-    categories: document.categories.map((category) => ({
-      id: category.id,
-      name: category.name,
-      normalizedName: category.normalizedName,
-      description: category.description,
-      ...(category.icon ? { icon: category.icon } : {}),
-      createdAt: category.createdAt,
-      updatedAt: category.updatedAt,
-    })),
-  }))
-  .pipe(CurrentCategoriesDocument);
-
-/** Complete versioned category snapshot published as one value under the `categories` key. */
-export const CategoriesDocument = z.union([CurrentCategoriesDocument, LegacyCategoriesDocumentV1]);
 export type CategoriesDocument = z.infer<typeof CategoriesDocument>;
 
 function normalizeCategoryText(value: string): string {

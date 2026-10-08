@@ -3,11 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CATEGORY_CONFIG_KEY,
-  CategoriesDocument,
   type CategoriesDocument as CategoriesDocumentValue,
 } from "../worker/category";
 import { CATEGORY_CLASSIFIER_MODEL } from "../worker/category/clef";
-import { upsertCategoryInDocument } from "../worker/category/document";
 import { sha256Hex } from "../worker/crypto";
 import type { IconName } from "../shared/icon-names";
 import {
@@ -484,105 +482,6 @@ describe("category classification", () => {
     ).resolves.toEqual({ version: 2, categories: [] });
   });
 
-  it("upgrades legacy version-1 category documents and drops their index fields", () => {
-    const parsed = CategoriesDocument.safeParse(LEGACY_V1_DOCUMENT);
-    expect(parsed.success).toBe(true);
-    if (!parsed.success) {
-      throw new Error("expected legacy category document to parse");
-    }
-    expect(parsed.data).toEqual({
-      version: 2,
-      categories: [
-        {
-          id: "00000000-0000-4000-8000-000000000010",
-          name: "Restaurant",
-          normalizedName: "restaurant",
-          description: "Prepared meals",
-          createdAt: 1_000,
-          updatedAt: 1_000,
-        },
-      ],
-    });
-
-    expect(
-      upsertCategoryInDocument(parsed.data, {
-        id: parsed.data.categories[0]?.id,
-        name: "Dining",
-        nowMs: 2_000,
-      }),
-    ).toMatchObject({ ok: true, category: { name: "Dining", icon: "expense" } });
-
-    expect(
-      CategoriesDocument.safeParse({
-        ...LEGACY_V1_DOCUMENT,
-        categories: [{ ...LEGACY_V1_DOCUMENT.categories[0], unexpected: true }],
-      }).success,
-    ).toBe(false);
-  });
-
-  it("rewrites a stored version-1 document as version 2 on the next GlobalConfig mutation", async () => {
-    const { env: testEnv } = makeEnv();
-    const stub = testEnv.GLOBAL_CONFIG.getByName(`global-config-${crypto.randomUUID()}`);
-    await stub.listCategories();
-    await runInDurableObject(stub, async (_instance, state) => {
-      state.storage.sql.exec(
-        `INSERT INTO global_config (key, value) VALUES (?, ?)`,
-        CATEGORY_CONFIG_KEY,
-        JSON.stringify(LEGACY_V1_DOCUMENT),
-      );
-    });
-
-    await expect(stub.listCategories()).resolves.toMatchObject({
-      ok: true,
-      document: { version: 2, categories: [{ name: "Restaurant" }] },
-    });
-    await expect(stub.upsertCategory({ name: "Grocery", nowMs: 2_000 })).resolves.toMatchObject({
-      ok: true,
-    });
-
-    await runInDurableObject(stub, async (_instance, state) => {
-      const raw = state.storage.sql
-        .exec<{
-          value: string;
-        }>("SELECT value FROM global_config WHERE key = ?", CATEGORY_CONFIG_KEY)
-        .one().value;
-      const stored = JSON.parse(raw) as Record<string, unknown>;
-      expect(stored).toMatchObject({
-        version: 2,
-        categories: [{ name: "Grocery" }, { name: "Restaurant" }],
-      });
-      expect(stored).not.toHaveProperty("vectorNamespace");
-      expect(JSON.stringify(stored)).not.toContain("vectorId");
-    });
-  });
-
-  it("serves a still-published version-1 KV document without its index fields", async () => {
-    const aiRun = vi.fn(async () => clefAnswer({ Restaurant: 0.8, Others: 0.2 }));
-    const { env: testEnv } = makeEnv({ AI: fakeAi(aiRun) });
-    await testEnv.PUBLISHED_GLOBAL_CONFIG.put(
-      CATEGORY_CONFIG_KEY,
-      JSON.stringify(LEGACY_V1_DOCUMENT),
-    );
-
-    const listResponse = await dispatch("/categories", testEnv);
-    expect(listResponse.status).toBe(200);
-    const listed = (await listResponse.json()) as { categories: Array<Record<string, unknown>> };
-    expect(listed.categories).toHaveLength(1);
-    expect(listed.categories[0]).not.toHaveProperty("vectorId");
-    expect(listed.categories[0]).not.toHaveProperty("documentText");
-
-    const classifyResponse = await dispatch(
-      "/categories/classify",
-      testEnv,
-      jsonBody("POST", { name: "Lunch" }, await authHeaders()),
-    );
-    expect(classifyResponse.status).toBe(200);
-    await expect(classifyResponse.json()).resolves.toMatchObject({
-      category: { name: "Restaurant" },
-      score: 0.8,
-    });
-  });
-
   it("applies concurrent category mutations through GlobalConfig", async () => {
     const { env: testEnv } = makeEnv();
     const stub = testEnv.GLOBAL_CONFIG.getByName(`global-config-${crypto.randomUUID()}`);
@@ -720,23 +619,6 @@ describe("category classification", () => {
 });
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
-
-const LEGACY_V1_DOCUMENT = {
-  version: 1,
-  vectorNamespace: "categories-00000000-0000-4000-8000-000000000001",
-  categories: [
-    {
-      id: "00000000-0000-4000-8000-000000000010",
-      name: "Restaurant",
-      normalizedName: "restaurant",
-      description: "Prepared meals",
-      documentText: "title: Restaurant | text: Prepared meals",
-      vectorId: "category:00000000-0000-4000-8000-000000000010",
-      createdAt: 1_000,
-      updatedAt: 1_000,
-    },
-  ],
-};
 
 interface CategoryWriteResponse {
   category: {
