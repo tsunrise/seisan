@@ -18,21 +18,21 @@ Core areas:
 
 When working on an area covered by a Markdown file in `docs/`, read the relevant doc before changing that area. If the implementation change affects documented behavior, storage, bindings, deployment details, or public API contracts, update the corresponding doc in the same change.
 
-| Title                             | Read For                                                                                                                                   |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `docs/development.md`             | Commands, local configuration, build notes, clean local dev-server workflow, Wrangler state backup/restore, and editing conventions.       |
-| `docs/category-classification.md` | Category classification routes, category config document, Workers AI embeddings, Vectorize behavior, CLI commands, seed script, and tests. |
-| `docs/global-config.md`           | GlobalConfig keys, value codecs, DO/KV ownership, publication behavior, adding new keys, and focused tests.                                |
-| `docs/api-serving.md`             | Worker API serving, Hono app composition, route middleware, validation, bindings, background work, and OpenAPI.                            |
-| `docs/auth.md`                    | Browser sessions, API keys, Turnstile, verifier storage, auth bindings, route split, and OpenAPI auth documentation.                       |
-| `docs/worker-code-style.md`       | Worker route/helper style, zod schema rules, domain result unions, constants, crypto, errors, and background work.                         |
-| `docs/durable-objects.md`         | Durable Object ownership, SQLite storage, transactions, SQL migrations, alarms, summary sync, and backfills.                               |
-| `docs/project-model.md`           | Project/member/record identity, balances, ACL access, public reads, and mutation invariants.                                               |
-| `docs/project-list-caching.md`    | `/api/registry`, Cache API behavior, registry summaries, and project-list invalidation strategy.                                           |
-| `docs/frontend.md`                | React implementation boundaries, API client usage, route titles, brand assets, timeline behavior, and SEO shell work.                      |
-| `docs/ui-style-guide.md`          | Frontend visual system for the warm ledger-style project UI, including timeline, panel, form, and responsive rules.                        |
-| `docs/privacy.md`                 | Map from each public privacy-policy claim to the code behind it, when to update it, and release steps.                                     |
-| `docs/testing.md`                 | Worker test helpers, Durable Object test patterns, frontend checks, and browser verification expectations.                                 |
+| Title                             | Read For                                                                                                                             |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `docs/development.md`             | Commands, local configuration, build notes, clean local dev-server workflow, Wrangler state backup/restore, and editing conventions. |
+| `docs/category-classification.md` | Category classification routes, category config document, clef-flash classifier, CLI commands, seed script, and tests.               |
+| `docs/global-config.md`           | GlobalConfig keys, value codecs, DO/KV ownership, publication behavior, adding new keys, and focused tests.                          |
+| `docs/api-serving.md`             | Worker API serving, Hono app composition, route middleware, validation, bindings, background work, and OpenAPI.                      |
+| `docs/auth.md`                    | Browser sessions, API keys, Turnstile, verifier storage, auth bindings, route split, and OpenAPI auth documentation.                 |
+| `docs/worker-code-style.md`       | Worker route/helper style, zod schema rules, domain result unions, constants, crypto, errors, and background work.                   |
+| `docs/durable-objects.md`         | Durable Object ownership, SQLite storage, transactions, SQL migrations, alarms, summary sync, and backfills.                         |
+| `docs/project-model.md`           | Project/member/record identity, balances, ACL access, public reads, and mutation invariants.                                         |
+| `docs/project-list-caching.md`    | `/api/registry`, Cache API behavior, registry summaries, and project-list invalidation strategy.                                     |
+| `docs/frontend.md`                | React implementation boundaries, API client usage, route titles, brand assets, timeline behavior, and SEO shell work.                |
+| `docs/ui-style-guide.md`          | Frontend visual system for the warm ledger-style project UI, including timeline, panel, form, and responsive rules.                  |
+| `docs/privacy.md`                 | Map from each public privacy-policy claim to the code behind it, when to update it, and release steps.                               |
+| `docs/testing.md`                 | Worker test helpers, Durable Object test patterns, frontend checks, and browser verification expectations.                           |
 
 ## Privacy Change Rule
 

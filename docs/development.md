@@ -65,9 +65,9 @@ Use `--env=dev` for `https://dev.seisan.waga.me` or `--env=production` for `http
 
 ## Cloudflare Resources
 
-Vectorize-backed features use Workers AI and Vectorize. Create each bound Vectorize index before deploying the corresponding environment. Feature-specific index names and dimensions live with their feature docs.
+Category classification uses the Workers AI `AI` binding; feature-specific model details live in `docs/category-classification.md`.
 
-Local dev can use `remote: true` for Workers AI and Vectorize bindings, so the Worker still runs locally while those binding calls use Cloudflare remote resources. Durable Object state remains local in `.wrangler/state` unless its binding is explicitly made remote. Workers AI always uses remote Cloudflare resources, including during local development and Worker tests when the real `AI` binding is invoked.
+Local dev uses `remote: true` for the Workers AI binding, so the Worker still runs locally while model calls use Cloudflare remote resources. Durable Object state remains local in `.wrangler/state` unless its binding is explicitly made remote. Workers AI always uses remote Cloudflare resources, including during local development and Worker tests when the real `AI` binding is invoked.
 
 ## Local Dev Server For Live API Probes
 
@@ -118,7 +118,7 @@ Always run cleanup before finishing, even if probing or verification fails:
 
 If cleanup fails, do not continue silently. Report the exact backup path and current `.wrangler/state` path.
 
-### Remote Bindings And Vectorize Tests
+### Remote Bindings
 
 Some bindings are not locally simulated. Use local development with remote bindings, not Vite `--remote`:
 
@@ -126,29 +126,13 @@ Some bindings are not locally simulated. Use local development with remote bindi
 - `wrangler dev --remote` is legacy full-remote development and is not supported by the Cloudflare Vite plugin.
 - With `remote: true`, the Worker still executes locally; unmarked bindings such as Durable Objects, KV, and Cache API still use local `.wrangler/state`.
 
-If a Vectorize-backed endpoint returns `500`, check the dev server logs. This message means the binding is not configured for remote local dev:
+If an endpoint backed by a remote binding returns `500`, check the dev server logs. This message means the binding is not configured for remote local dev:
 
 ```text
-Binding <VECTORIZE_BINDING_NAME> needs to be run remotely
+Binding <BINDING_NAME> needs to be run remotely
 ```
 
-For tests or experiments that involve Vectorize:
-
-1. Verify the remote Vectorize index exists and has the expected dimensions and metric:
-
-   ```sh
-   pnpm exec wrangler vectorize list
-   ```
-
-2. Start from disposable local `.wrangler/state` as described above.
-3. Use only test data and avoid production indexes unless that is explicitly intended.
-4. Wait at least 10-20 seconds after vector mutations before querying, because Vectorize mutations are async and eventually consistent.
-5. Delete the added vectors or source records before cleanup, using the app's own delete path when possible.
-6. Do not increase `topK` just to work around stale remote vectors. Vectorize-backed features should use a persisted namespace or equivalent partition key when writing and querying vectors.
-
-Remote Vectorize storage is persistent Cloudflare state. Cleaning or replacing `.wrangler/state` resets local Durable Objects, KV, and Cache API state, but it does not clear remote vectors. This can leave the local source of truth empty while old remote vectors still exist. Persisted Vectorize namespaces prevent a reset local source of truth from querying vectors that belonged to a previous local state. Vectorize deletes are also eventually consistent, so stale matches may appear briefly after cleanup within the same namespace.
-
-Any Vectorize-backed feature should resolve returned vector IDs against the current source-of-truth storage and ignore missing rows. If a test needs a full reset of remote Vectorize storage, clean the remote index explicitly or use a dedicated scratch index; `.wrangler/state` cleanup cannot reset Vectorize.
+Live Workers AI calls are billed to the logged-in Cloudflare account. Use only test data.
 
 ## Editing Conventions
 

@@ -321,11 +321,13 @@ function printJson(value: unknown): void {
 function formatCategoryClassifySummary(result: CategoryClassifyResponse): {
   category: string;
   score: number;
+  othersScore: number;
   candidates: Array<{ category: string; score: number }>;
 } {
   return {
     category: result.category.name,
     score: result.score,
+    othersScore: result.othersScore,
     candidates: result.candidates.map((candidate) => ({
       category: candidate.category.name,
       score: candidate.score,

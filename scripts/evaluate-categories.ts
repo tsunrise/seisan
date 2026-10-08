@@ -1,11 +1,12 @@
 #!/usr/bin/env -S tsx
-import { CATEGORY_SCORE_THRESHOLD } from "../src/domain/categories";
+import { automaticCategoryId, OTHERS_CATEGORY_ID } from "../src/domain/categories";
 import { CATEGORY_CHALLENGES, type CategoryChallenge } from "./category-challenges";
 import { SEED_CATEGORIES } from "./populate-categories";
 
 interface ClassificationResponse {
-  category: { name: string };
+  category: { id: string; name: string };
   score: number;
+  othersScore: number;
   candidates: Array<{ category: { name: string }; score: number }>;
 }
 
@@ -30,7 +31,7 @@ async function main(): Promise<void> {
   }
   const cookie = await createLocalSession(options.baseUrl);
 
-  console.log(`Waiting ${options.settleSeconds}s for Vectorize mutations to become queryable...`);
+  console.log(`Waiting ${options.settleSeconds}s for category publication to reach KV...`);
   await delay(options.settleSeconds * 1_000);
 
   const results = await mapConcurrent(CATEGORY_CHALLENGES, options.concurrency, async (challenge) =>
@@ -52,7 +53,7 @@ function parseArgs(args: string[]): {
   cleanupExperiment: boolean;
 } {
   let baseUrl = "http://127.0.0.1:5174";
-  let settleSeconds = 20;
+  let settleSeconds = 2;
   let concurrency = 4;
   let showAll = false;
   let skipSeed = false;
@@ -148,7 +149,9 @@ async function deleteExperimentCategories(baseUrl: string): Promise<void> {
 }
 
 async function createLocalSession(baseUrl: string): Promise<string> {
-  const email = "category-evaluation@example.com";
+  // example.com publishes a null MX record, which login domain validation rejects. Localhost login
+  // uses the fixed dev code and never sends mail, so the project's own domain is safe here.
+  const email = "category-evaluation@seisan.waga.me";
   const attempt = await requestJson<{ id: string }>(new URL("/api/login/attempt", baseUrl), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -177,7 +180,9 @@ async function evaluateChallenge(
 ): Promise<ChallengeResult> {
   const classified = await classifyWithRetry(baseUrl, cookie, challenge.name);
   const predictedCategory =
-    classified.score >= CATEGORY_SCORE_THRESHOLD ? classified.category.name : OTHERS_CATEGORY_NAME;
+    automaticCategoryId(classified) === OTHERS_CATEGORY_ID
+      ? OTHERS_CATEGORY_NAME
+      : classified.category.name;
   return {
     ...challenge,
     predictedCategory,

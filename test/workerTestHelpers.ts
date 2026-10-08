@@ -66,8 +66,6 @@ export interface ProjectRefCacheValue {
   doId: string;
 }
 
-export const TEST_CATEGORY_VECTOR_NAMESPACE = "categories-00000000-0000-4000-8000-000000000001";
-
 export function projectRefCacheKey(projectId: string): string {
   return `project:${projectId}`;
 }
@@ -214,8 +212,6 @@ export function testCategory(
     normalizedName: name.toLowerCase(),
     description,
     ...(input.icon ? { icon: input.icon } : {}),
-    documentText: `title: ${name} | text: ${description || name}`,
-    vectorId: `category:${id}`,
     createdAt: nowMs,
     updatedAt: nowMs,
   };
@@ -224,13 +220,7 @@ export function testCategory(
 export async function putPublishedCategories(testEnv: Env, categories: Category[]): Promise<void> {
   await testEnv.PUBLISHED_GLOBAL_CONFIG.put(
     CATEGORY_CONFIG_KEY,
-    JSON.stringify(
-      CategoriesDocument.parse({
-        version: 1,
-        vectorNamespace: TEST_CATEGORY_VECTOR_NAMESPACE,
-        categories,
-      }),
-    ),
+    JSON.stringify(CategoriesDocument.parse({ version: 2, categories })),
   );
 }
 

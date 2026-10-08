@@ -39,11 +39,7 @@ export class CategoriesDocumentCodec {
 }
 
 export function createEmptyCategoriesDocument(): CategoriesDocumentValue {
-  return {
-    version: 1,
-    vectorNamespace: `categories-${crypto.randomUUID()}`,
-    categories: [],
-  };
+  return { version: 2, categories: [] };
 }
 
 export function normalizeCategoriesDocument(
@@ -51,23 +47,6 @@ export function normalizeCategoriesDocument(
 ): CategoriesDocumentValue | null {
   const parsed = CategoriesDocument.safeParse(document);
   return parsed.success ? withSortedCategories(parsed.data) : null;
-}
-
-/** Validates a full replacement and identifies vectors no longer referenced by it. */
-export function setCategoriesDocument(
-  currentDocument: CategoriesDocumentValue,
-  nextDocument: CategoriesDocumentValue,
-): Result<{ document: CategoriesDocumentValue; removedVectorIds: string[] }, "invalid_input"> {
-  const document = normalizeCategoriesDocument(nextDocument);
-  if (!document) {
-    return { ok: false, error: "invalid_input" };
-  }
-
-  return {
-    ok: true,
-    document,
-    removedVectorIds: removedVectorIds(currentDocument, document),
-  };
 }
 
 /** Creates or updates a category while preserving identity fields across updates. */
@@ -93,7 +72,6 @@ export function upsertCategoryInDocument(
       icon: input.icon ?? existing?.icon ?? "expense",
       nowMs: input.nowMs,
       createdAt: existing?.createdAt,
-      vectorId: existing?.vectorId,
     });
   } catch {
     return { ok: false, error: "invalid_input" };
@@ -115,11 +93,10 @@ export function upsertCategoryInDocument(
   };
 }
 
-/** Removes a category and returns its stable vector ID for best-effort cleanup. */
 export function deleteCategoryFromDocument(
   document: CategoriesDocumentValue,
   id: string,
-): Result<{ document: CategoriesDocumentValue; vectorId: string }, "invalid_input" | "not_found"> {
+): Result<{ document: CategoriesDocumentValue }, "invalid_input" | "not_found"> {
   const parsedId = CategoryId.safeParse(id);
   if (!parsedId.success) {
     return { ok: false, error: "invalid_input" };
@@ -132,7 +109,6 @@ export function deleteCategoryFromDocument(
 
   return {
     ok: true,
-    vectorId: category.vectorId,
     document: withSortedCategories({
       ...document,
       categories: document.categories.filter((item) => item.id !== parsedId.data),
@@ -147,7 +123,6 @@ function buildCategory(input: {
   icon: CategoryIconName;
   nowMs: number;
   createdAt?: number;
-  vectorId?: string;
 }): CategoryValue {
   const name = CategoryName.parse(input.name);
   const description = CategoryDescription.parse(input.description);
@@ -159,8 +134,6 @@ function buildCategory(input: {
     normalizedName: name.toLowerCase(),
     description,
     icon,
-    documentText: `title: ${name} | text: ${description || name}`,
-    vectorId: input.vectorId ?? `category:${id}`,
     createdAt: input.createdAt ?? input.nowMs,
     updatedAt: input.nowMs,
   };
@@ -182,16 +155,6 @@ function hasCategoryWithNormalizedName(
   return document.categories.some(
     (category) => category.normalizedName === normalizedName && category.id !== exceptId,
   );
-}
-
-function removedVectorIds(
-  previous: CategoriesDocumentValue,
-  next: CategoriesDocumentValue,
-): string[] {
-  const nextVectorIds = new Set(next.categories.map((category) => category.vectorId));
-  return previous.categories
-    .map((category) => category.vectorId)
-    .filter((vectorId) => !nextVectorIds.has(vectorId));
 }
 
 function withSortedCategories(document: CategoriesDocumentValue): CategoriesDocumentValue {

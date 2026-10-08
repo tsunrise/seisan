@@ -12,7 +12,6 @@ import {
   createEmptyCategoriesDocument,
   deleteCategoryFromDocument,
   normalizeCategoriesDocument,
-  setCategoriesDocument,
   upsertCategoryInDocument,
   CATEGORY_CONFIG_KEY,
   type CategoryDocumentWriteInput,
@@ -93,26 +92,6 @@ export class GlobalConfig extends DurableObject<Env> {
     return { ok: true, ...testBlockedEmail(loaded.document, parsedEmail.data) };
   }
 
-  setCategories(
-    document: CategoriesDocument,
-  ): Result<
-    { document: CategoriesDocument; removedVectorIds: string[] },
-    "invalid_input" | "invalid_value"
-  > {
-    const current = this.readCategoriesDocument();
-    if (!current.ok) {
-      return current;
-    }
-
-    const next = setCategoriesDocument(current.document, document);
-    if (!next.ok) {
-      return next;
-    }
-
-    this.writeKey(CATEGORY_CONFIG_KEY, next.document);
-    return next;
-  }
-
   upsertCategory(
     input: CategoryDocumentWriteInput,
   ): Result<
@@ -135,10 +114,7 @@ export class GlobalConfig extends DurableObject<Env> {
 
   deleteCategory(
     id: string,
-  ): Result<
-    { document: CategoriesDocument; vectorId: string },
-    "invalid_input" | "not_found" | "invalid_value"
-  > {
+  ): Result<{ document: CategoriesDocument }, "invalid_input" | "not_found" | "invalid_value"> {
     const current = this.readCategoriesDocument();
     if (!current.ok) {
       return current;

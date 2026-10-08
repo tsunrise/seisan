@@ -25,13 +25,13 @@ Policy anchor: [#at-a-glance](../privacy_policy.md#at-a-glance)
 
 Policy anchor: [#what-seisan-collects](../privacy_policy.md#what-seisan-collects)
 
-| Claim                                                          | Evidence                                                                                                                     |
-| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Account data: email, hashed login codes, sessions.             | `worker/routes/login.ts`; `worker/do/LoginAttemptStore.ts`; `worker/auth.ts`; `worker/crypto.ts`.                            |
-| API keys store metadata and a hash; the secret is shown once.  | `worker/apiKey.ts`; `worker/do/UserAPIKeysStore.ts`; `src/account/apiKeys/CreateApiKeyDialog.tsx`.                           |
-| Project, member, and record fields.                            | `worker/project.ts`; `src/components/memberConfig/memberConfigDraft.ts`; `docs/project-model.md`.                            |
-| Expense names go to Workers AI for category suggestions.       | `worker/routes/categories.ts`; `worker/category/vectorIndex.ts`; `src/project/composer/useExpenseCategoryClassification.ts`. |
-| Turnstile on login; email domains checked with Cloudflare DNS. | `src/components/Turnstile.tsx`; `worker/turnstile.ts`; `worker/emailDomainValidation.ts`.                                    |
+| Claim                                                          | Evidence                                                                                                              |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Account data: email, hashed login codes, sessions.             | `worker/routes/login.ts`; `worker/do/LoginAttemptStore.ts`; `worker/auth.ts`; `worker/crypto.ts`.                     |
+| API keys store metadata and a hash; the secret is shown once.  | `worker/apiKey.ts`; `worker/do/UserAPIKeysStore.ts`; `src/account/apiKeys/CreateApiKeyDialog.tsx`.                    |
+| Project, member, and record fields.                            | `worker/project.ts`; `src/components/memberConfig/memberConfigDraft.ts`; `docs/project-model.md`.                     |
+| Expense names go to Workers AI for category suggestions.       | `worker/routes/categories.ts`; `worker/category/clef.ts`; `src/project/composer/useExpenseCategoryClassification.ts`. |
+| Turnstile on login; email domains checked with Cloudflare DNS. | `src/components/Turnstile.tsx`; `worker/turnstile.ts`; `worker/emailDomainValidation.ts`.                             |
 
 ### How information is used
 

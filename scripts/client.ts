@@ -45,8 +45,6 @@ export interface Category {
   normalizedName: string;
   description: string;
   icon?: IconName;
-  documentText: string;
-  vectorId: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -64,7 +62,6 @@ export interface CategoryWriteInput {
 
 export interface CategoryWriteResponse {
   category: Category;
-  vectorizeMutation: Record<string, unknown>;
 }
 
 export interface CategoryListResponse {
@@ -79,6 +76,7 @@ export interface CategoryClassifyInput {
 export interface CategoryClassifyResponse {
   category: Category;
   score: number;
+  othersScore: number;
   candidates: CategoryCandidate[];
 }
 

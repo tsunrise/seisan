@@ -136,8 +136,6 @@ const exampleCategory = {
   normalizedName: "dining",
   description: "Restaurants, cafes, and prepared meals.",
   icon: "restaurant",
-  documentText: "Dining: restaurants, cafes, and prepared meals.",
-  vectorId: "category:dining",
   createdAt: exampleCreatedAt,
   updatedAt: exampleUpdatedAt,
 };
@@ -147,8 +145,6 @@ const exampleGroceriesCategory = {
   normalizedName: "groceries",
   description: "Food and household supplies bought from stores.",
   icon: "grocery",
-  documentText: "Groceries: food and household supplies bought from stores.",
-  vectorId: "category:groceries",
   createdAt: exampleCreatedAt,
   updatedAt: exampleUpdatedAt,
 };
@@ -370,11 +366,6 @@ const Category = z
     icon: CategoryIconName.optional().meta({
       description: "Category icon name. Older category documents may omit this field.",
     }),
-    documentText: z.string().meta({ description: "Text used to produce the category embedding." }),
-    vectorId: z.string().meta({
-      description: "Identifier of the published category vector.",
-      examples: ["category:dining"],
-    }),
     createdAt: NonNegativeSafeInteger.meta({
       description: "Creation time as Unix milliseconds.",
       examples: [exampleCreatedAt],
@@ -391,7 +382,8 @@ const CategoryCandidate = z
   .object({
     category: Category,
     score: z.number().meta({
-      description: "Semantic similarity score; larger values are better matches.",
+      description:
+        "Classifier probability from 0 to 1 that this category fits; probabilities across all categories and othersScore sum to 1.",
       examples: [0.91],
     }),
   })
@@ -403,7 +395,12 @@ const CategoryClassificationBody = z
     category: Category.meta({ description: "Highest-scoring category." }),
     score: z
       .number()
-      .meta({ description: "Similarity score for the selected category.", examples: [0.91] }),
+      .meta({ description: "Classifier probability for the selected category.", examples: [0.91] }),
+    othersScore: z.number().meta({
+      description:
+        "Classifier probability that the expense fits none of the configured categories. Clients should fall back to an uncategorized expense when it exceeds score.",
+      examples: [0.03],
+    }),
     candidates: z
       .array(CategoryCandidate)
       .meta({ description: "Ranked category candidates considered by the classifier." }),
@@ -711,9 +708,10 @@ export const OpenApiResponses = {
     {
       category: exampleCategory,
       score: 0.91,
+      othersScore: 0.03,
       candidates: [
         { category: exampleCategory, score: 0.91 },
-        { category: exampleGroceriesCategory, score: 0.63 },
+        { category: exampleGroceriesCategory, score: 0.05 },
       ],
     },
   ),

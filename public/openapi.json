@@ -389,15 +389,6 @@
                             ],
                             "examples": ["restaurant"]
                           },
-                          "documentText": {
-                            "type": "string",
-                            "description": "Text used to produce the category embedding."
-                          },
-                          "vectorId": {
-                            "type": "string",
-                            "description": "Identifier of the published category vector.",
-                            "examples": ["category:dining"]
-                          },
                           "createdAt": {
                             "type": "integer",
                             "minimum": 0,
@@ -418,8 +409,6 @@
                           "name",
                           "normalizedName",
                           "description",
-                          "documentText",
-                          "vectorId",
                           "createdAt",
                           "updatedAt"
                         ],
@@ -432,8 +421,6 @@
                             "normalizedName": "dining",
                             "description": "Restaurants, cafes, and prepared meals.",
                             "icon": "restaurant",
-                            "documentText": "Dining: restaurants, cafes, and prepared meals.",
-                            "vectorId": "category:dining",
                             "createdAt": 1767225600000,
                             "updatedAt": 1767312000000
                           }
@@ -453,8 +440,6 @@
                       "normalizedName": "dining",
                       "description": "Restaurants, cafes, and prepared meals.",
                       "icon": "restaurant",
-                      "documentText": "Dining: restaurants, cafes, and prepared meals.",
-                      "vectorId": "category:dining",
                       "createdAt": 1767225600000,
                       "updatedAt": 1767312000000
                     },
@@ -464,8 +449,6 @@
                       "normalizedName": "groceries",
                       "description": "Food and household supplies bought from stores.",
                       "icon": "grocery",
-                      "documentText": "Groceries: food and household supplies bought from stores.",
-                      "vectorId": "category:groceries",
                       "createdAt": 1767225600000,
                       "updatedAt": 1767312000000
                     }
@@ -513,7 +496,7 @@
         "operationId": "postApiCategoriesClassify",
         "tags": ["Categories"],
         "summary": "Classify a post name into configured spending categories",
-        "description": "Ranks published spending categories for the supplied expense text and returns the strongest match plus candidate scores.",
+        "description": "Ranks published spending categories for the supplied expense text and returns the strongest match, candidate probabilities, and the probability that no category fits.",
         "security": [{ "apiKeyBearer": [] }],
         "requestBody": {
           "required": true,
@@ -610,15 +593,6 @@
                           ],
                           "examples": ["restaurant"]
                         },
-                        "documentText": {
-                          "type": "string",
-                          "description": "Text used to produce the category embedding."
-                        },
-                        "vectorId": {
-                          "type": "string",
-                          "description": "Identifier of the published category vector.",
-                          "examples": ["category:dining"]
-                        },
                         "createdAt": {
                           "type": "integer",
                           "minimum": 0,
@@ -639,8 +613,6 @@
                         "name",
                         "normalizedName",
                         "description",
-                        "documentText",
-                        "vectorId",
                         "createdAt",
                         "updatedAt"
                       ],
@@ -653,8 +625,6 @@
                           "normalizedName": "dining",
                           "description": "Restaurants, cafes, and prepared meals.",
                           "icon": "restaurant",
-                          "documentText": "Dining: restaurants, cafes, and prepared meals.",
-                          "vectorId": "category:dining",
                           "createdAt": 1767225600000,
                           "updatedAt": 1767312000000
                         }
@@ -662,8 +632,13 @@
                     },
                     "score": {
                       "type": "number",
-                      "description": "Similarity score for the selected category.",
+                      "description": "Classifier probability for the selected category.",
                       "examples": [0.91]
+                    },
+                    "othersScore": {
+                      "type": "number",
+                      "description": "Classifier probability that the expense fits none of the configured categories. Clients should fall back to an uncategorized expense when it exceeds score.",
+                      "examples": [0.03]
                     },
                     "candidates": {
                       "type": "array",
@@ -728,15 +703,6 @@
                                 ],
                                 "examples": ["restaurant"]
                               },
-                              "documentText": {
-                                "type": "string",
-                                "description": "Text used to produce the category embedding."
-                              },
-                              "vectorId": {
-                                "type": "string",
-                                "description": "Identifier of the published category vector.",
-                                "examples": ["category:dining"]
-                              },
                               "createdAt": {
                                 "type": "integer",
                                 "minimum": 0,
@@ -757,8 +723,6 @@
                               "name",
                               "normalizedName",
                               "description",
-                              "documentText",
-                              "vectorId",
                               "createdAt",
                               "updatedAt"
                             ],
@@ -771,8 +735,6 @@
                                 "normalizedName": "dining",
                                 "description": "Restaurants, cafes, and prepared meals.",
                                 "icon": "restaurant",
-                                "documentText": "Dining: restaurants, cafes, and prepared meals.",
-                                "vectorId": "category:dining",
                                 "createdAt": 1767225600000,
                                 "updatedAt": 1767312000000
                               }
@@ -780,7 +742,7 @@
                           },
                           "score": {
                             "type": "number",
-                            "description": "Semantic similarity score; larger values are better matches.",
+                            "description": "Classifier probability from 0 to 1 that this category fits; probabilities across all categories and othersScore sum to 1.",
                             "examples": [0.91]
                           }
                         },
@@ -791,7 +753,7 @@
                       "description": "Ranked category candidates considered by the classifier."
                     }
                   },
-                  "required": ["category", "score", "candidates"],
+                  "required": ["category", "score", "othersScore", "candidates"],
                   "additionalProperties": false
                 },
                 "example": {
@@ -801,12 +763,11 @@
                     "normalizedName": "dining",
                     "description": "Restaurants, cafes, and prepared meals.",
                     "icon": "restaurant",
-                    "documentText": "Dining: restaurants, cafes, and prepared meals.",
-                    "vectorId": "category:dining",
                     "createdAt": 1767225600000,
                     "updatedAt": 1767312000000
                   },
                   "score": 0.91,
+                  "othersScore": 0.03,
                   "candidates": [
                     {
                       "category": {
@@ -815,8 +776,6 @@
                         "normalizedName": "dining",
                         "description": "Restaurants, cafes, and prepared meals.",
                         "icon": "restaurant",
-                        "documentText": "Dining: restaurants, cafes, and prepared meals.",
-                        "vectorId": "category:dining",
                         "createdAt": 1767225600000,
                         "updatedAt": 1767312000000
                       },
@@ -829,12 +788,10 @@
                         "normalizedName": "groceries",
                         "description": "Food and household supplies bought from stores.",
                         "icon": "grocery",
-                        "documentText": "Groceries: food and household supplies bought from stores.",
-                        "vectorId": "category:groceries",
                         "createdAt": 1767225600000,
                         "updatedAt": 1767312000000
                       },
-                      "score": 0.63
+                      "score": 0.05
                     }
                   ]
                 }

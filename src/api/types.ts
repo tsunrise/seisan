@@ -97,8 +97,6 @@ export interface Category {
   normalizedName: string;
   description: string;
   icon?: IconName;
-  documentText: string;
-  vectorId: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -111,6 +109,7 @@ export interface CategoryCandidate {
 export interface CategoryClassification {
   category: Category;
   score: number;
+  othersScore: number;
   candidates: CategoryCandidate[];
 }
 

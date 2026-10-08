@@ -33,7 +33,7 @@ CREATE TABLE global_config (
 
 - `worker/globalConfig.ts`: key literals, value types, parse/serialize codecs, and typed published-KV read helpers.
 - `worker/do/GlobalConfig.ts`: strongly consistent storage, private `readKey`/`writeKey` helpers, and feature-specific Durable Object RPC methods.
-- Feature modules: pure schema/mutation helpers and route-level orchestration for side effects outside GlobalConfig, such as Vectorize, email, or other external services.
+- Feature modules: pure schema/mutation helpers and route-level orchestration for side effects outside GlobalConfig, such as Workers AI, email, or other external services.
 
 Keep generic key/value parsing in `worker/globalConfig.ts`. Keep feature-specific read/modify/write logic in public methods on `GlobalConfig`, backed by small pure helper modules when the logic is more than a few lines.
 

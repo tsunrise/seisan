@@ -17,6 +17,8 @@ export interface CategoryCandidateOption {
 export interface CategoryClassificationOption {
   category: CategoryOption;
   score: number;
+  /** Probability that the classifier found no configured category that fits. */
+  othersScore: number;
 }
 
 export interface CategorySelection {
@@ -31,7 +33,8 @@ export const OTHERS_CATEGORY: CategoryOption = {
 };
 
 export function automaticCategoryId(classification: CategoryClassificationOption): string {
-  return classification.score >= CATEGORY_SCORE_THRESHOLD
+  return classification.score >= CATEGORY_SCORE_THRESHOLD &&
+    classification.score >= classification.othersScore
     ? classification.category.id
     : OTHERS_CATEGORY_ID;
 }

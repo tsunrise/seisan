@@ -6,6 +6,7 @@ import {
   CategoriesDocument,
   type CategoriesDocument as CategoriesDocumentValue,
 } from "../worker/category";
+import { CATEGORY_CLASSIFIER_MODEL } from "../worker/category/clef";
 import { upsertCategoryInDocument } from "../worker/category/document";
 import { sha256Hex } from "../worker/crypto";
 import type { IconName } from "../shared/icon-names";
@@ -18,21 +19,14 @@ import {
   makeEnv,
 } from "./workerTestHelpers";
 
-const TEST_VECTOR = [0.1, 0.2, 0.3];
-
 describe("category classification", () => {
   afterEach(cleanupWorkerTestState);
 
   it("manages categories through admin endpoints and classifies through the authenticated API", async () => {
-    const aiRun = vi.fn(async () => ({ shape: [1, TEST_VECTOR.length], data: [TEST_VECTOR] }));
+    const aiRun = vi.fn(async () => clefAnswer({ Restaurant: 0.91, Others: 0.09 }));
     const classificationRateLimit = stubRateLimit(true);
-    const upsert = vi.fn<(vectors: VectorizeVector[]) => Promise<VectorizeVectorMutation>>(
-      async () => ({ ids: [], count: 1 }),
-    );
-    const query = vi.fn<() => Promise<VectorizeMatches>>(async () => ({ count: 0, matches: [] }));
     const { env: testEnv } = makeEnv({
       AI: fakeAi(aiRun),
-      CATEGORY_INDEX: fakeVectorize({ upsert, query }),
       CATEGORY_CLASSIFICATION_ACCOUNT_RATE_LIMITER: classificationRateLimit.binding,
     });
 
@@ -55,31 +49,18 @@ describe("category classification", () => {
     );
     expect(addResponse.status).toBe(201);
     const addBody = (await addResponse.json()) as CategoryWriteResponse;
-    expect(addBody).toMatchObject({
+    expect(addBody).toEqual({
       category: {
+        id: expect.stringMatching(UUID_PATTERN),
         name: "Restaurant",
         normalizedName: "restaurant",
         description: "Places that sell prepared meals",
         icon: "restaurant",
-        documentText: "title: Restaurant | text: Places that sell prepared meals",
+        createdAt: expect.any(Number),
+        updatedAt: expect.any(Number),
       },
-      vectorizeMutation: { ids: [], count: 1 },
     });
-    expect(addBody.category.id).toMatch(UUID_PATTERN);
-    expect(addBody.category.vectorId).toBe(`category:${addBody.category.id}`);
-    expect(aiRun).toHaveBeenCalledWith("@cf/google/embeddinggemma-300m", {
-      text: ["title: Restaurant | text: Places that sell prepared meals"],
-    });
-    expect(upsert).toHaveBeenCalledWith([
-      {
-        id: addBody.category.vectorId,
-        values: TEST_VECTOR,
-        namespace: expect.stringMatching(CATEGORY_NAMESPACE_PATTERN),
-      },
-    ]);
-    const [upsertedVector] = upsert.mock.calls[0]?.[0] ?? [];
-    const vectorNamespace = upsertedVector?.namespace;
-    expect(vectorNamespace).toMatch(CATEGORY_NAMESPACE_PATTERN);
+    expect(aiRun).not.toHaveBeenCalled();
 
     const duplicate = await adminDispatch(
       "/categories",
@@ -96,11 +77,7 @@ describe("category classification", () => {
       waitForPublishedCategories(testEnv, (document) =>
         Boolean(document?.categories.some((category) => category.id === addBody.category.id)),
       ),
-    ).resolves.toMatchObject({
-      version: 1,
-      vectorNamespace,
-      categories: [{ id: addBody.category.id, name: "Restaurant", icon: "restaurant" }],
-    });
+    ).resolves.toEqual({ version: 2, categories: [addBody.category] });
 
     const publishedGet = vi.spyOn(testEnv.PUBLISHED_GLOBAL_CONFIG, "get");
     const listResponse = await dispatch("/categories", testEnv);
@@ -116,40 +93,102 @@ describe("category classification", () => {
       categories: [{ id: addBody.category.id, name: "Restaurant", icon: "restaurant" }],
     });
 
-    query.mockResolvedValueOnce({
-      count: 2,
-      matches: [
-        { id: addBody.category.vectorId, score: 0.91 },
-        { id: "category:00000000-0000-4000-8000-000000000099", score: 0.89 },
-      ],
-    });
     const classifyResponse = await dispatch(
       "/categories/classify",
       testEnv,
-      jsonBody("POST", { name: "Taco Bell" }, await authHeaders()),
+      jsonBody("POST", { name: " Taco  Bell " }, await authHeaders()),
     );
     expect(classifyResponse.status).toBe(200);
-    await expect(classifyResponse.json()).resolves.toMatchObject({
-      category: { id: addBody.category.id, name: "Restaurant", icon: "restaurant" },
+    await expect(classifyResponse.json()).resolves.toEqual({
+      category: addBody.category,
       score: 0.91,
-      candidates: [{ category: { id: addBody.category.id }, score: 0.91 }],
+      othersScore: 0.09,
+      candidates: [{ category: addBody.category, score: 0.91 }],
     });
-    expect(aiRun).toHaveBeenLastCalledWith("@cf/google/embeddinggemma-300m", {
-      text: ["task: classification | query: Taco Bell"],
+    expect(aiRun).toHaveBeenCalledTimes(1);
+    expect(aiRun).toHaveBeenCalledWith(CATEGORY_CLASSIFIER_MODEL, {
+      model: "clef-flash",
+      state: "Taco Bell",
+      questions: {
+        category: {
+          type: "choice",
+          instructions: expect.any(String),
+          criteria: {
+            Restaurant: "Places that sell prepared meals",
+            Others: expect.any(String),
+          },
+        },
+      },
     });
-    expect(query).toHaveBeenCalledWith(TEST_VECTOR, { topK: 5, namespace: vectorNamespace });
     expect(classificationRateLimit.limit).toHaveBeenCalledWith({
       key: `category-classification:account:${await sha256Hex("owner@example.com")}`,
     });
   });
 
+  it("ranks every published category, applies topK, and reports the Others probability", async () => {
+    const aiRun = vi.fn(async () =>
+      clefAnswer({ Grocery: 0.2, Restaurant: 0.55, Travel: 0.05, Others: 0.2 }),
+    );
+    const { env: testEnv } = makeEnv({ AI: fakeAi(aiRun) });
+    for (const name of ["Restaurant", "Grocery", "Travel", "Utilities"]) {
+      const created = await adminDispatch("/categories", testEnv, jsonBody("POST", { name }));
+      expect(created.status).toBe(201);
+    }
+    await waitForPublishedCategories(testEnv, (document) => document?.categories.length === 4);
+
+    const response = await dispatch(
+      "/categories/classify",
+      testEnv,
+      jsonBody("POST", { name: "Lunch", topK: 2 }, await authHeaders()),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as ClassifyResponse;
+    expect(body).toMatchObject({
+      category: { name: "Restaurant" },
+      score: 0.55,
+      othersScore: 0.2,
+    });
+    expect(body.candidates.map(({ category, score }) => [category.name, score])).toEqual([
+      ["Restaurant", 0.55],
+      ["Grocery", 0.2],
+    ]);
+    expect(aiRun).toHaveBeenCalledWith(
+      CATEGORY_CLASSIFIER_MODEL,
+      expect.objectContaining({
+        questions: {
+          category: expect.objectContaining({
+            // An empty description is sent as null rather than repeating the name.
+            criteria: {
+              Grocery: null,
+              Restaurant: null,
+              Travel: null,
+              Utilities: null,
+              Others: expect.any(String),
+            },
+          }),
+        },
+      }),
+    );
+
+    const allCandidates = await dispatch(
+      "/categories/classify",
+      testEnv,
+      jsonBody("POST", { name: "Lunch", topK: 20 }, await authHeaders()),
+    );
+    const allBody = (await allCandidates.json()) as ClassifyResponse;
+    expect(allBody.candidates.map(({ category, score }) => [category.name, score])).toEqual([
+      ["Restaurant", 0.55],
+      ["Grocery", 0.2],
+      ["Travel", 0.05],
+      ["Utilities", 0],
+    ]);
+  });
+
   it("rate limits classification by normalized account before paid classification work", async () => {
     const classificationRateLimit = stubRateLimit(false);
-    const aiRun = vi.fn(async () => ({ shape: [1, TEST_VECTOR.length], data: [TEST_VECTOR] }));
-    const query = vi.fn<() => Promise<VectorizeMatches>>(async () => ({ count: 0, matches: [] }));
+    const aiRun = vi.fn(async () => clefAnswer({}));
     const { env: testEnv } = makeEnv({
       AI: fakeAi(aiRun),
-      CATEGORY_INDEX: fakeVectorize({ query }),
       CATEGORY_CLASSIFICATION_ACCOUNT_RATE_LIMITER: classificationRateLimit.binding,
     });
 
@@ -165,20 +204,11 @@ describe("category classification", () => {
       key: `category-classification:account:${await sha256Hex("owner@example.com")}`,
     });
     expect(aiRun).not.toHaveBeenCalled();
-    expect(query).not.toHaveBeenCalled();
   });
 
-  it("updates categories in place and removes deleted categories from published config", async () => {
-    const deleteByIds = vi.fn(async () => ({ ids: [], count: 1 }));
-    const query = vi.fn<() => Promise<VectorizeMatches>>(async () => ({ count: 0, matches: [] }));
-    const { env: testEnv } = makeEnv({
-      AI: fakeAi(vi.fn(async () => ({ shape: [1, TEST_VECTOR.length], data: [TEST_VECTOR] }))),
-      CATEGORY_INDEX: fakeVectorize({
-        upsert: vi.fn(async () => ({ ids: [], count: 1 })),
-        deleteByIds,
-        query,
-      }),
-    });
+  it("updates categories in place and stops offering deleted categories to the model", async () => {
+    const aiRun = vi.fn(async () => clefAnswer({ Grocery: 0.7, Others: 0.3 }));
+    const { env: testEnv } = makeEnv({ AI: fakeAi(aiRun) });
 
     const restaurant = (await (
       await adminDispatch(
@@ -201,13 +231,16 @@ describe("category classification", () => {
     );
     expect(updateResponse.status).toBe(200);
     const updateBody = (await updateResponse.json()) as CategoryWriteResponse;
-    expect(updateBody.category).toMatchObject({
-      id: restaurant.category.id,
-      vectorId: restaurant.category.vectorId,
-      createdAt: restaurant.category.createdAt,
-      name: "Dining",
-      normalizedName: "dining",
-      icon: "restaurant",
+    expect(updateBody).toEqual({
+      category: {
+        id: restaurant.category.id,
+        createdAt: restaurant.category.createdAt,
+        updatedAt: expect.any(Number),
+        name: "Dining",
+        normalizedName: "dining",
+        description: "Restaurants, cafes, bars, and takeout",
+        icon: "restaurant",
+      },
     });
     expect(grocery.category.icon).toBe("expense");
 
@@ -222,7 +255,6 @@ describe("category classification", () => {
       method: "DELETE",
     });
     expect(deleteResponse.status).toBe(204);
-    expect(deleteByIds).toHaveBeenCalledWith([restaurant.category.vectorId]);
     await expect(
       waitForPublishedCategories(testEnv, (document) =>
         Boolean(
@@ -233,16 +265,27 @@ describe("category classification", () => {
       categories: [{ id: grocery.category.id, name: "Grocery" }],
     });
 
-    query.mockResolvedValueOnce({
-      count: 1,
-      matches: [{ id: restaurant.category.vectorId, score: 0.88 }],
-    });
-    const classifyDeleted = await dispatch(
+    const classifyAfterDelete = await dispatch(
       "/categories/classify",
       testEnv,
       jsonBody("POST", { name: "Pizza" }, await authHeaders()),
     );
-    expect(classifyDeleted.status).toBe(404);
+    expect(classifyAfterDelete.status).toBe(200);
+    await expect(classifyAfterDelete.json()).resolves.toMatchObject({
+      category: { id: grocery.category.id },
+      score: 0.7,
+      othersScore: 0.3,
+    });
+    expect(aiRun).toHaveBeenCalledWith(
+      CATEGORY_CLASSIFIER_MODEL,
+      expect.objectContaining({
+        questions: {
+          category: expect.objectContaining({
+            criteria: { Grocery: null, Others: expect.any(String) },
+          }),
+        },
+      }),
+    );
 
     const updateDeleted = await adminDispatch(
       `/categories/${restaurant.category.id}`,
@@ -257,47 +300,30 @@ describe("category classification", () => {
     expect(deleteAgain.status).toBe(404);
   });
 
-  it("keeps category deletion retryable when Vectorize does not accept it", async () => {
-    const deleteByIds = vi
-      .fn<() => Promise<VectorizeVectorMutation>>()
-      .mockRejectedValueOnce(new Error("Vectorize unavailable"))
-      .mockResolvedValueOnce({ ids: [], count: 1 });
-    const { env: testEnv } = makeEnv({
-      AI: fakeAi(vi.fn(async () => ({ shape: [1, TEST_VECTOR.length], data: [TEST_VECTOR] }))),
-      CATEGORY_INDEX: fakeVectorize({
-        upsert: vi.fn(async () => ({ ids: [], count: 1 })),
-        deleteByIds,
-      }),
-    });
+  it("returns 500 when clef-flash fails or returns an unexpected answer", async () => {
+    const aiRun = vi
+      .fn<() => Promise<unknown>>()
+      .mockRejectedValueOnce(new Error("Workers AI unavailable"))
+      .mockResolvedValueOnce({ answers: { category: { type: "score", score: 1 } } })
+      .mockResolvedValueOnce(clefAnswer({ Restaurant: 1.5 }));
+    const { env: testEnv } = makeEnv({ AI: fakeAi(aiRun) });
+    await adminDispatch("/categories", testEnv, jsonBody("POST", { name: "Restaurant" }));
+    await waitForPublishedCategories(testEnv, (document) => document?.categories.length === 1);
 
-    const restaurant = (await (
-      await adminDispatch("/categories", testEnv, jsonBody("POST", { name: "Restaurant" }))
-    ).json()) as CategoryWriteResponse;
-
-    const failedDelete = await adminDispatch(`/categories/${restaurant.category.id}`, testEnv, {
-      method: "DELETE",
-    });
-    expect(failedDelete.status).toBe(500);
-    await expect(
-      adminDispatch("/categories", testEnv).then((response) => response.json()),
-    ).resolves.toMatchObject({ categories: [{ id: restaurant.category.id }] });
-
-    const retriedDelete = await adminDispatch(`/categories/${restaurant.category.id}`, testEnv, {
-      method: "DELETE",
-    });
-    expect(retriedDelete.status).toBe(204);
-    expect(deleteByIds).toHaveBeenCalledTimes(2);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const response = await dispatch(
+        "/categories/classify",
+        testEnv,
+        jsonBody("POST", { name: "Coffee" }, await authHeaders()),
+      );
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({ error: "internal_server_error" });
+    }
+    expect(aiRun).toHaveBeenCalledTimes(3);
   });
 
-  it("validates requests, auth, and hard category KV failures", async () => {
-    const upsert = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("vectorize unavailable"))
-      .mockResolvedValueOnce({ ids: [], count: 1 });
-    const { env: testEnv } = makeEnv({
-      AI: fakeAi(vi.fn(async () => ({ shape: [1, TEST_VECTOR.length], data: [TEST_VECTOR] }))),
-      CATEGORY_INDEX: fakeVectorize({ upsert }),
-    });
+  it("validates requests, auth, reserved names, and hard category KV failures", async () => {
+    const { env: testEnv } = makeEnv({ AI: fakeAi(vi.fn(async () => clefAnswer({}))) });
 
     const unauthenticated = await dispatch(
       "/categories/classify",
@@ -327,30 +353,22 @@ describe("category classification", () => {
     );
     expect(invalidIcon.status).toBe(400);
 
-    const failedAdd = await adminDispatch(
+    const reservedName = await adminDispatch(
       "/categories",
       testEnv,
-      jsonBody("POST", { name: "Transportation: Gas/Fuel" }),
+      jsonBody("POST", { name: " OTHERS " }),
     );
-    expect(failedAdd.status).toBe(500);
-    const publishedAfterFailedAdd = await waitForPublishedCategories(testEnv, (document) =>
-      Boolean(
-        document?.categories.some((category) => category.name === "Transportation: Gas/Fuel"),
-      ),
-    );
-    if (!publishedAfterFailedAdd) {
-      throw new Error("expected failed vectorize write to publish categories eventually");
-    }
-    expect(publishedAfterFailedAdd).toMatchObject({
-      categories: [{ name: "Transportation: Gas/Fuel" }],
-    });
+    expect(reservedName.status).toBe(400);
 
-    const retriedUpdate = await adminDispatch(
-      `/categories/${publishedAfterFailedAdd.categories[0]?.id}`,
+    const travel = (await (
+      await adminDispatch("/categories", testEnv, jsonBody("POST", { name: "Travel" }))
+    ).json()) as CategoryWriteResponse;
+    const renameToReserved = await adminDispatch(
+      `/categories/${travel.category.id}`,
       testEnv,
-      jsonBody("PUT", { name: "Transportation: Gas/Fuel" }),
+      jsonBody("PUT", { name: "others" }),
     );
-    expect(retriedUpdate.status).toBe(200);
+    expect(renameToReserved.status).toBe(400);
 
     const badId = await adminDispatch("/categories/not-a-category-id", testEnv, {
       method: "DELETE",
@@ -407,14 +425,10 @@ describe("category classification", () => {
     const { env: testEnv } = makeEnv();
     const stub = testEnv.GLOBAL_CONFIG.getByName(`global-config-${crypto.randomUUID()}`);
 
-    const emptyList = await stub.listCategories();
-    expect(emptyList).toMatchObject({
+    await expect(stub.listCategories()).resolves.toEqual({
       ok: true,
-      document: { version: 1, categories: [] },
+      document: { version: 2, categories: [] },
     });
-    if (!emptyList.ok) {
-      throw new Error("expected empty categories document");
-    }
 
     const restaurant = await stub.upsertCategory({
       name: " Restaurant ",
@@ -450,7 +464,6 @@ describe("category classification", () => {
       ok: true,
       category: {
         id: restaurant.category.id,
-        vectorId: restaurant.category.vectorId,
         createdAt: 1_000,
         updatedAt: 1_002,
         name: "Dining",
@@ -458,15 +471,9 @@ describe("category classification", () => {
       },
     });
 
-    const deleted = await stub.deleteCategory(restaurant.category.id);
-    expect(deleted).toEqual({
+    await expect(stub.deleteCategory(restaurant.category.id)).resolves.toEqual({
       ok: true,
-      document: {
-        ...emptyList.document,
-        vectorNamespace: restaurant.document.vectorNamespace,
-        categories: [],
-      },
-      vectorId: restaurant.category.vectorId,
+      document: { version: 2, categories: [] },
     });
     await expect(stub.deleteCategory(restaurant.category.id)).resolves.toEqual({
       ok: false,
@@ -474,33 +481,28 @@ describe("category classification", () => {
     });
     await expect(
       waitForPublishedCategories(testEnv, (document) => document?.categories.length === 0),
-    ).resolves.toMatchObject({
-      version: 1,
-      categories: [],
-    });
+    ).resolves.toEqual({ version: 2, categories: [] });
   });
 
-  it("accepts and safely updates legacy version-1 category documents without icons", () => {
-    const parsed = CategoriesDocument.safeParse({
-      version: 1,
-      vectorNamespace: "categories-00000000-0000-4000-8000-000000000001",
+  it("upgrades legacy version-1 category documents and drops their index fields", () => {
+    const parsed = CategoriesDocument.safeParse(LEGACY_V1_DOCUMENT);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) {
+      throw new Error("expected legacy category document to parse");
+    }
+    expect(parsed.data).toEqual({
+      version: 2,
       categories: [
         {
           id: "00000000-0000-4000-8000-000000000010",
           name: "Restaurant",
           normalizedName: "restaurant",
           description: "Prepared meals",
-          documentText: "title: Restaurant | text: Prepared meals",
-          vectorId: "category:00000000-0000-4000-8000-000000000010",
           createdAt: 1_000,
           updatedAt: 1_000,
         },
       ],
     });
-    expect(parsed.success).toBe(true);
-    if (!parsed.success) {
-      throw new Error("expected legacy category document to parse");
-    }
 
     expect(
       upsertCategoryInDocument(parsed.data, {
@@ -509,6 +511,76 @@ describe("category classification", () => {
         nowMs: 2_000,
       }),
     ).toMatchObject({ ok: true, category: { name: "Dining", icon: "expense" } });
+
+    expect(
+      CategoriesDocument.safeParse({
+        ...LEGACY_V1_DOCUMENT,
+        categories: [{ ...LEGACY_V1_DOCUMENT.categories[0], unexpected: true }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rewrites a stored version-1 document as version 2 on the next GlobalConfig mutation", async () => {
+    const { env: testEnv } = makeEnv();
+    const stub = testEnv.GLOBAL_CONFIG.getByName(`global-config-${crypto.randomUUID()}`);
+    await stub.listCategories();
+    await runInDurableObject(stub, async (_instance, state) => {
+      state.storage.sql.exec(
+        `INSERT INTO global_config (key, value) VALUES (?, ?)`,
+        CATEGORY_CONFIG_KEY,
+        JSON.stringify(LEGACY_V1_DOCUMENT),
+      );
+    });
+
+    await expect(stub.listCategories()).resolves.toMatchObject({
+      ok: true,
+      document: { version: 2, categories: [{ name: "Restaurant" }] },
+    });
+    await expect(stub.upsertCategory({ name: "Grocery", nowMs: 2_000 })).resolves.toMatchObject({
+      ok: true,
+    });
+
+    await runInDurableObject(stub, async (_instance, state) => {
+      const raw = state.storage.sql
+        .exec<{
+          value: string;
+        }>("SELECT value FROM global_config WHERE key = ?", CATEGORY_CONFIG_KEY)
+        .one().value;
+      const stored = JSON.parse(raw) as Record<string, unknown>;
+      expect(stored).toMatchObject({
+        version: 2,
+        categories: [{ name: "Grocery" }, { name: "Restaurant" }],
+      });
+      expect(stored).not.toHaveProperty("vectorNamespace");
+      expect(JSON.stringify(stored)).not.toContain("vectorId");
+    });
+  });
+
+  it("serves a still-published version-1 KV document without its index fields", async () => {
+    const aiRun = vi.fn(async () => clefAnswer({ Restaurant: 0.8, Others: 0.2 }));
+    const { env: testEnv } = makeEnv({ AI: fakeAi(aiRun) });
+    await testEnv.PUBLISHED_GLOBAL_CONFIG.put(
+      CATEGORY_CONFIG_KEY,
+      JSON.stringify(LEGACY_V1_DOCUMENT),
+    );
+
+    const listResponse = await dispatch("/categories", testEnv);
+    expect(listResponse.status).toBe(200);
+    const listed = (await listResponse.json()) as { categories: Array<Record<string, unknown>> };
+    expect(listed.categories).toHaveLength(1);
+    expect(listed.categories[0]).not.toHaveProperty("vectorId");
+    expect(listed.categories[0]).not.toHaveProperty("documentText");
+
+    const classifyResponse = await dispatch(
+      "/categories/classify",
+      testEnv,
+      jsonBody("POST", { name: "Lunch" }, await authHeaders()),
+    );
+    expect(classifyResponse.status).toBe(200);
+    await expect(classifyResponse.json()).resolves.toMatchObject({
+      category: { name: "Restaurant" },
+      score: 0.8,
+    });
   });
 
   it("applies concurrent category mutations through GlobalConfig", async () => {
@@ -648,8 +720,23 @@ describe("category classification", () => {
 });
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
-const CATEGORY_NAMESPACE_PATTERN =
-  /^categories-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+
+const LEGACY_V1_DOCUMENT = {
+  version: 1,
+  vectorNamespace: "categories-00000000-0000-4000-8000-000000000001",
+  categories: [
+    {
+      id: "00000000-0000-4000-8000-000000000010",
+      name: "Restaurant",
+      normalizedName: "restaurant",
+      description: "Prepared meals",
+      documentText: "title: Restaurant | text: Prepared meals",
+      vectorId: "category:00000000-0000-4000-8000-000000000010",
+      createdAt: 1_000,
+      updatedAt: 1_000,
+    },
+  ],
+};
 
 interface CategoryWriteResponse {
   category: {
@@ -658,12 +745,16 @@ interface CategoryWriteResponse {
     normalizedName: string;
     description: string;
     icon?: IconName;
-    documentText: string;
-    vectorId: string;
     createdAt: number;
     updatedAt: number;
   };
-  vectorizeMutation: VectorizeVectorMutation;
+}
+
+interface ClassifyResponse {
+  category: CategoryWriteResponse["category"];
+  score: number;
+  othersScore: number;
+  candidates: Array<{ category: CategoryWriteResponse["category"]; score: number }>;
 }
 
 async function readPublishedCategories(testEnv: Env): Promise<unknown> {
@@ -685,41 +776,30 @@ async function waitForPublishedCategories(
   return (await readPublishedCategories(testEnv)) as CategoriesDocumentValue | null;
 }
 
-function fakeAi(
-  run: (model: string, input: { text: string[] }) => Promise<AiTextEmbeddingsOutput>,
-): Ai {
-  return { run } as unknown as Ai;
+/** Shapes a clef-flash choice answer for the category question. */
+function clefAnswer(probabilities: Record<string, number>): unknown {
+  return {
+    model: "clef-flash",
+    answers: {
+      category: {
+        type: "choice",
+        choice: Object.keys(probabilities)[0] ?? "Others",
+        probabilities,
+        confidence: 0.9,
+      },
+    },
+    usage: { input_tokens: 100, output_tokens: 0 },
+  };
 }
 
-function fakeVectorize(methods: Partial<VectorizeMethods> = {}): VectorizeIndex {
-  return {
-    describe: vi.fn(async () => ({
-      id: "category-test",
-      name: "category-test",
-      dimensions: TEST_VECTOR.length,
-      vectorsCount: 0,
-      processedUpToDatetime: "",
-      processedUpToMutation: "",
-      config: { dimensions: TEST_VECTOR.length, metric: "cosine" },
-    })),
-    query: vi.fn(async () => ({ count: 0, matches: [] })),
-    insert: vi.fn(async () => ({ ids: [], count: 0 })),
-    upsert: vi.fn(async () => ({ ids: [], count: 0 })),
-    deleteByIds: vi.fn(async () => ({ ids: [], count: 0 })),
-    getByIds: vi.fn(async () => []),
-    ...methods,
-  } as VectorizeIndex;
+function fakeAi(run: (model: string, input: unknown) => Promise<unknown>): Ai {
+  return { run } as unknown as Ai;
 }
 
 function stubRateLimit(success: boolean): { binding: RateLimit; limit: ReturnType<typeof vi.fn> } {
   const limit = vi.fn(async () => ({ success }));
   return { binding: { limit } as RateLimit, limit };
 }
-
-type VectorizeMethods = Pick<
-  VectorizeIndex,
-  "describe" | "query" | "insert" | "upsert" | "deleteByIds" | "getByIds"
->;
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;

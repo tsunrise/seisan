@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 
 import * as api from "../../api";
 import {
-  CATEGORY_SCORE_THRESHOLD,
+  automaticCategoryId,
   isCurrentClassification,
   OTHERS_CATEGORY_ID,
   selectionAfterClassification,
@@ -151,7 +151,8 @@ export function useExpenseCategoryClassification(input: string, initialCategoryI
             input: requestInput,
             status: "ready",
             candidates: classification.candidates,
-            fallbackReason: classification.score < CATEGORY_SCORE_THRESHOLD ? "low-score" : null,
+            fallbackReason:
+              automaticCategoryId(classification) === OTHERS_CATEGORY_ID ? "low-score" : null,
           });
           return {
             input: requestInput,

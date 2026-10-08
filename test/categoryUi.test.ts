@@ -83,8 +83,22 @@ describe("category UI helpers", () => {
 
   it("uses the inclusive score threshold for automatic decisions", () => {
     const restaurant = category("restaurant", "Restaurant", "restaurant");
-    expect(automaticCategoryId({ category: restaurant, score: 0.199 })).toBe(OTHERS_CATEGORY_ID);
-    expect(automaticCategoryId({ category: restaurant, score: 0.2 })).toBe(restaurant.id);
+    expect(automaticCategoryId({ category: restaurant, score: 0.199, othersScore: 0 })).toBe(
+      OTHERS_CATEGORY_ID,
+    );
+    expect(automaticCategoryId({ category: restaurant, score: 0.2, othersScore: 0 })).toBe(
+      restaurant.id,
+    );
+  });
+
+  it("falls back to Others when the classifier prefers no category", () => {
+    const restaurant = category("restaurant", "Restaurant", "restaurant");
+    expect(automaticCategoryId({ category: restaurant, score: 0.4, othersScore: 0.41 })).toBe(
+      OTHERS_CATEGORY_ID,
+    );
+    expect(automaticCategoryId({ category: restaurant, score: 0.4, othersScore: 0.4 })).toBe(
+      restaurant.id,
+    );
   });
 
   it("preserves manual selections across results and failures", () => {
@@ -95,6 +109,7 @@ describe("category UI helpers", () => {
       selectionAfterClassification(manual, {
         category: category("travel", "Travel", "travel"),
         score: 0.95,
+        othersScore: 0.01,
       }),
     ).toEqual(manual);
     expect(selectionAfterClassificationFailure(manual)).toEqual(manual);

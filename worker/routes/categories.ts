@@ -70,7 +70,7 @@ categoryApp.post(
     tags: ["Categories"],
     summary: "Classify a post name into configured spending categories",
     description:
-      "Ranks published spending categories for the supplied expense text and returns the strongest match plus candidate scores.",
+      "Ranks published spending categories for the supplied expense text and returns the strongest match, candidate probabilities, and the probability that no category fits.",
     security: OpenApiSecurity.ApiKeyBearer,
     requestBody: OpenApiRequests.CategoryClassify,
     responses: {
@@ -93,10 +93,9 @@ categoryApp.post(
       return ErrorResponse.rateLimited("account");
     }
 
-    const result = await new CategoryClassifier(context.env, context.executionCtx).classify(
-      parsed.data.name,
-      { topK: parsed.data.topK },
-    );
+    const result = await new CategoryClassifier(context.env).classify(parsed.data.name, {
+      topK: parsed.data.topK,
+    });
     if (!result.ok) {
       return mapClassificationError(result);
     }
@@ -104,6 +103,7 @@ categoryApp.post(
     return context.json({
       category: result.category,
       score: result.score,
+      othersScore: result.othersScore,
       candidates: result.candidates,
     });
   },
@@ -140,10 +140,7 @@ async function listPublishedCategories(context: AppContext): Promise<Response> {
 }
 
 async function listCategoriesForUpdate(context: AppContext): Promise<Response> {
-  const result = await new CategoryClassifier(
-    context.env,
-    context.executionCtx,
-  ).getCategoriesForUpdate();
+  const result = await new CategoryClassifier(context.env).getCategoriesForUpdate();
   if (!result.ok) {
     return mapGetCategoriesForUpdateError(result);
   }
@@ -156,7 +153,7 @@ adminCategoryApp.post("/", async (context) => {
     return ErrorResponse.invalidRequest();
   }
 
-  const result = await new CategoryClassifier(context.env, context.executionCtx).upsertCategory({
+  const result = await new CategoryClassifier(context.env).upsertCategory({
     name: parsed.data.name,
     description: parsed.data.description,
     icon: parsed.data.icon,
@@ -165,10 +162,7 @@ adminCategoryApp.post("/", async (context) => {
     return mapUpsertError(result);
   }
 
-  return context.json(
-    { category: result.category, vectorizeMutation: result.vectorizeMutation },
-    201,
-  );
+  return context.json({ category: result.category }, 201);
 });
 
 adminCategoryApp.put("/:id", async (context) => {
@@ -182,7 +176,7 @@ adminCategoryApp.put("/:id", async (context) => {
     return ErrorResponse.invalidRequest();
   }
 
-  const result = await new CategoryClassifier(context.env, context.executionCtx).upsertCategory({
+  const result = await new CategoryClassifier(context.env).upsertCategory({
     id: id.data,
     name: parsed.data.name,
     description: parsed.data.description,
@@ -192,10 +186,7 @@ adminCategoryApp.put("/:id", async (context) => {
     return mapUpsertError(result);
   }
 
-  return context.json({
-    category: result.category,
-    vectorizeMutation: result.vectorizeMutation,
-  });
+  return context.json({ category: result.category });
 });
 
 adminCategoryApp.delete("/:id", async (context) => {
@@ -204,9 +195,7 @@ adminCategoryApp.delete("/:id", async (context) => {
     return ErrorResponse.invalidRequest();
   }
 
-  const result = await new CategoryClassifier(context.env, context.executionCtx).deleteCategory(
-    id.data,
-  );
+  const result = await new CategoryClassifier(context.env).deleteCategory(id.data);
   if (!result.ok) {
     return mapDeleteError(result);
   }
@@ -231,8 +220,6 @@ function mapUpsertError(result: ErrorResultOf<CategoryClassifier["upsertCategory
       return ErrorResponse.notFound();
     case "category_exists":
       return ErrorResponse.conflict("category_exists");
-    case "embedding_failed":
-    case "vectorize_failed":
     case "config_read_failed":
       return ErrorResponse.internalServerError();
   }
@@ -244,7 +231,6 @@ function mapDeleteError(result: ErrorResultOf<CategoryClassifier["deleteCategory
       return ErrorResponse.invalidRequest();
     case "not_found":
       return ErrorResponse.notFound();
-    case "vectorize_failed":
     case "config_read_failed":
       return ErrorResponse.internalServerError();
   }
@@ -257,8 +243,7 @@ function mapClassificationError(result: ErrorResultOf<CategoryClassifier["classi
     case "not_found":
       return ErrorResponse.notFound();
     case "config_read_failed":
-    case "embedding_failed":
-    case "vectorize_failed":
+    case "classification_failed":
       return ErrorResponse.internalServerError();
   }
 }

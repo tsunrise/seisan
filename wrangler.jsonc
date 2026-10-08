@@ -20,13 +20,6 @@
     "binding": "AI",
     "remote": true,
   },
-  "vectorize": [
-    {
-      "binding": "CATEGORY_INDEX",
-      "index_name": "seisan-category-dev",
-      "remote": true,
-    },
-  ],
   "vars": {
     "LOGIN_EMAIL_FROM": "no-reply@dev.seisan.waga.me",
     "LOCAL_DEV_LOGIN_CODE": "123456",
@@ -158,12 +151,6 @@
       "ai": {
         "binding": "AI",
       },
-      "vectorize": [
-        {
-          "binding": "CATEGORY_INDEX",
-          "index_name": "seisan-category-test",
-        },
-      ],
       "kv_namespaces": [
         {
           "binding": "REVOKED_TOKENS",
@@ -262,12 +249,6 @@
       "ai": {
         "binding": "AI",
       },
-      "vectorize": [
-        {
-          "binding": "CATEGORY_INDEX",
-          "index_name": "seisan-category-dev",
-        },
-      ],
       "kv_namespaces": [
         {
           "binding": "REVOKED_TOKENS",
@@ -372,12 +353,6 @@
       "ai": {
         "binding": "AI",
       },
-      "vectorize": [
-        {
-          "binding": "CATEGORY_INDEX",
-          "index_name": "seisan-category-production",
-        },
-      ],
       "kv_namespaces": [
         {
           "binding": "REVOKED_TOKENS",

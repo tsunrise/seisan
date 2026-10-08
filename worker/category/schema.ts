@@ -3,19 +3,15 @@ import { z } from "zod";
 import { ICON_NAME_VALUES } from "../../shared/icon-names";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-const CATEGORY_VECTOR_NAMESPACE_PATTERN =
-  /^categories-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-const CATEGORY_VECTOR_ID_PATTERN =
-  /^category:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const CATEGORY_NAME_MAX_LENGTH = 120;
 const CATEGORY_DESCRIPTION_MAX_LENGTH = 1_000;
 const CATEGORY_CLASSIFICATION_NAME_MAX_LENGTH = 200;
 const CATEGORY_CLASSIFICATION_TOP_K_MAX = 20;
-const CATEGORY_DOCUMENT_TEXT_MAX_LENGTH =
-  "title: ".length +
-  CATEGORY_NAME_MAX_LENGTH +
-  " | text: ".length +
-  CATEGORY_DESCRIPTION_MAX_LENGTH;
+/** clef-flash accepts at most 255 choice options, and one is reserved for "Others". */
+const CATEGORY_MAX_COUNT = 254;
+
+/** Display name of the built-in fallback; also the classifier's "none of these" option. */
+export const OTHERS_CATEGORY_NAME = "Others";
 
 export const CategoryId = z
   .string()
@@ -26,7 +22,15 @@ export type CategoryId = z.infer<typeof CategoryId>;
 export const CategoryName = z
   .string()
   .transform(normalizeCategoryText)
-  .pipe(z.string().min(1).max(CATEGORY_NAME_MAX_LENGTH));
+  .pipe(
+    z
+      .string()
+      .min(1)
+      .max(CATEGORY_NAME_MAX_LENGTH)
+      .refine((name) => name.toLowerCase() !== OTHERS_CATEGORY_NAME.toLowerCase(), {
+        message: "Others is the reserved fallback category.",
+      }),
+  );
 export type CategoryName = z.infer<typeof CategoryName>;
 
 export const CategoryDescription = z
@@ -51,30 +55,9 @@ export const CategoryClassificationTopK = z
   .max(CATEGORY_CLASSIFICATION_TOP_K_MAX);
 export type CategoryClassificationTopK = z.infer<typeof CategoryClassificationTopK>;
 
-/** Exact text embedded for a category; persisted so prompt-format changes are explicit. */
-export const CategoryDocumentText = z
-  .string()
-  .transform(normalizeCategoryText)
-  .pipe(z.string().min(1).max(CATEGORY_DOCUMENT_TEXT_MAX_LENGTH));
-export type CategoryDocumentText = z.infer<typeof CategoryDocumentText>;
-
-/** Stable Vectorize ID retained when a category is renamed or re-described. */
-export const CategoryVectorId = z
-  .string()
-  .regex(CATEGORY_VECTOR_ID_PATTERN)
-  .transform((id) => id.toLowerCase());
-export type CategoryVectorId = z.infer<typeof CategoryVectorId>;
-
-/** Isolates one category-document lineage from vectors created by earlier lineages. */
-export const CategoryVectorNamespace = z
-  .string()
-  .regex(CATEGORY_VECTOR_NAMESPACE_PATTERN)
-  .transform((namespace) => namespace.toLowerCase());
-export type CategoryVectorNamespace = z.infer<typeof CategoryVectorNamespace>;
-
 const NonNegativeSafeInteger = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 
-/** Persisted category record, including derived lookup and embedding fields. */
+/** Persisted category record, including its derived lookup field. */
 export const Category = z
   .object({
     id: CategoryId,
@@ -82,20 +65,16 @@ export const Category = z
     normalizedName: z.string().min(1).max(CATEGORY_NAME_MAX_LENGTH),
     description: CategoryDescription,
     icon: CategoryIconName.optional(),
-    documentText: CategoryDocumentText,
-    vectorId: CategoryVectorId,
     createdAt: NonNegativeSafeInteger,
     updatedAt: NonNegativeSafeInteger,
   })
   .strict();
 export type Category = z.infer<typeof Category>;
 
-/** Complete versioned category snapshot published as one value under the `categories` key. */
-export const CategoriesDocument = z
+const CurrentCategoriesDocument = z
   .object({
-    version: z.literal(1),
-    vectorNamespace: CategoryVectorNamespace,
-    categories: z.array(Category),
+    version: z.literal(2),
+    categories: z.array(Category).max(CATEGORY_MAX_COUNT),
   })
   .strict()
   .superRefine((document, context) => {
@@ -109,12 +88,35 @@ export const CategoriesDocument = z
       context,
       "Duplicate normalized category name.",
     );
-    validateUniqueCategoryField(
-      document.categories.map((category) => category.vectorId),
-      context,
-      "Duplicate category vector ID.",
-    );
   });
+
+// TODO(category-v1-backfill): remove once every stored and published category document is version 2.
+// Version 1 also carried per-category index fields that the current classifier does not use.
+const LegacyCategoriesDocumentV1 = z
+  .object({
+    version: z.literal(1),
+    vectorNamespace: z.string(),
+    categories: z.array(
+      Category.extend({ documentText: z.string(), vectorId: z.string() }).strict(),
+    ),
+  })
+  .strict()
+  .transform((document) => ({
+    version: 2 as const,
+    categories: document.categories.map((category) => ({
+      id: category.id,
+      name: category.name,
+      normalizedName: category.normalizedName,
+      description: category.description,
+      ...(category.icon ? { icon: category.icon } : {}),
+      createdAt: category.createdAt,
+      updatedAt: category.updatedAt,
+    })),
+  }))
+  .pipe(CurrentCategoriesDocument);
+
+/** Complete versioned category snapshot published as one value under the `categories` key. */
+export const CategoriesDocument = z.union([CurrentCategoriesDocument, LegacyCategoriesDocumentV1]);
 export type CategoriesDocument = z.infer<typeof CategoriesDocument>;
 
 function normalizeCategoryText(value: string): string {
