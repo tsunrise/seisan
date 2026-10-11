@@ -172,13 +172,24 @@ Rules:
 
 ## Expense Category Classification
 
-- The expense composer classifies the exact expense text after a 400 ms debounce or immediately on
-  blur, requesting up to 20 candidates.
+- Classification spends Workers AI budget, so the composer minimizes requests without delaying
+  posting. `useExpenseCategoryClassification` owns these rules:
+  - Requests use the whitespace-normalized text (`classificationKey()`, matching the API) and up to
+    20 candidates.
+  - Results are cached for the tab in `ClassificationCache` (200 entries, 5 minute TTL, matching
+    the published category KV window). Cached text resolves immediately without a request.
+  - Automatic requests start only after 500 ms without input and at least 1.5 s after the previous
+    request started (`automaticClassificationDelayMs()`), and never overlap: text typed while a
+    request runs waits for that request to settle.
+  - Blur and submission classify immediately, bypassing the wait, interval, and overlap rules, and
+    reuse an identical in-flight request.
 - The category control is a searchable prefix-matching autocomplete. It keeps the classified
   suggestions first, follows them with the remaining categories alphabetically, and shows each
   category icon both in the input and dropdown.
-- Superseded requests must be aborted and ignored. Classification times out after 5 seconds and
-  falls back to `Others`; scores below `0.2` also produce `Others`.
+- Superseded requests are not aborted, because their cost is already paid; their results are
+  cached and applied only while they still match the latest input. Classification times out after
+  5 seconds and falls back to `Others`; scores below `0.2` and failed requests, including
+  Cloudflare challenges, also produce `Others`.
 - Manual dropdown selections remain authoritative for the rest of that composer session even while
   later classifications refresh suggestion ordering.
 - Do not post while the latest expense text is unresolved. Submission must independently confirm

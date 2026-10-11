@@ -7,8 +7,8 @@ import {
   type EnvWithIdentity,
   getRequiredIdentity,
   parseJson,
-  requireAuth,
-  requireSameOriginWhenPresent,
+  requireSameOrigin,
+  requireSessionAuth,
 } from "../auth";
 import {
   CATEGORY_CONFIG_KEY,
@@ -24,8 +24,8 @@ import { sha256Hex } from "../crypto";
 import { normalizeEmail } from "../email";
 import { ErrorResponse } from "../error";
 import { PublishedGlobalConfigKvStore } from "../globalConfig";
-import { errorResponses, OpenApiRequests, OpenApiResponses, OpenApiSecurity } from "../model";
-import type { ErrorResultOf } from "../result";
+import { errorResponses, OpenApiResponses } from "../model";
+import type { ErrorResultOf, Result } from "../result";
 
 const DEFAULT_CLASSIFY_TOP_K = 5;
 
@@ -64,53 +64,44 @@ categoryApp.get(
   listPublishedCategories,
 );
 
-categoryApp.post(
-  "/categories/classify",
-  describeRoute({
-    tags: ["Categories"],
-    summary: "Classify a post name into configured spending categories",
-    description:
-      "Ranks published spending categories for the supplied expense text and returns the strongest match, candidate probabilities, and the probability that no category fits.",
-    security: OpenApiSecurity.ApiKeyBearer,
-    requestBody: OpenApiRequests.CategoryClassify,
-    responses: {
-      200: OpenApiResponses.CategoryClassification,
-      ...errorResponses(400, 401, 404, 429, 500),
-    },
-  }),
-  requireSameOriginWhenPresent,
-  requireAuth,
-  async (context) => {
-    const parsed = await parseJson(context, ClassifyCategoryBody);
-    if (!parsed.ok) {
-      return ErrorResponse.invalidRequest();
-    }
+// Browser-only: Cloudflare Precursor enforces a verified human session for this path at the edge,
+// so the route is session-only, rejects requests without a same-origin Origin, and stays out of
+// public OpenAPI.
+categoryApp.post("/categories/classify", requireSameOrigin, requireSessionAuth, async (context) => {
+  const parsed = await parseJson(context, ClassifyCategoryBody);
+  if (!parsed.ok) {
+    return ErrorResponse.invalidRequest();
+  }
 
-    const rateLimit = await new CategoryClassificationRateLimiter(context.env).limitAccount(
-      getRequiredIdentity(context).email,
-    );
-    if (!rateLimit.success) {
-      return ErrorResponse.rateLimited("account");
-    }
+  const rateLimit = await new CategoryClassificationRateLimiter(context.env).limit({
+    accountEmail: getRequiredIdentity(context).email,
+    clientIp: context.req.header("CF-Connecting-IP"),
+  });
+  if (!rateLimit.ok) {
+    return ErrorResponse.rateLimited(rateLimit.error);
+  }
 
-    const result = await new CategoryClassifier(context.env).classify(parsed.data.name, {
-      topK: parsed.data.topK,
-    });
-    if (!result.ok) {
-      return mapClassificationError(result);
-    }
+  const result = await new CategoryClassifier(context.env).classify(parsed.data.name, {
+    topK: parsed.data.topK,
+  });
+  if (!result.ok) {
+    return mapClassificationError(result);
+  }
 
-    return context.json({
-      category: result.category,
-      score: result.score,
-      othersScore: result.othersScore,
-      candidates: result.candidates,
-    });
-  },
-);
+  return context.json({
+    category: result.category,
+    score: result.score,
+    othersScore: result.othersScore,
+    candidates: result.candidates,
+  });
+});
 
 class CategoryClassificationRateLimiter {
   private static readonly accountKeyPrefix = "category-classification:account:";
+  private static readonly ipKeyPrefix = "category-classification:ip:";
+  // Requests without CF-Connecting-IP (only possible off Cloudflare, such as local tests) share
+  // one bucket instead of skipping the IP limit.
+  private static readonly unknownIp = "unknown";
 
   private readonly env: Env;
 
@@ -118,12 +109,60 @@ class CategoryClassificationRateLimiter {
     this.env = env;
   }
 
-  async limitAccount(accountEmail: string): Promise<RateLimitOutcome> {
-    return this.env.CATEGORY_CLASSIFICATION_ACCOUNT_RATE_LIMITER.limit({
+  /** Applies the per-IP limit first, then the per-account limit, before any paid work. */
+  async limit(input: {
+    accountEmail: string;
+    clientIp: string | undefined;
+  }): Promise<Result<void, "ip" | "account">> {
+    const ipLimit = await this.env.CATEGORY_CLASSIFICATION_IP_RATE_LIMITER.limit({
+      key: await CategoryClassificationRateLimiter.ipKey(input.clientIp),
+    });
+    if (!ipLimit.success) {
+      return { ok: false, error: "ip" };
+    }
+
+    const accountLimit = await this.env.CATEGORY_CLASSIFICATION_ACCOUNT_RATE_LIMITER.limit({
       key: `${CategoryClassificationRateLimiter.accountKeyPrefix}${await sha256Hex(
-        normalizeEmail(accountEmail),
+        normalizeEmail(input.accountEmail),
       )}`,
     });
+    if (!accountLimit.success) {
+      return { ok: false, error: "account" };
+    }
+
+    return { ok: true };
+  }
+
+  private static async ipKey(clientIp: string | undefined): Promise<string> {
+    const ip = clientIp?.trim().toLowerCase() || CategoryClassificationRateLimiter.unknownIp;
+    const source = CategoryClassificationRateLimiter.ipv6Prefix64(ip) ?? ip;
+    return `${CategoryClassificationRateLimiter.ipKeyPrefix}${await sha256Hex(source)}`;
+  }
+
+  /**
+   * One IPv6 subscriber usually controls a whole /64, so IPv6 addresses share their /64 bucket.
+   * Returns null for IPv4, IPv4-embedded IPv6, and anything that does not parse.
+   */
+  private static ipv6Prefix64(ip: string): string | null {
+    const halves = ip.split("::");
+    if (!ip.includes(":") || halves.length > 2) {
+      return null;
+    }
+    const head = halves[0] ? halves[0].split(":") : [];
+    const tail = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+    const elided = 8 - head.length - tail.length;
+    if (halves.length === 1 ? elided !== 0 : elided < 1) {
+      return null;
+    }
+
+    const groups = [...head, ...Array<string>(halves.length === 2 ? elided : 0).fill("0"), ...tail];
+    if (!groups.every((group) => /^[0-9a-f]{1,4}$/u.test(group))) {
+      return null;
+    }
+    return `${groups
+      .slice(0, 4)
+      .map((group) => Number.parseInt(group, 16).toString(16))
+      .join(":")}::/64`;
   }
 }
 

@@ -3,15 +3,29 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import * as api from "../../api";
 import {
   automaticCategoryId,
-  isCurrentClassification,
+  automaticClassificationDelayMs,
+  ClassificationCache,
+  classificationKey,
   OTHERS_CATEGORY_ID,
   selectionAfterClassification,
   selectionAfterClassificationFailure,
   type CategorySelection,
 } from "../../domain/categories";
 
-const CLASSIFICATION_DEBOUNCE_MS = 400;
+const CLASSIFICATION_DEBOUNCE_MS = 500;
+const CLASSIFICATION_MIN_INTERVAL_MS = 1_500;
 const CLASSIFICATION_TIMEOUT_MS = 5_000;
+const CLASSIFICATION_TOP_K = 20;
+// Matches the published category KV cache window, after which category edits become visible.
+const CLASSIFICATION_CACHE_TTL_MS = 5 * 60 * 1_000;
+const CLASSIFICATION_CACHE_MAX_ENTRIES = 200;
+
+// Shared by every composer in the tab. clef-flash is deterministic, so retyping or revisiting an
+// expense name never needs another paid classification while the category list is unchanged.
+const classificationCache = new ClassificationCache<api.CategoryClassification>({
+  maxEntries: CLASSIFICATION_CACHE_MAX_ENTRIES,
+  ttlMs: CLASSIFICATION_CACHE_TTL_MS,
+});
 
 export type ClassificationFallbackReason = "low-score" | "error" | "timeout" | null;
 export type ClassificationStatus = "empty" | "waiting" | "running" | "ready" | "fallback";
@@ -29,18 +43,25 @@ interface ClassificationResolution {
   stale: boolean;
 }
 
-interface ActiveRequest {
-  token: number;
-  input: string;
-  controller: AbortController;
-  promise: Promise<ClassificationResolution>;
-}
+type ClassificationOutcome =
+  | { ok: true; classification: api.CategoryClassification }
+  | { ok: false; reason: "error" | "timeout" };
 
 const defaultSelection: CategorySelection = {
   source: "automatic",
   categoryId: OTHERS_CATEGORY_ID,
 };
 
+/**
+ * Classifies the expense name while the user types, spending as few paid requests as possible:
+ *
+ * - Results are cached per normalized name, so repeated text resolves without a request.
+ * - Automatic requests wait for a quiet input, keep a minimum interval between starts, and never
+ *   overlap; text typed while a request runs is classified after that request settles.
+ * - A superseded request is not aborted. Its cost is already paid, so its result is cached in
+ *   case the user returns to that text, but it is only applied while it matches the input.
+ * - Blur and submission (`ensureClassification`) skip the waiting so posting is never delayed.
+ */
 export function useExpenseCategoryClassification(input: string, initialCategoryId?: string) {
   const initialInputRef = useRef(input);
   const skipInitialClassificationRef = useRef(
@@ -59,9 +80,12 @@ export function useExpenseCategoryClassification(input: string, initialCategoryI
   const stateRef = useRef(state);
   const selectionRef = useRef<CategorySelection>(initialSelection);
   const latestInputRef = useRef(input);
-  const requestTokenRef = useRef(0);
-  const debounceRef = useRef<number | null>(null);
-  const activeRequestRef = useRef<ActiveRequest | null>(null);
+  const mountedRef = useRef(true);
+  const timerRef = useRef<number | null>(null);
+  const inFlightRef = useRef(new Map<string, Promise<void>>());
+  const lastInputAtRef = useRef(0);
+  const lastRequestAtRef = useRef<number | null>(null);
+  const scheduleAutomaticRef = useRef<() => void>(() => undefined);
 
   useLayoutEffect(() => {
     latestInputRef.current = input;
@@ -82,36 +106,72 @@ export function useExpenseCategoryClassification(input: string, initialCategoryI
     [],
   );
 
-  const clearDebounce = useCallback(() => {
-    if (debounceRef.current !== null) {
-      window.clearTimeout(debounceRef.current);
-      debounceRef.current = null;
+  const clearTimer = useCallback(() => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
     }
   }, []);
 
-  const startClassification = useCallback(
-    (requestInput: string, token: number): Promise<ClassificationResolution> => {
-      const existing = activeRequestRef.current;
-      if (existing?.token === token && existing.input === requestInput) {
-        return existing.promise;
+  const isResolved = useCallback((text: string) => {
+    const current = stateRef.current;
+    return current.input === text && (current.status === "ready" || current.status === "fallback");
+  }, []);
+
+  /** Applies an outcome only while it still describes the latest input. */
+  const applyOutcome = useCallback(
+    (key: string, outcome: ClassificationOutcome) => {
+      const currentInput = latestInputRef.current;
+      if (classificationKey(currentInput) !== key) {
+        return;
       }
 
-      if (
-        !isCurrentClassification(
-          token,
-          requestInput,
-          requestTokenRef.current,
-          latestInputRef.current,
-        )
-      ) {
-        return Promise.resolve({
-          input: requestInput,
-          selectedCategoryId: selectionRef.current.categoryId,
-          stale: true,
+      if (outcome.ok) {
+        selectionRef.current = selectionAfterClassification(
+          selectionRef.current,
+          outcome.classification,
+        );
+        commitState({
+          ...selectionRef.current,
+          input: currentInput,
+          status: "ready",
+          candidates: outcome.classification.candidates,
+          fallbackReason:
+            automaticCategoryId(outcome.classification) === OTHERS_CATEGORY_ID ? "low-score" : null,
         });
+        return;
       }
 
-      clearDebounce();
+      selectionRef.current = selectionAfterClassificationFailure(selectionRef.current);
+      commitState({
+        ...selectionRef.current,
+        input: currentInput,
+        status: "fallback",
+        candidates: [],
+        fallbackReason: outcome.reason,
+      });
+    },
+    [commitState],
+  );
+
+  /** Resolves a key from the cache, an identical in-flight request, or a new request. */
+  const classify = useCallback(
+    (key: string): Promise<void> => {
+      const cached = classificationCache.get(key);
+      if (cached) {
+        applyOutcome(key, { ok: true, classification: cached });
+        return Promise.resolve();
+      }
+      const inFlight = inFlightRef.current.get(key);
+      if (inFlight) {
+        return inFlight;
+      }
+
+      lastRequestAtRef.current = Date.now();
+      if (classificationKey(latestInputRef.current) === key) {
+        commitState((current) => ({ ...current, status: "running" }));
+      }
+
       const controller = new AbortController();
       let timedOut = false;
       const timeout = window.setTimeout(() => {
@@ -119,141 +179,95 @@ export function useExpenseCategoryClassification(input: string, initialCategoryI
         controller.abort();
       }, CLASSIFICATION_TIMEOUT_MS);
 
-      commitState((current) => ({
-        ...current,
-        input: requestInput,
-        status: "running",
-        candidates: [],
-        fallbackReason: null,
-      }));
-
-      const promise = api
-        .classifyCategory({ name: requestInput, topK: 20 }, { signal: controller.signal })
-        .then((classification): ClassificationResolution => {
-          if (
-            !isCurrentClassification(
-              token,
-              requestInput,
-              requestTokenRef.current,
-              latestInputRef.current,
-            )
-          ) {
-            return {
-              input: requestInput,
-              selectedCategoryId: selectionRef.current.categoryId,
-              stale: true,
-            };
-          }
-
-          selectionRef.current = selectionAfterClassification(selectionRef.current, classification);
-          commitState({
-            ...selectionRef.current,
-            input: requestInput,
-            status: "ready",
-            candidates: classification.candidates,
-            fallbackReason:
-              automaticCategoryId(classification) === OTHERS_CATEGORY_ID ? "low-score" : null,
-          });
-          return {
-            input: requestInput,
-            selectedCategoryId: selectionRef.current.categoryId,
-            stale: false,
-          };
-        })
-        .catch((): ClassificationResolution => {
-          if (
-            !isCurrentClassification(
-              token,
-              requestInput,
-              requestTokenRef.current,
-              latestInputRef.current,
-            )
-          ) {
-            return {
-              input: requestInput,
-              selectedCategoryId: selectionRef.current.categoryId,
-              stale: true,
-            };
-          }
-
-          selectionRef.current = selectionAfterClassificationFailure(selectionRef.current);
-          commitState({
-            ...selectionRef.current,
-            input: requestInput,
-            status: "fallback",
-            candidates: [],
-            fallbackReason: timedOut ? "timeout" : "error",
-          });
-          return {
-            input: requestInput,
-            selectedCategoryId: selectionRef.current.categoryId,
-            stale: false,
-          };
-        })
-        .finally(() => {
+      const request = api
+        .classifyCategory({ name: key, topK: CLASSIFICATION_TOP_K }, { signal: controller.signal })
+        .then(
+          (classification): ClassificationOutcome => {
+            classificationCache.set(key, classification);
+            return { ok: true, classification };
+          },
+          (): ClassificationOutcome => ({ ok: false, reason: timedOut ? "timeout" : "error" }),
+        )
+        .then((outcome) => {
           window.clearTimeout(timeout);
-          if (activeRequestRef.current?.token === token) {
-            activeRequestRef.current = null;
+          inFlightRef.current.delete(key);
+          if (!mountedRef.current) {
+            return;
           }
+          applyOutcome(key, outcome);
+          // Text typed while this request ran waited for it; classify that text now if needed.
+          scheduleAutomaticRef.current();
         });
 
-      activeRequestRef.current = { token, input: requestInput, controller, promise };
-      return promise;
+      inFlightRef.current.set(key, request);
+      return request;
     },
-    [clearDebounce, commitState],
+    [applyOutcome, commitState],
   );
 
+  const scheduleAutomatic = useCallback(() => {
+    clearTimer();
+    if (!mountedRef.current) {
+      return;
+    }
+
+    const currentInput = latestInputRef.current;
+    const key = classificationKey(currentInput);
+    if (!key || isResolved(currentInput)) {
+      return;
+    }
+    if (classificationCache.get(key)) {
+      void classify(key);
+      return;
+    }
+    if (inFlightRef.current.size > 0) {
+      // Automatic requests never overlap; the settling request schedules the next one.
+      return;
+    }
+
+    const delay = automaticClassificationDelayMs({
+      now: Date.now(),
+      lastInputAt: lastInputAtRef.current,
+      lastRequestAt: lastRequestAtRef.current,
+      debounceMs: CLASSIFICATION_DEBOUNCE_MS,
+      minIntervalMs: CLASSIFICATION_MIN_INTERVAL_MS,
+    });
+    if (delay > 0) {
+      timerRef.current = window.setTimeout(() => scheduleAutomaticRef.current(), delay);
+      return;
+    }
+    void classify(key);
+  }, [classify, clearTimer, isResolved]);
+
+  useLayoutEffect(() => {
+    scheduleAutomaticRef.current = scheduleAutomatic;
+  }, [scheduleAutomatic]);
+
   const ensureClassification = useCallback(
-    (requestInput: string): Promise<ClassificationResolution> => {
+    async (requestInput: string): Promise<ClassificationResolution> => {
       if (!requestInput.trim()) {
-        return Promise.resolve({
-          input: requestInput,
-          selectedCategoryId: OTHERS_CATEGORY_ID,
-          stale: false,
-        });
+        return { input: requestInput, selectedCategoryId: OTHERS_CATEGORY_ID, stale: false };
       }
       if (latestInputRef.current !== requestInput) {
-        return Promise.resolve({
+        return {
           input: requestInput,
           selectedCategoryId: selectionRef.current.categoryId,
           stale: true,
-        });
+        };
       }
 
-      const current = stateRef.current;
-      if (
-        current.input === requestInput &&
-        (current.status === "ready" || current.status === "fallback")
-      ) {
-        return Promise.resolve({
-          input: requestInput,
-          selectedCategoryId: selectionRef.current.categoryId,
-          stale: false,
-        });
+      if (!isResolved(requestInput)) {
+        // Explicit requests skip the debounce, interval, and overlap rules.
+        clearTimer();
+        await classify(classificationKey(requestInput));
       }
-
-      const active = activeRequestRef.current;
-      if (active?.input === requestInput && active.token === requestTokenRef.current) {
-        return active.promise;
-      }
-
-      clearDebounce();
-      let token = requestTokenRef.current;
-      if (current.input !== requestInput) {
-        activeRequestRef.current?.controller.abort();
-        token = requestTokenRef.current + 1;
-        requestTokenRef.current = token;
-        commitState((previous) => ({
-          ...previous,
-          input: requestInput,
-          status: "waiting",
-          candidates: [],
-          fallbackReason: null,
-        }));
-      }
-      return startClassification(requestInput, token);
+      return {
+        input: requestInput,
+        selectedCategoryId: selectionRef.current.categoryId,
+        stale: latestInputRef.current !== requestInput,
+      };
     },
-    [clearDebounce, commitState, startClassification],
+    [classify, clearTimer, isResolved],
   );
 
   const selectCategory = useCallback(
@@ -274,11 +288,8 @@ export function useExpenseCategoryClassification(input: string, initialCategoryI
       return;
     }
 
-    clearDebounce();
-    activeRequestRef.current?.controller.abort();
-    activeRequestRef.current = null;
-    const token = requestTokenRef.current + 1;
-    requestTokenRef.current = token;
+    clearTimer();
+    lastInputAtRef.current = Date.now();
 
     if (!input.trim()) {
       if (selectionRef.current.source === "automatic") {
@@ -294,27 +305,32 @@ export function useExpenseCategoryClassification(input: string, initialCategoryI
       return;
     }
 
+    const key = classificationKey(input);
+    const cached = classificationCache.get(key);
+    if (cached) {
+      applyOutcome(key, { ok: true, classification: cached });
+      return;
+    }
+
     commitState((current) => ({
       ...current,
       input,
-      status: "waiting",
+      status: inFlightRef.current.has(key) ? "running" : "waiting",
       candidates: [],
       fallbackReason: null,
     }));
-    debounceRef.current = window.setTimeout(() => {
-      void startClassification(input, token);
-    }, CLASSIFICATION_DEBOUNCE_MS);
+    scheduleAutomatic();
 
-    return clearDebounce;
-  }, [clearDebounce, commitState, input, startClassification]);
+    return clearTimer;
+  }, [applyOutcome, clearTimer, commitState, input, scheduleAutomatic]);
 
-  useEffect(
-    () => () => {
-      clearDebounce();
-      activeRequestRef.current?.controller.abort();
-    },
-    [clearDebounce],
-  );
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      clearTimer();
+    };
+  }, [clearTimer]);
 
   const classificationIsCurrent =
     state.input === input && (state.status === "ready" || state.status === "fallback");

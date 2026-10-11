@@ -1,6 +1,6 @@
 # Seisan Privacy Policy
 
-**Last updated:** October 5, 2026
+**Last updated:** October 7, 2026
 
 Seisan is a small open-source service for splitting shared expenses. It is run by one person, operating as tsunrise, in the United States. This page explains what information Seisan handles, why, and who can see it.
 
@@ -21,9 +21,11 @@ Questions or requests: [me@tomshen.io](mailto:me@tomshen.io).
 
 **Projects.** Whatever you and other members put into a shared project: project and member names, linked emails, allowed emails, payment instructions, how many people a member represents, and expense, transfer, and promise records with their amounts and descriptions. Please don't put sensitive information, such as bank logins or ID numbers, into free-text fields.
 
-**Category suggestions.** When a signed-in user types an expense name, it is sent to Cloudflare Workers AI to suggest a category. The suggestion can always be changed, and only the category you post is saved.
+**Category suggestions.** When a signed-in user types an expense name in the Seisan website, it is sent to Cloudflare Workers AI to suggest a category. Suggestions are only available in a browser that has passed Cloudflare's bot checks, not through the API. The suggestion can always be changed, and only the category you post is saved.
 
-**Technical data.** Like any website, Seisan and Cloudflare process IP addresses, browser details, and request logs to run the service, stop abuse, and fix errors. The login page uses Cloudflare Turnstile to check for bots, and login emails are checked by looking up the email's domain with Cloudflare DNS.
+**Technical data.** Like any website, Seisan and Cloudflare process IP addresses, browser details, and request logs to run the service, stop abuse, and fix errors. To limit how often category suggestions can be requested, Seisan counts requests per account and per hashed IP address.
+
+**Bot detection.** On every page, Cloudflare runs a bot-detection script that looks at how the page is used, such as pointer movement, scrolling, focus, how long the page is visible, and the timing of keystrokes, to tell people apart from automated traffic. It records keystroke timing, not which keys you press, and Seisan does not receive these signals. The login page also uses Cloudflare Turnstile to check for bots, and login emails are checked by looking up the email's domain with Cloudflare DNS.
 
 ## 3. How information is used
 
@@ -37,14 +39,14 @@ Seisan uses this information only to run the features you use: signing in, shari
 
 **Other people in a project** can copy or share what they see. Seisan cannot control those copies.
 
-**Service providers:** Cloudflare hosts, stores, and protects Seisan, sends login emails, and runs Turnstile and Workers AI. See [Cloudflare's Privacy Policy](https://www.cloudflare.com/privacypolicy/) and the [Turnstile Privacy Addendum](https://www.cloudflare.com/turnstile-privacy-policy/). Your email provider receives your login codes.
+**Service providers:** Cloudflare hosts, stores, and protects Seisan, sends login emails, and runs bot detection, Turnstile, and Workers AI. See [Cloudflare's Privacy Policy](https://www.cloudflare.com/privacypolicy/) and the [Turnstile Privacy Addendum](https://www.cloudflare.com/turnstile-privacy-policy/). Your email provider receives your login codes.
 
 **The operator** may look at account and project data when needed to run, secure, or debug the service, or to answer your request. Seisan will also disclose information if required by law.
 
 ## 5. Cookies and browser storage
 
 - A sign-in cookie (`__Host-seisan_session`) keeps you logged in for up to 30 days.
-- Cloudflare Turnstile may use security cookies on the login page.
+- Cloudflare sets a `cf_clearance` security cookie that records whether your browser session has passed its bot checks. Cloudflare Turnstile may also use security cookies on the login page.
 - The calculator saves its draft in `localStorage`; the project timeline briefly saves your scroll position in `sessionStorage`.
 
 There are no advertising or analytics cookies.
@@ -53,6 +55,7 @@ There are no advertising or analytics cookies.
 
 - Login codes expire after 10 minutes. Sign-in sessions last up to 30 days.
 - API keys stop working when they expire or are revoked.
+- Rate-limit counters used to stop abuse reset within a minute.
 - Project data has no automatic expiry, so the shared history stays complete. Deleting a record removes its content and balance effect but keeps a placeholder in the history.
 - Calculator drafts stay in your browser until you clear them.
 

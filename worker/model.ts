@@ -172,7 +172,7 @@ const ProjectName = z
   .min(1)
   .max(ABSOLUTE_TEXT_LIMIT)
   .meta({ description: "Human-readable project name.", examples: ["Japan trip"] });
-// TODO(schema-source): import category IDs, icons, category documents, and classification schemas
+// TODO(schema-source): import category IDs, icons, and category documents
 // from worker/category/schema.ts instead of redefining their OpenAPI shapes here.
 const CategoryId = z
   .string()
@@ -378,35 +378,6 @@ const Category = z
   .strict()
   .meta({ description: "Published spending category.", examples: [exampleCategory] });
 
-const CategoryCandidate = z
-  .object({
-    category: Category,
-    score: z.number().meta({
-      description:
-        "Classifier probability from 0 to 1 that this category fits; probabilities across all categories and othersScore sum to 1.",
-      examples: [0.91],
-    }),
-  })
-  .strict()
-  .meta({ description: "A ranked category match." });
-
-const CategoryClassificationBody = z
-  .object({
-    category: Category.meta({ description: "Highest-scoring category." }),
-    score: z
-      .number()
-      .meta({ description: "Classifier probability for the selected category.", examples: [0.91] }),
-    othersScore: z.number().meta({
-      description:
-        "Classifier probability that the expense fits none of the configured categories. Clients should fall back to an uncategorized expense when it exceeds score.",
-      examples: [0.03],
-    }),
-    candidates: z
-      .array(CategoryCandidate)
-      .meta({ description: "Ranked category candidates considered by the classifier." }),
-  })
-  .strict();
-
 const CategoryListBody = z
   .object({
     categories: z.array(Category).meta({ description: "Currently published spending categories." }),
@@ -537,22 +508,6 @@ const ProjectAppendRecordRequest = ProjectPutRecordRequest.extend({
       { delta: { "1": -3_100, "2": 3_100 }, description: examplePromiseDescription },
     ],
   });
-const CategoryClassifyRequest = z
-  .object({
-    name: z
-      .string()
-      .min(1)
-      .max(200)
-      .meta({ description: "Expense text to classify.", examples: ["Ramen dinner"] }),
-    topK: z
-      .number()
-      .int()
-      .min(1)
-      .max(20)
-      .optional()
-      .meta({ description: "Maximum number of ranked candidates to return.", examples: [3] }),
-  })
-  .strict();
 
 export const OpenApiSpecOptions = {
   documentation: {
@@ -576,7 +531,7 @@ export const OpenApiSpecOptions = {
       { name: "System", description: "Worker availability and diagnostics." },
       { name: "Auth", description: "Resolve the account represented by an API key." },
       { name: "Registry", description: "List projects visible to the authenticated account." },
-      { name: "Categories", description: "Read and classify published spending categories." },
+      { name: "Categories", description: "Read published spending categories." },
       { name: "Projects", description: "Create, read, and rename shared-expense projects." },
       { name: "Project ACL", description: "Control public or account-restricted project access." },
       {
@@ -593,6 +548,7 @@ export const OpenApiSpecOptions = {
   exclude: [
     /^\/api\/admin(?:\/|$)/u,
     /^\/api\/api-keys(?:\/|$)/u,
+    /^\/api\/categories\/classify$/u,
     /^\/api\/login(?:\/|$)/u,
     /^\/api\/logout$/u,
   ],
@@ -677,7 +633,6 @@ export const OpenApiRequests = {
     delta: { "1": 6_200, "2": -6_200 },
     description: exampleTransferDescription,
   }),
-  CategoryClassify: jsonRequest(CategoryClassifyRequest, { name: "Ramen dinner", topK: 3 }),
 } satisfies Record<string, OpenAPIV3_1.RequestBodyObject>;
 
 export const OpenApiResponses = {
@@ -702,19 +657,6 @@ export const OpenApiResponses = {
       },
     ],
   }),
-  CategoryClassification: jsonResponse(
-    "Category classification result.",
-    CategoryClassificationBody,
-    {
-      category: exampleCategory,
-      score: 0.91,
-      othersScore: 0.03,
-      candidates: [
-        { category: exampleCategory, score: 0.91 },
-        { category: exampleGroceriesCategory, score: 0.05 },
-      ],
-    },
-  ),
   CategoryList: jsonResponse("Configured spending categories.", CategoryListBody, {
     categories: [exampleCategory, exampleGroceriesCategory],
   }),

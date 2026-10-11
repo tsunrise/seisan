@@ -7,7 +7,7 @@ export const ErrorResponse = {
     Response.json({ error: "email_not_supported", ...(reason ? { reason } : {}) }, { status: 403 }),
   postingBlocked: () => Response.json({ error: "posting_blocked" }, { status: 403 }),
   conflict: (error = "conflict") => Response.json({ error }, { status: 409 }),
-  rateLimited: (reason: "account" | "project") =>
+  rateLimited: (reason: "account" | "project" | "ip") =>
     Response.json({ error: "rate_limited", reason }, { status: 429 }),
   internalServerError: () => Response.json({ error: "internal_server_error" }, { status: 500 }),
   serviceUnavailable: () => Response.json({ error: "internal_server_error" }, { status: 503 }),

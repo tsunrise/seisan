@@ -23,7 +23,8 @@ Keep `worker/index.ts` thin. It should export Durable Object classes and delegat
 - `app.route("/api", loginApp)` mounts `/api/login/*`, `/api/logout`, and `/api/whoami`.
 - `app.route("/api", apiKeysApp)` mounts cookie-only API-key management routes under `/api/api-keys*`.
 - `app.route("/api", registryApp)` mounts `/api/registry`.
-- `app.route("/api", categoryApp)` mounts authenticated `/api/categories` reads and classification.
+- `app.route("/api", categoryApp)` mounts public `/api/categories` reads and browser-only
+  classification.
 - `app.route("/api", projectApp)` mounts `/api/project*`.
 - `app.get("/api/ping", ...)` provides the plain-text health check.
 
@@ -57,6 +58,8 @@ API middleware lives mainly in `worker/auth.ts` and sets the request identity on
 
 `requireSameOriginWhenPresent` checks the `Origin` header when a browser sends one. Requests without `Origin` are allowed for non-browser clients. Requests with a non-canonical or cross-origin `Origin` return `403`. Put this before state-changing browser/session routes that should be same-origin protected.
 
+`requireSameOrigin` is the strict variant for browser-only routes: a missing `Origin` header also returns `403`. Browsers send `Origin` on every non-`GET`/`HEAD` fetch. Non-browser clients can forge the header, so pair it with edge enforcement; it is currently used only by `POST /api/categories/classify` together with `requireSessionAuth`.
+
 `adminApp.use("*", requireAdminAccess)` protects every admin route. Localhost requests bypass Cloudflare Access. Deployed requests require `ADMIN_ACCESS_AUD`, `ADMIN_ACCESS_TEAM_DOMAIN`, and a valid `Cf-Access-Jwt-Assertion`; the verified Access email is stored as `identity` when present.
 
 ## Request Validation
@@ -80,7 +83,7 @@ Use `ErrorResponse` from `worker/error.ts` for stable JSON error bodies:
 - `403 { error: "forbidden" }` or posting-specific forbidden responses
 - `404 { error: "not_found" }`
 - `409 { error: "<stable_conflict_code>" }`
-- `429 { error: "rate_limited", reason: "account" | "project" }`
+- `429 { error: "rate_limited", reason: "account" | "project" | "ip" }`
 - `500 { error: "internal_server_error" }`
 - `503 { error: "internal_server_error" }` when a required external service is temporarily
   unavailable
@@ -110,8 +113,8 @@ Routes should treat bindings as edges to owned state:
 - Browser login validates recipient domains through Cloudflare DNS over HTTPS before creating
   login-attempt state or calling `SEND_EMAIL`.
 - Rate-limit bindings protect record creation, replacement, and deletion at 10 requests per minute
-  per account and 120 requests per minute per project, and category classification at 30 requests
-  per minute per account.
+  per account and 120 requests per minute per project, and category classification at 60 requests
+  per minute per client IP and 30 requests per minute per account.
 - `SEND_EMAIL` sends login-code email after an attempt is stored.
 
 For project reads, `worker/routes/project.ts` looks up the ProjectStore reference through `ProjectRefFetcher`. A `PROJECT_REGISTRY_CACHE` hit is used without consulting the registry, a KV miss is treated as a terminal negative lookup, and `ProjectsRegistry.lookupProject()` is only used when the cache read is unavailable/invalid or a cached Durable Object ID cannot be converted.
@@ -141,7 +144,7 @@ API documentation is generated from Hono route metadata:
 - Keep examples internally consistent and use the correct units: project money is integer cents, project/category timestamps are Unix milliseconds, and browser-session expiry is Unix seconds.
 - The generator rejects missing operation descriptions, parameter examples, request examples, successful-response examples, and undocumented request/response object properties.
 
-`OpenApiSpecOptions.exclude` intentionally excludes admin routes, cookie-only login/logout routes, and cookie-only API-key management routes. Public OpenAPI is API-key-client oriented and documents bearer API key auth only. Keep this aligned with `docs/auth.md`.
+`OpenApiSpecOptions.exclude` intentionally excludes admin routes, cookie-only login/logout routes, cookie-only API-key management routes, and the browser-only category classification route. Public OpenAPI is API-key-client oriented and documents bearer API key auth only. Keep this aligned with `docs/auth.md`.
 
 After changing documented API routes, request/response schemas, OpenAPI security, or excluded route policy, run `pnpm run openapi:generate` or `pnpm run openapi:check` as appropriate.
 

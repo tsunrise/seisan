@@ -1,6 +1,6 @@
 <h1>Seisan Privacy Policy</h1>
 
-<p><strong>Last updated:</strong> October 5, 2026</p>
+<p><strong>Last updated:</strong> October 7, 2026</p>
 
 <p>Seisan is a small open-source service for splitting shared expenses. It is run by one person, operating as tsunrise, in the United States. This page explains what information Seisan handles, why, and who can see it.</p>
 
@@ -23,9 +23,11 @@
 
 <p><strong>Projects.</strong> Whatever you and other members put into a shared project: project and member names, linked emails, allowed emails, payment instructions, how many people a member represents, and expense, transfer, and promise records with their amounts and descriptions. Please don't put sensitive information, such as bank logins or ID numbers, into free-text fields.</p>
 
-<p><strong>Category suggestions.</strong> When a signed-in user types an expense name, it is sent to Cloudflare Workers AI to suggest a category. The suggestion can always be changed, and only the category you post is saved.</p>
+<p><strong>Category suggestions.</strong> When a signed-in user types an expense name in the Seisan website, it is sent to Cloudflare Workers AI to suggest a category. Suggestions are only available in a browser that has passed Cloudflare's bot checks, not through the API. The suggestion can always be changed, and only the category you post is saved.</p>
 
-<p><strong>Technical data.</strong> Like any website, Seisan and Cloudflare process IP addresses, browser details, and request logs to run the service, stop abuse, and fix errors. The login page uses Cloudflare Turnstile to check for bots, and login emails are checked by looking up the email's domain with Cloudflare DNS.</p>
+<p><strong>Technical data.</strong> Like any website, Seisan and Cloudflare process IP addresses, browser details, and request logs to run the service, stop abuse, and fix errors. To limit how often category suggestions can be requested, Seisan counts requests per account and per hashed IP address.</p>
+
+<p><strong>Bot detection.</strong> On every page, Cloudflare runs a bot-detection script that looks at how the page is used, such as pointer movement, scrolling, focus, how long the page is visible, and the timing of keystrokes, to tell people apart from automated traffic. It records keystroke timing, not which keys you press, and Seisan does not receive these signals. The login page also uses Cloudflare Turnstile to check for bots, and login emails are checked by looking up the email's domain with Cloudflare DNS.</p>
 
 <h2 id="how-information-is-used">3. How information is used</h2>
 
@@ -39,7 +41,7 @@
 
 <p><strong>Other people in a project</strong> can copy or share what they see. Seisan cannot control those copies.</p>
 
-<p><strong>Service providers:</strong> Cloudflare hosts, stores, and protects Seisan, sends login emails, and runs Turnstile and Workers AI. See <a href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noreferrer">Cloudflare's Privacy Policy</a> and the <a href="https://www.cloudflare.com/turnstile-privacy-policy/" target="_blank" rel="noreferrer">Turnstile Privacy Addendum</a>. Your email provider receives your login codes.</p>
+<p><strong>Service providers:</strong> Cloudflare hosts, stores, and protects Seisan, sends login emails, and runs bot detection, Turnstile, and Workers AI. See <a href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noreferrer">Cloudflare's Privacy Policy</a> and the <a href="https://www.cloudflare.com/turnstile-privacy-policy/" target="_blank" rel="noreferrer">Turnstile Privacy Addendum</a>. Your email provider receives your login codes.</p>
 
 <p><strong>The operator</strong> may look at account and project data when needed to run, secure, or debug the service, or to answer your request. Seisan will also disclose information if required by law.</p>
 
@@ -47,7 +49,7 @@
 
 <ul>
   <li>A sign-in cookie (<code>__Host-seisan_session</code>) keeps you logged in for up to 30 days.</li>
-  <li>Cloudflare Turnstile may use security cookies on the login page.</li>
+  <li>Cloudflare sets a <code>cf_clearance</code> security cookie that records whether your browser session has passed its bot checks. Cloudflare Turnstile may also use security cookies on the login page.</li>
   <li>The calculator saves its draft in <code>localStorage</code>; the project timeline briefly saves your scroll position in <code>sessionStorage</code>.</li>
 </ul>
 
@@ -58,6 +60,7 @@
 <ul>
   <li>Login codes expire after 10 minutes. Sign-in sessions last up to 30 days.</li>
   <li>API keys stop working when they expire or are revoked.</li>
+  <li>Rate-limit counters used to stop abuse reset within a minute.</li>
   <li>Project data has no automatic expiry, so the shared history stays complete. Deleting a record removes its content and balance effect but keeps a placeholder in the history.</li>
   <li>Calculator drafts stay in your browser until you clear them.</li>
 </ul>

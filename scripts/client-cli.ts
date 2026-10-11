@@ -7,7 +7,6 @@ import { isIconName, type IconName } from "../shared/icon-names";
 import {
   type ApiTargetEnv,
   ApiError,
-  type CategoryClassifyResponse,
   CloudflareAccessTokenError,
   DEFAULT_API_BASE_URL,
   DEV_API_BASE_URL,
@@ -25,8 +24,7 @@ type CommandName =
   | "category-list"
   | "category-add"
   | "category-update"
-  | "category-remove"
-  | "classify-category";
+  | "category-remove";
 
 interface Command {
   description: string;
@@ -96,16 +94,6 @@ const commands: Record<CommandName, Command> = {
       const id = parseSinglePositional(args, "category ID");
       await client.categoryRemove(id);
       console.log(`Removed category ${id}.`);
-    },
-  },
-  "classify-category": {
-    description: "Classify a post name against configured categories.",
-    requiresAuth: true,
-    usage: "classify-category <post-name> [--top-k=5] [--verbose]",
-    async run(client, args) {
-      const { input, verbose } = parseCategoryClassifyArgs(args);
-      const result = await client.classifyCategory(input);
-      printJson(verbose ? result : formatCategoryClassifySummary(result));
     },
   },
 };
@@ -244,51 +232,11 @@ function parseCategoryUpdateArgs(args: string[]): {
   };
 }
 
-function parseCategoryClassifyArgs(args: string[]): {
-  input: { name: string; topK?: number };
-  verbose: boolean;
-} {
-  let name: string | undefined;
-  let topK: number | undefined;
-  let verbose = false;
-
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index] ?? "";
-    if (arg.startsWith("--name=")) {
-      name = arg.slice("--name=".length);
-    } else if (arg === "--name") {
-      name = readOptionValue(args, index, "--name");
-      index += 1;
-    } else if (arg.startsWith("--top-k=")) {
-      topK = parseTopK(arg.slice("--top-k=".length));
-    } else if (arg === "--top-k") {
-      topK = parseTopK(readOptionValue(args, index, "--top-k"));
-      index += 1;
-    } else if (arg === "--verbose") {
-      verbose = true;
-    } else if (!name) {
-      name = arg;
-    } else {
-      throw new CliError(`Unexpected argument: ${arg}`);
-    }
-  }
-
-  return { input: { name: requireNonEmpty(name, "post name"), topK }, verbose };
-}
-
 function parseSinglePositional(args: string[], label: string): string {
   if (args.length !== 1) {
     throw new CliError(`Expected exactly one ${label}.`);
   }
   return requireNonEmpty(args[0], label);
-}
-
-function parseTopK(value: string): number {
-  const topK = Number(value);
-  if (!Number.isInteger(topK) || topK < 1 || topK > 20) {
-    throw new CliError("--top-k must be an integer between 1 and 20.");
-  }
-  return topK;
 }
 
 function readOptionValue(args: string[], index: number, optionName: string): string {
@@ -316,23 +264,6 @@ function parseIconName(value: string): IconName {
 
 function printJson(value: unknown): void {
   console.log(JSON.stringify(value, null, 2));
-}
-
-function formatCategoryClassifySummary(result: CategoryClassifyResponse): {
-  category: string;
-  score: number;
-  othersScore: number;
-  candidates: Array<{ category: string; score: number }>;
-} {
-  return {
-    category: result.category.name,
-    score: result.score,
-    othersScore: result.othersScore,
-    candidates: result.candidates.map((candidate) => ({
-      category: candidate.category.name,
-      score: candidate.score,
-    })),
-  };
 }
 
 async function readAndSaveApiKey(client: SeisanClient): Promise<void> {

@@ -207,7 +207,12 @@ async function classifyWithRetry(
         new URL("/api/categories/classify", baseUrl),
         {
           method: "POST",
-          headers: { "Content-Type": "application/json", Cookie: cookie },
+          // The browser-only route requires a same-origin Origin header.
+          headers: {
+            "Content-Type": "application/json",
+            Cookie: cookie,
+            Origin: new URL(baseUrl).origin,
+          },
           body: JSON.stringify({ name, topK: 3 }),
         },
       );

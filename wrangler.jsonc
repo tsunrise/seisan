@@ -136,6 +136,14 @@
         "period": 60,
       },
     },
+    {
+      "name": "CATEGORY_CLASSIFICATION_IP_RATE_LIMITER",
+      "namespace_id": "2026061804",
+      "simple": {
+        "limit": 60,
+        "period": 60,
+      },
+    },
   ],
   "env": {
     "test": {
@@ -223,6 +231,14 @@
           "namespace_id": "2026061813",
           "simple": {
             "limit": 30,
+            "period": 60,
+          },
+        },
+        {
+          "name": "CATEGORY_CLASSIFICATION_IP_RATE_LIMITER",
+          "namespace_id": "2026061814",
+          "simple": {
+            "limit": 60,
             "period": 60,
           },
         },
@@ -332,6 +348,14 @@
             "period": 60,
           },
         },
+        {
+          "name": "CATEGORY_CLASSIFICATION_IP_RATE_LIMITER",
+          "namespace_id": "2026061824",
+          "simple": {
+            "limit": 60,
+            "period": 60,
+          },
+        },
       ],
     },
     "production": {
@@ -432,6 +456,14 @@
           "namespace_id": "2026061833",
           "simple": {
             "limit": 30,
+            "period": 60,
+          },
+        },
+        {
+          "name": "CATEGORY_CLASSIFICATION_IP_RATE_LIMITER",
+          "namespace_id": "2026061834",
+          "simple": {
+            "limit": 60,
             "period": 60,
           },
         },

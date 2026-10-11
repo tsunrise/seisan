@@ -111,13 +111,65 @@ export function categoryIdForRecord(categoryId: string): string | undefined {
   return categoryId === OTHERS_CATEGORY_ID ? undefined : categoryId;
 }
 
-export function isCurrentClassification(
-  requestToken: number,
-  input: string,
-  currentToken: number,
-  currentInput: string,
-): boolean {
-  return requestToken === currentToken && input === currentInput;
+/** Normalizes expense text the same way the classification API does before classifying it. */
+export function classificationKey(input: string): string {
+  return input.trim().replace(/\s+/gu, " ");
+}
+
+/**
+ * Milliseconds until an automatic classification may start: the input must have been quiet for
+ * `debounceMs`, and at least `minIntervalMs` must have passed since the previous request started.
+ */
+export function automaticClassificationDelayMs(timing: {
+  now: number;
+  lastInputAt: number;
+  lastRequestAt: number | null;
+  debounceMs: number;
+  minIntervalMs: number;
+}): number {
+  const quietAt = timing.lastInputAt + timing.debounceMs;
+  const allowedAt =
+    timing.lastRequestAt === null ? timing.now : timing.lastRequestAt + timing.minIntervalMs;
+  return Math.max(0, quietAt - timing.now, allowedAt - timing.now);
+}
+
+/** Bounded, expiring least-recently-used map from classification keys to results. */
+export class ClassificationCache<T> {
+  private readonly entries = new Map<string, { value: T; expiresAt: number }>();
+  private readonly maxEntries: number;
+  private readonly ttlMs: number;
+  private readonly now: () => number;
+
+  constructor(options: { maxEntries: number; ttlMs: number; now?: () => number }) {
+    this.maxEntries = options.maxEntries;
+    this.ttlMs = options.ttlMs;
+    this.now = options.now ?? Date.now;
+  }
+
+  get(key: string): T | undefined {
+    const entry = this.entries.get(key);
+    if (!entry) {
+      return undefined;
+    }
+    this.entries.delete(key);
+    if (entry.expiresAt <= this.now()) {
+      return undefined;
+    }
+    // Re-inserting keeps Map iteration order equal to recency order.
+    this.entries.set(key, entry);
+    return entry.value;
+  }
+
+  set(key: string, value: T): void {
+    this.entries.delete(key);
+    this.entries.set(key, { value, expiresAt: this.now() + this.ttlMs });
+    for (const oldestKey of this.entries.keys()) {
+      if (this.entries.size <= this.maxEntries) {
+        break;
+      }
+      this.entries.delete(oldestKey);
+    }
+  }
 }
 
 function compareCategoryNames(left: CategoryOption, right: CategoryOption): number {

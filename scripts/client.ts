@@ -49,11 +49,6 @@ export interface Category {
   updatedAt: number;
 }
 
-export interface CategoryCandidate {
-  category: Category;
-  score: number;
-}
-
 export interface CategoryWriteInput {
   name: string;
   description?: string;
@@ -66,18 +61,6 @@ export interface CategoryWriteResponse {
 
 export interface CategoryListResponse {
   categories: Category[];
-}
-
-export interface CategoryClassifyInput {
-  name: string;
-  topK?: number;
-}
-
-export interface CategoryClassifyResponse {
-  category: Category;
-  score: number;
-  othersScore: number;
-  candidates: CategoryCandidate[];
 }
 
 export class ApiError extends Error {
@@ -212,13 +195,6 @@ export class SeisanClient {
       auth: false,
       cloudflareAccess: true,
       expectedStatus: 204,
-    });
-  }
-
-  async classifyCategory(input: CategoryClassifyInput): Promise<CategoryClassifyResponse> {
-    return this.requestJson<CategoryClassifyResponse>("POST", "/api/categories/classify", {
-      auth: true,
-      body: input,
     });
   }
 

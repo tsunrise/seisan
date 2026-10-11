@@ -20,7 +20,7 @@ import {
 describe("category classification", () => {
   afterEach(cleanupWorkerTestState);
 
-  it("manages categories through admin endpoints and classifies through the authenticated API", async () => {
+  it("manages categories through admin endpoints and classifies through the browser session route", async () => {
     const aiRun = vi.fn(async () => clefAnswer({ Restaurant: 0.91, Others: 0.09 }));
     const classificationRateLimit = stubRateLimit(true);
     const { env: testEnv } = makeEnv({
@@ -94,7 +94,7 @@ describe("category classification", () => {
     const classifyResponse = await dispatch(
       "/categories/classify",
       testEnv,
-      jsonBody("POST", { name: " Taco  Bell " }, await authHeaders()),
+      classifyBody({ name: " Taco  Bell " }, await authHeaders()),
     );
     expect(classifyResponse.status).toBe(200);
     await expect(classifyResponse.json()).resolves.toEqual({
@@ -137,7 +137,7 @@ describe("category classification", () => {
     const response = await dispatch(
       "/categories/classify",
       testEnv,
-      jsonBody("POST", { name: "Lunch", topK: 2 }, await authHeaders()),
+      classifyBody({ name: "Lunch", topK: 2 }, await authHeaders()),
     );
     expect(response.status).toBe(200);
     const body = (await response.json()) as ClassifyResponse;
@@ -171,7 +171,7 @@ describe("category classification", () => {
     const allCandidates = await dispatch(
       "/categories/classify",
       testEnv,
-      jsonBody("POST", { name: "Lunch", topK: 20 }, await authHeaders()),
+      classifyBody({ name: "Lunch", topK: 20 }, await authHeaders()),
     );
     const allBody = (await allCandidates.json()) as ClassifyResponse;
     expect(allBody.candidates.map(({ category, score }) => [category.name, score])).toEqual([
@@ -193,7 +193,7 @@ describe("category classification", () => {
     const response = await dispatch(
       "/categories/classify",
       testEnv,
-      jsonBody("POST", { name: "Coffee" }, await authHeaders("Owner@Example.COM")),
+      classifyBody({ name: "Coffee" }, await authHeaders("Owner@Example.COM")),
     );
 
     expect(response.status).toBe(429);
@@ -201,6 +201,124 @@ describe("category classification", () => {
     expect(classificationRateLimit.limit).toHaveBeenCalledWith({
       key: `category-classification:account:${await sha256Hex("owner@example.com")}`,
     });
+    expect(aiRun).not.toHaveBeenCalled();
+  });
+
+  it("rate limits classification by client IP before the account limit and paid work", async () => {
+    const ipRateLimit = stubRateLimit(false);
+    const accountRateLimit = stubRateLimit(true);
+    const aiRun = vi.fn(async () => clefAnswer({}));
+    const { env: testEnv } = makeEnv({
+      AI: fakeAi(aiRun),
+      CATEGORY_CLASSIFICATION_IP_RATE_LIMITER: ipRateLimit.binding,
+      CATEGORY_CLASSIFICATION_ACCOUNT_RATE_LIMITER: accountRateLimit.binding,
+    });
+
+    const response = await dispatch(
+      "/categories/classify",
+      testEnv,
+      classifyBody(
+        { name: "Coffee" },
+        {
+          ...(await authHeaders()),
+          "CF-Connecting-IP": "203.0.113.7",
+        },
+      ),
+    );
+
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ error: "rate_limited", reason: "ip" });
+    expect(ipRateLimit.limit).toHaveBeenCalledWith({
+      key: `category-classification:ip:${await sha256Hex("203.0.113.7")}`,
+    });
+    expect(accountRateLimit.limit).not.toHaveBeenCalled();
+    expect(aiRun).not.toHaveBeenCalled();
+  });
+
+  it("groups IPv6 clients by /64 and falls back to the full address otherwise", async () => {
+    const ipRateLimit = stubRateLimit(true);
+    const { env: testEnv } = makeEnv({
+      AI: fakeAi(vi.fn(async () => clefAnswer({}))),
+      CATEGORY_CLASSIFICATION_IP_RATE_LIMITER: ipRateLimit.binding,
+    });
+    const keyFor = async (clientIp?: string) => {
+      ipRateLimit.limit.mockClear();
+      await dispatch(
+        "/categories/classify",
+        testEnv,
+        classifyBody(
+          { name: "Coffee" },
+          { ...(await authHeaders()), ...(clientIp ? { "CF-Connecting-IP": clientIp } : {}) },
+        ),
+      );
+      return (ipRateLimit.limit.mock.calls[0] as [{ key: string }] | undefined)?.[0].key;
+    };
+    const ipKey = async (source: string) => `category-classification:ip:${await sha256Hex(source)}`;
+
+    const prefix = await ipKey("2001:db8:abcd:12::/64");
+    await expect(keyFor("2001:db8:abcd:12::1")).resolves.toBe(prefix);
+    await expect(keyFor("2001:0DB8:ABCD:0012:ffff:1:2:3")).resolves.toBe(prefix);
+    await expect(keyFor("2001:db8:abcd:13::1")).resolves.toBe(await ipKey("2001:db8:abcd:13::/64"));
+    await expect(keyFor("::1")).resolves.toBe(await ipKey("0:0:0:0::/64"));
+    await expect(keyFor("::ffff:192.0.2.1")).resolves.toBe(await ipKey("::ffff:192.0.2.1"));
+    await expect(keyFor("2001:db8::1::2")).resolves.toBe(await ipKey("2001:db8::1::2"));
+    await expect(keyFor()).resolves.toBe(await ipKey("unknown"));
+  });
+
+  it("accepts only same-origin browser sessions before paid classification work", async () => {
+    const classificationRateLimit = stubRateLimit(true);
+    const aiRun = vi.fn(async () => clefAnswer({}));
+    const { env: testEnv } = makeEnv({
+      AI: fakeAi(aiRun),
+      CATEGORY_CLASSIFICATION_ACCOUNT_RATE_LIMITER: classificationRateLimit.binding,
+    });
+
+    const withoutOrigin = await dispatch(
+      "/categories/classify",
+      testEnv,
+      jsonBody("POST", { name: "Coffee" }, await authHeaders()),
+    );
+    expect(withoutOrigin.status).toBe(403);
+    expect(await withoutOrigin.json()).toEqual({ error: "forbidden" });
+
+    const crossOrigin = await dispatch(
+      "/categories/classify",
+      testEnv,
+      jsonBody(
+        "POST",
+        { name: "Coffee" },
+        {
+          ...(await authHeaders()),
+          Origin: "https://attacker.example",
+        },
+      ),
+    );
+    expect(crossOrigin.status).toBe(403);
+
+    const created = await dispatch(
+      "/api-keys",
+      testEnv,
+      jsonBody(
+        "POST",
+        { label: "CLI", expiresAt: Math.floor(Date.now() / 1000) + 86_400 },
+        await authHeaders(),
+      ),
+    );
+    expect(created.status).toBe(201);
+    const { apiKey } = (await created.json()) as { apiKey: string };
+    const apiKeyHeaders = { Authorization: `Bearer ${apiKey}` };
+    const whoami = await dispatch("/whoami", testEnv, { headers: apiKeyHeaders });
+    expect(whoami.status).toBe(200);
+
+    const withApiKey = await dispatch(
+      "/categories/classify",
+      testEnv,
+      classifyBody({ name: "Coffee" }, apiKeyHeaders),
+    );
+    expect(withApiKey.status).toBe(401);
+    expect(await withApiKey.json()).toEqual({ error: "unauthorized" });
+
+    expect(classificationRateLimit.limit).not.toHaveBeenCalled();
     expect(aiRun).not.toHaveBeenCalled();
   });
 
@@ -266,7 +384,7 @@ describe("category classification", () => {
     const classifyAfterDelete = await dispatch(
       "/categories/classify",
       testEnv,
-      jsonBody("POST", { name: "Pizza" }, await authHeaders()),
+      classifyBody({ name: "Pizza" }, await authHeaders()),
     );
     expect(classifyAfterDelete.status).toBe(200);
     await expect(classifyAfterDelete.json()).resolves.toMatchObject({
@@ -312,7 +430,7 @@ describe("category classification", () => {
       const response = await dispatch(
         "/categories/classify",
         testEnv,
-        jsonBody("POST", { name: "Coffee" }, await authHeaders()),
+        classifyBody({ name: "Coffee" }, await authHeaders()),
       );
       expect(response.status).toBe(500);
       expect(await response.json()).toEqual({ error: "internal_server_error" });
@@ -326,7 +444,7 @@ describe("category classification", () => {
     const unauthenticated = await dispatch(
       "/categories/classify",
       testEnv,
-      jsonBody("POST", { name: "Coffee" }),
+      classifyBody({ name: "Coffee" }),
     );
     expect(unauthenticated.status).toBe(401);
 
@@ -376,7 +494,7 @@ describe("category classification", () => {
     const badTopK = await dispatch(
       "/categories/classify",
       testEnv,
-      jsonBody("POST", { name: "Coffee", topK: 0 }, await authHeaders()),
+      classifyBody({ name: "Coffee", topK: 0 }, await authHeaders()),
     );
     expect(badTopK.status).toBe(400);
 
@@ -387,7 +505,7 @@ describe("category classification", () => {
     const missingKv = await dispatch(
       "/categories/classify",
       missingKvEnv,
-      jsonBody("POST", { name: "Coffee" }, await authHeaders()),
+      classifyBody({ name: "Coffee" }, await authHeaders()),
     );
     expect(missingKv.status).toBe(500);
     expect(missingKvGet).toHaveBeenCalled();
@@ -401,7 +519,7 @@ describe("category classification", () => {
     const failingKv = await dispatch(
       "/categories/classify",
       failingKvEnv,
-      jsonBody("POST", { name: "Coffee" }, await authHeaders()),
+      classifyBody({ name: "Coffee" }, await authHeaders()),
     );
     expect(failingKv.status).toBe(500);
     expect(kvGet).toHaveBeenCalled();
@@ -413,7 +531,7 @@ describe("category classification", () => {
     const invalidKv = await dispatch(
       "/categories/classify",
       invalidKvEnv,
-      jsonBody("POST", { name: "Coffee" }, await authHeaders()),
+      classifyBody({ name: "Coffee" }, await authHeaders()),
     );
     expect(invalidKv.status).toBe(500);
     expect(invalidKvGet).toHaveBeenCalled();
@@ -672,6 +790,13 @@ function clefAnswer(probabilities: Record<string, number>): unknown {
     },
     usage: { input_tokens: 100, output_tokens: 0 },
   };
+}
+
+const TEST_ORIGIN = "https://seisan.test";
+
+/** Builds a same-origin browser classification request, which the route requires. */
+function classifyBody(body: unknown, headers?: HeadersInit): RequestInit {
+  return jsonBody("POST", body, { Origin: TEST_ORIGIN, ...(headers ?? {}) });
 }
 
 function fakeAi(run: (model: string, input: unknown) => Promise<unknown>): Ai {

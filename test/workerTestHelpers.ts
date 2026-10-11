@@ -96,6 +96,7 @@ export function makeEnv(overrides: Partial<Env> = {}): TestEnv {
       APPEND_RECORD_ACCOUNT_RATE_LIMITER: makeAllowingRateLimit(),
       APPEND_RECORD_PROJECT_RATE_LIMITER: makeAllowingRateLimit(),
       CATEGORY_CLASSIFICATION_ACCOUNT_RATE_LIMITER: makeAllowingRateLimit(),
+      CATEGORY_CLASSIFICATION_IP_RATE_LIMITER: makeAllowingRateLimit(),
       ...overrides,
     } as Env,
   };

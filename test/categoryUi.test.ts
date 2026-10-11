@@ -4,7 +4,9 @@ import {
   type CategoryCandidateOption,
   type CategoryOption,
   automaticCategoryId,
-  isCurrentClassification,
+  automaticClassificationDelayMs,
+  ClassificationCache,
+  classificationKey,
   orderedCategoryOptions,
   OTHERS_CATEGORY_ID,
   prefixMatchingCategories,
@@ -121,10 +123,68 @@ describe("category UI helpers", () => {
     ).toEqual({ source: "automatic", categoryId: OTHERS_CATEGORY_ID });
   });
 
-  it("rejects stale request snapshots", () => {
-    expect(isCurrentClassification(4, "Dinner", 4, "Dinner")).toBe(true);
-    expect(isCurrentClassification(3, "Dinner", 4, "Dinner")).toBe(false);
-    expect(isCurrentClassification(4, "Dinner", 4, "Dinner tonight")).toBe(false);
+  it("normalizes classification keys like the classification API", () => {
+    expect(classificationKey("  Taco \t  Bell\n")).toBe("Taco Bell");
+    expect(classificationKey("Taco Bell")).toBe(classificationKey("Taco Bell "));
+    expect(classificationKey("taco bell")).not.toBe(classificationKey("Taco Bell"));
+    expect(classificationKey("   ")).toBe("");
+  });
+
+  it("waits for both a quiet input and the minimum interval before automatic classification", () => {
+    const timing = { debounceMs: 500, minIntervalMs: 1_500 };
+    expect(
+      automaticClassificationDelayMs({
+        ...timing,
+        now: 1_000,
+        lastInputAt: 1_000,
+        lastRequestAt: null,
+      }),
+    ).toBe(500);
+    expect(
+      automaticClassificationDelayMs({
+        ...timing,
+        now: 1_600,
+        lastInputAt: 1_000,
+        lastRequestAt: null,
+      }),
+    ).toBe(0);
+    // A keystroke 100 ms after the previous request started waits out the interval, not just the
+    // debounce, so bursty typing cannot start back-to-back requests.
+    expect(
+      automaticClassificationDelayMs({
+        ...timing,
+        now: 1_100,
+        lastInputAt: 1_100,
+        lastRequestAt: 1_000,
+      }),
+    ).toBe(1_400);
+    expect(
+      automaticClassificationDelayMs({
+        ...timing,
+        now: 4_000,
+        lastInputAt: 3_800,
+        lastRequestAt: 1_000,
+      }),
+    ).toBe(300);
+  });
+
+  it("evicts least recently used and expired classification cache entries", () => {
+    let now = 0;
+    const cache = new ClassificationCache<string>({ maxEntries: 2, ttlMs: 1_000, now: () => now });
+    cache.set("a", "A");
+    cache.set("b", "B");
+    expect(cache.get("a")).toBe("A");
+    cache.set("c", "C");
+    expect(cache.get("b")).toBeUndefined();
+    expect(cache.get("a")).toBe("A");
+    expect(cache.get("c")).toBe("C");
+
+    now = 999;
+    expect(cache.get("a")).toBe("A");
+    now = 1_000;
+    expect(cache.get("a")).toBeUndefined();
+    cache.set("a", "A2");
+    expect(cache.get("a")).toBe("A2");
   });
 
   it("falls back for missing categories and unknown icon names", () => {

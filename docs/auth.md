@@ -35,11 +35,15 @@ Routes that do not authenticate with API keys:
 - `/api/login/*`
 - `/api/logout`
 - `/api/api-keys*`
+- `POST /api/categories/classify`
 
 `GET /api/categories` is a public read-only configuration route used by public project timelines.
 The remaining routes in this list must not accept API keys. Login routes are public auth-creation
 routes; logout and API-key management require session cookies. API-key management is intentionally
-session-only so an API key cannot create, list, revoke, or roll API keys.
+session-only so an API key cannot create, list, revoke, or roll API keys. Category classification
+is session-only and also requires a same-origin `Origin` header (`requireSameOrigin`) because it is
+a browser-only, Precursor-protected route that spends Workers AI budget; see
+`docs/category-classification.md`.
 
 ## Login Attempts And Turnstile
 
@@ -174,6 +178,7 @@ Admin routes under `/api/admin/*` use Cloudflare Access in deployed environments
 - It documents only bearer auth via `apiKeyBearer`.
 - It must not mention the session cookie or `__Host-seisan_session`.
 - `/api/whoami` is included as a bearer-auth endpoint even though the implementation also accepts session cookies. Its response schema keeps `sessionExpiresAt` optional because API-key-authenticated requests do not receive it.
-- Admin routes, login/logout routes, and API-key-management routes are excluded from the generated spec.
+- Admin routes, login/logout routes, API-key-management routes, and the browser-only category
+  classification route are excluded from the generated spec.
 
 When auth route behavior, auth schemas, auth bindings, or generated OpenAPI security schemes change, update this document and regenerate `public/openapi.json`.

@@ -1,6 +1,6 @@
 # Category Classification
 
-Use this document before changing category classification only: category admin routes, the authenticated classification endpoint, category schema, `categories` GlobalConfig data, `PUBLISHED_GLOBAL_CONFIG` category reads, the clef-flash classifier, category CLI commands, seed script, or category tests.
+Use this document before changing category classification only: category admin routes, the browser-only classification endpoint, category schema, `categories` GlobalConfig data, `PUBLISHED_GLOBAL_CONFIG` category reads, the clef-flash classifier, category CLI commands, seed script, or category tests.
 
 Do not require this document for unrelated `GlobalConfig` keys or non-category global configuration work. For generic GlobalConfig ownership and extension guidance, read `docs/global-config.md`.
 
@@ -26,7 +26,30 @@ Implementation files:
   category or `Others`.
 
 Admin routes are excluded from public OpenAPI. `GET /api/categories` is a public unauthenticated API
-surface. `POST /api/categories/classify` is included in OpenAPI with bearer API-key auth.
+surface. `POST /api/categories/classify` is a browser-only route: it is excluded from public
+OpenAPI, the Node client, and the CLI, and it does not accept API keys.
+
+## Browser-Only Enforcement
+
+Classification spends Workers AI budget on every request, so only a human using the web app may
+call it. Enforcement is layered:
+
+1. **Edge (Cloudflare Precursor).** The production zone runs Precursor, which continuously scores
+   browser sessions and stores the verdict in the `cf_clearance` cookie. A Precursor Rule applies
+   **Maximize Security** to `/api/categories/classify` while the rest of the zone stays on
+   **Minimize Friction**. Requests without a valid Precursor session receive a Cloudflare challenge
+   (`403`, `cf-mitigated: challenge`, HTML body) and never reach the Worker. The rule is dashboard
+   configuration, not code; the zone is on the Pro plan, so the Worker cannot read the bot score
+   itself (`request.cf.botManagement` requires Enterprise Bot Management).
+2. **Worker.** The route uses `requireSameOrigin`, which rejects requests without a same-origin
+   `Origin` header with `403 { error: "forbidden" }`, and `requireSessionAuth`, which accepts only
+   the browser session cookie. Both checks run before rate limiting and Workers AI.
+3. **Rate limits.** Per-IP and per-account Worker rate limits; see the request behavior below.
+
+Precursor does not run in local development, so local requests are gated only by the Worker
+checks. Same-origin `fetch` calls from the web app send `cf_clearance`
+automatically because `src/api/client.ts` uses `credentials: "same-origin"`. A challenged request
+fails like any other classification error and the composer falls back to `Others`.
 
 ## API
 
@@ -34,7 +57,8 @@ Application routes:
 
 - `GET /api/categories`: public read-only route returning `{ categories }` from
   `PUBLISHED_GLOBAL_CONFIG` so public project timelines can resolve category labels and icons.
-- `POST /api/categories/classify` with `{ name, topK? }`: classifies a post name and returns
+- `POST /api/categories/classify` with `{ name, topK? }`: browser-only route that classifies a
+  post name and returns
   `{ category, score, othersScore, candidates }`. `score` and every candidate `score` are clef-flash
   probabilities. `othersScore` is the probability of the explicit "none of these" option. All
   category probabilities plus `othersScore` sum to 1, and `candidates` is the top `topK` categories
@@ -56,9 +80,21 @@ Request behavior:
   one is `Others`.
 - Invalid bodies, invalid IDs, or invalid `topK` return `400 { error: "invalid_request" }`.
 - Classification with no active matching category returns `404 { error: "not_found" }`.
-- Classification is limited to 30 requests per minute per normalized account. Session and API-key
-  authentication for the same account share one quota; excess requests return
-  `429 { error: "rate_limited", reason: "account" }` before Workers AI is called.
+- Classification without a same-origin `Origin` header returns `403 { error: "forbidden" }`, and
+  classification without a valid session cookie returns `401 { error: "unauthorized" }`, including
+  requests that carry a valid API key.
+- Classification is limited to 60 requests per minute per client IP
+  (`CATEGORY_CLASSIFICATION_IP_RATE_LIMITER`) and then 30 requests per minute per normalized
+  account (`CATEGORY_CLASSIFICATION_ACCOUNT_RATE_LIMITER`). Both run after the Origin and session
+  checks and before Workers AI. Excess requests return
+  `429 { error: "rate_limited", reason: "ip" }` or `429 { error: "rate_limited", reason: "account" }`;
+  a request rejected by the IP limit does not consume account quota.
+- The IP limit reads `CF-Connecting-IP`, which Cloudflare sets and clients cannot override. IPv6
+  addresses share the bucket of their /64 prefix, because one subscriber usually controls a whole
+  /64. IPv4, IPv4-embedded IPv6, and unparseable values use the full address, and a missing header
+  uses one shared `unknown` bucket. Keys contain only a SHA-256 hash of the address or prefix. The
+  IP limit stops one network from spreading load across many accounts; 60 per minute leaves room
+  for several people classifying from the same network, such as a group on shared Wi-Fi.
 - KV read, missing document, invalid document, Workers AI failures, and clef-flash responses that
   do not match the expected choice-answer shape return `500 { error: "internal_server_error" }`.
 - `topK` defaults to `5` and is capped at `20`.
@@ -179,11 +215,10 @@ pnpm run api -- category-list
 pnpm run api -- category-add "Restaurant" --description="Places that sell prepared meals" --icon=restaurant
 pnpm run api -- category-update <category-id> --name="Restaurant" --description="Prepared meals" --icon=restaurant
 pnpm run api -- category-remove <category-id>
-pnpm run api -- classify-category "Taco Bell" --top-k=5
-pnpm run api -- classify-category "Taco Bell" --top-k=5 --verbose
 ```
 
-`classify-category` prints the winning category name, score, `othersScore`, and candidate category names by default. Pass `--verbose` to print complete category objects.
+There is no CLI classification command because the classification route is browser-only. Use the
+live evaluator below to exercise classification from Node against a local dev server.
 
 The `category-list` CLI command uses the strongly consistent admin compatibility route. Application
 clients use public `GET /api/categories`, which reads published KV.
@@ -258,7 +293,8 @@ pnpm run categories:evaluate
 ```
 
 The evaluator seeds the taxonomy, waits briefly for KV publication, authenticates through the
-localhost fixed-code flow, and reports overall, scenario, and per-challenge results. Use
+localhost fixed-code flow, sends classification requests with the session cookie and a same-origin
+`Origin` header, and reports overall, scenario, and per-challenge results. Use
 `--skip-seed --show-all` to rerun and print every result against an already seeded experiment
 state.
 

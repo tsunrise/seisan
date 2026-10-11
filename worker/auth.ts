@@ -129,7 +129,17 @@ export const requireSameOriginWhenPresent: MiddlewareHandler<EnvWithIdentity> = 
     return;
   }
 
-  if (!isCanonicalOrigin(origin) || origin !== new URL(context.req.url).origin) {
+  if (!isRequestOrigin(context, origin)) {
+    return ErrorResponse.forbidden();
+  }
+
+  await next();
+};
+
+// Browsers send Origin on every non-GET/HEAD fetch, so a missing Origin means a non-browser client.
+export const requireSameOrigin: MiddlewareHandler<EnvWithIdentity> = async (context, next) => {
+  const origin = context.req.header("Origin");
+  if (origin === undefined || !isRequestOrigin(context, origin)) {
     return ErrorResponse.forbidden();
   }
 
@@ -183,6 +193,10 @@ function getBearerAuthorization(context: AppContext): BearerAuthorization {
     return { status: "invalid" };
   }
   return { status: "present", token: match[1] };
+}
+
+function isRequestOrigin(context: AppContext, origin: string): boolean {
+  return isCanonicalOrigin(origin) && origin === new URL(context.req.url).origin;
 }
 
 function isCanonicalOrigin(origin: string): boolean {
