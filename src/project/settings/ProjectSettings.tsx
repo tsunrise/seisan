@@ -13,6 +13,7 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { PanelFrame } from "../../components/PanelFrame";
 import { activeMembers } from "../../domain";
 import { useAppSnackbar } from "../../hooks/useAppSnackbar";
+import { REPORT_ISSUE_URL } from "../../sourceRepository";
 import { ledgerColors } from "../../theme";
 import { projectPaths } from "../paths";
 import { SettingsRow } from "./SettingsRow";
@@ -109,17 +110,30 @@ export function ProjectSettings({
             description={project.acl.type === "public" ? "Public project" : "Restricted project"}
           />
         </Box>
-        {canLeaveProject ? (
+        <Stack direction="row" sx={{ alignItems: "center", gap: 1 }}>
+          {canLeaveProject ? (
+            <Button
+              variant="text"
+              color="error"
+              disabled={leavingProject}
+              onClick={() => setConfirmingLeaveProject(true)}
+              sx={{ px: 0.5 }}
+            >
+              Leave project
+            </Button>
+          ) : null}
           <Button
             variant="text"
-            color="error"
-            disabled={leavingProject}
-            onClick={() => setConfirmingLeaveProject(true)}
-            sx={{ alignSelf: "flex-start", px: 0.5 }}
+            href={REPORT_ISSUE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Opens a public GitHub issue. Do not include private project details."
+            endIcon={<LaunchIcon fontSize="small" />}
+            sx={{ color: "text.secondary", ml: "auto", px: 0.5 }}
           >
-            Leave project
+            Report an issue
           </Button>
-        ) : null}
+        </Stack>
       </Stack>
       <ConfirmDialog
         open={confirmingLeaveProject}

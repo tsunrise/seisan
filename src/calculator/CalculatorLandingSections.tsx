@@ -17,6 +17,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 import { BrandLink } from "../components/BrandLink";
+import { SOURCE_REPOSITORY_URL } from "../sourceRepository";
 import { ledgerColors, ledgerFonts } from "../theme";
 
 const projectFeatures = [
@@ -31,8 +32,8 @@ const projectFeatures = [
     Icon: AltRouteOutlinedIcon,
   },
   {
-    title: "Free without daily posting cap.",
-    copy: "A PRO subscription just for tracking expenses? Come on. You don't need it. We don't offer it.",
+    title: "Free, fast, open source.",
+    copy: "Hosted on Cloudflare Workers, this site's operational cost is near zero. So we don't need your money.",
     Icon: MoneyOffOutlinedIcon,
   },
 ];
@@ -237,6 +238,16 @@ export function CalculatorFooter() {
         >
           API
         </Typography>
+        <Typography
+          component="a"
+          href={SOURCE_REPOSITORY_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          color="text.secondary"
+          sx={{ fontSize: 13, fontWeight: 700 }}
+        >
+          Source
+        </Typography>
       </Stack>
     </Stack>
   );
@@ -275,6 +286,29 @@ const FAQS: ReadonlyArray<{ question: string; answer: ReactNode }> = [
         synchronized to another browser or device, and you can clear it from the calculator. This
         applies only to this public calculator. See our <PrivacyPolicyLink /> for how Seisan
         projects handle data.
+      </>
+    ),
+  },
+  {
+    question: "Is Seisan open source?",
+    answer: (
+      <>
+        Yes. Seisan&apos;s{" "}
+        <Box
+          component="a"
+          href={SOURCE_REPOSITORY_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          sx={{
+            color: "inherit",
+            fontWeight: 750,
+            textDecoration: "underline",
+            textUnderlineOffset: "3px",
+          }}
+        >
+          source code
+        </Box>{" "}
+        is available on GitHub under the MIT License. 
       </>
     ),
   },

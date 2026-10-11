@@ -212,9 +212,20 @@ Rules:
   remains the authenticated project list, and `/projects/new` remains project creation. The
   session-aware root header links anonymous visitors to sign in and authenticated visitors to My
   Projects without blocking calculator use.
-- The root calculator owns the title, canonical, description, Open Graph, Twitter, and
-  `SoftwareApplication` structured data for the production root URL. Keep FAQ content visible but
-  do not add FAQ rich-result markup.
+- The root calculator owns the title, description, Open Graph, Twitter, and
+  `SoftwareApplication` structured data for the production root URL. The structured data carries
+  the MIT `license` and the GitHub repository as `sameAs`. Keep FAQ content visible, including the
+  open-source answer, but do not add FAQ rich-result markup.
+- Canonical URLs are `Link: <...>; rel="canonical"` headers in `public/_headers`, one exact-path
+  rule per indexable page (`/`, `/privacy`, `/api-docs`). Do not put `<link rel="canonical">` or
+  `og:url` in `index.html`: every SPA route serves that file, so a static value would mark other
+  public pages as duplicates of the root. Add a header rule when adding a page to the sitemap.
+  The rules use absolute production URLs on purpose, so self-hosted copies consolidate search
+  signals to the official site unless the operator changes them.
+- `public/_headers` also sends `X-Robots-Tag: noindex` for `/project/*` and for any
+  `*.workers.dev` hostname, which only duplicates the custom-domain site.
+- `src/sourceRepository.ts` owns the GitHub repository and new-issue URLs. The calculator footer
+  links to the source, and the project info panel links to issue reporting. Both open in a new tab.
 - Existing title-setting routes also include `/projects`, `/account`, `/account/api-keys`,
   `/api-docs`, project routes, `/login`, `/privacy`, and `/admin/*`.
 - `public/sitemap.xml` lists only stable public pages on the production origin. Keep authenticated, admin, and dynamic project URLs out of it, and keep its absolute URL advertised in `public/robots.txt`.

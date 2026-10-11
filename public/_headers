@@ -1,2 +1,18 @@
+# Canonical URLs live here rather than in index.html: every SPA route serves the same HTML, so a
+# static <link rel="canonical"> would mark /privacy and /api-docs as duplicates of the root page.
+# Self-hosted deployments keep pointing search engines at the official instance unless changed.
+/
+  Link: <https://seisan.waga.me/>; rel="canonical"
+
+/privacy
+  Link: <https://seisan.waga.me/privacy>; rel="canonical"
+
+/api-docs
+  Link: <https://seisan.waga.me/api-docs>; rel="canonical"
+
 /project/*
+  X-Robots-Tag: noindex
+
+# workers.dev and preview hostnames duplicate the custom-domain site.
+https://:name.:subdomain.workers.dev/*
   X-Robots-Tag: noindex

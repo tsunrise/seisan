@@ -2,6 +2,15 @@
   "name": "seisan",
   "private": true,
   "version": "0.0.0",
+  "license": "MIT",
+  "homepage": "https://seisan.waga.me",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tsunrise/seisan.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tsunrise/seisan/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "node scripts/prebuild.mjs && vite",

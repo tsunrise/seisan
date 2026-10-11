@@ -1,8 +1,10 @@
 import { useEffect } from "react";
 
+import { SOURCE_REPOSITORY_URL } from "../sourceRepository";
+
 export const CALCULATOR_PAGE_TITLE = "Seisan: Free Group Expense Calculator, See Who Pays Whom";
 const PAGE_DESCRIPTION =
-  "Split a group expense equally, by ratio, or with custom amounts and get a clear settlement plan. Free, private to your browser, and no sign-up required.";
+  "Split a group expense equally, by ratio, or with custom amounts and get a clear settlement plan. Free, open source, private to your browser, and no sign-up required.";
 const SOFTWARE_APPLICATION_ID = "seisan-calculator-structured-data";
 
 /**
@@ -30,6 +32,9 @@ export function useCalculatorMetadata() {
       operatingSystem: "Any",
       url: "https://seisan.waga.me/",
       description: PAGE_DESCRIPTION,
+      license: "https://opensource.org/licenses/MIT",
+      sameAs: [SOURCE_REPOSITORY_URL],
+      isAccessibleForFree: true,
       offers: {
         "@type": "Offer",
         price: "0",
