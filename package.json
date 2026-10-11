@@ -20,6 +20,7 @@
     "api": "tsx scripts/client-cli.ts",
     "categories:populate": "tsx scripts/populate-categories.ts",
     "categories:cleanup": "tsx scripts/cleanup-categories.ts",
+    "categories:fix": "tsx scripts/fix-categories.ts",
     "categories:evaluate": "tsx scripts/evaluate-categories.ts",
     "openapi:generate": "tsx scripts/generate-openapi.ts",
     "openapi:check": "tsx scripts/generate-openapi.ts --check",

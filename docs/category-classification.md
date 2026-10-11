@@ -17,8 +17,9 @@ Implementation files:
 - `worker/do/GlobalConfig.ts`: generic strongly consistent SQL key/value store plus category mutation methods.
 - `worker/routes/categories.ts`: public category listing, authenticated classification, and admin
   category CRUD routes.
-- `scripts/client.ts`, `scripts/client-cli.ts`, `scripts/populate-categories.ts`, and
-  `scripts/cleanup-categories.ts`: CLI support, seeding, and removal of obsolete categories.
+- `scripts/client.ts`, `scripts/client-cli.ts`, `scripts/populate-categories.ts`,
+  `scripts/cleanup-categories.ts`, and `scripts/fix-categories.ts`: CLI support, seeding, removal
+  of obsolete categories, and repair of incompatible stored documents.
 - `scripts/category-challenges.ts` and `scripts/evaluate-categories.ts`: the labeled
   classification corpus and the live end-to-end evaluation harness.
 - `test/categoryClassification.test.ts`: focused category coverage.
@@ -70,6 +71,9 @@ Admin routes:
 - `POST /api/admin/categories` with `{ name, description?, icon? }`: creates a category and returns `{ category }` with status `201`.
 - `PUT /api/admin/categories/:id` with `{ name, description?, icon? }`: updates a category in place and returns `{ category }`.
 - `DELETE /api/admin/categories/:id`: removes the category and returns `204`.
+- `POST /api/admin/categories/fix` with `{ dryRun? }`: rewrites the stored document in the current
+  version and returns `{ categories, removed, changed }`. See
+  [Repairing Incompatible Documents](#repairing-incompatible-documents).
 
 Request behavior:
 
@@ -139,7 +143,7 @@ Only version 2 is accepted. Version 1 documents came from the retired Vectorize 
 carried `vectorNamespace`, `documentText`, and `vectorId`; dev and production were rewritten to
 version 2 before version-1 parsing was removed. A leftover version-1 document, for example in an old
 local `.wrangler/state`, fails to parse: GlobalConfig reports `invalid_value` and every category
-route returns `500`. Reset that local state and run `categories:populate` again.
+route except the repair route returns `500`. Run `categories:fix` to rewrite it.
 
 Admin reads and writes go through `CategoryClassifier`. `getCategoriesForUpdate()` delegates to `GlobalConfig.listCategories()`, while mutations delegate to `GlobalConfig.upsertCategory()` and `deleteCategory()`. The Durable Object performs category reads and mutations against SQLite and schedules the full document to be written to `PUBLISHED_GLOBAL_CONFIG` under the same `categories` key. Category mutations have no other side effects. Overlapping publication tasks converge to the latest SQLite document as described in `docs/global-config.md`.
 
@@ -248,6 +252,31 @@ Deleting an obsolete category does not rewrite immutable project records; the to
 behavior above makes those old IDs render as `Others`.
 Cleanup stops at the first failed deletion. Because the category remains configured, rerunning the
 command safely retries that category.
+
+### Repairing Incompatible Documents
+
+A stored document the current schema rejects makes every other admin route fail, so it cannot be
+fixed with `category-update` or `categories:cleanup`. `POST /api/admin/categories/fix` reads the raw
+SQLite value instead, through `GlobalConfig.repairCategories()` and `repairCategoriesDocument()`:
+
+- Each category keeps only the fields `Category` defines, so retired fields such as `documentText`
+  and `vectorId` are dropped and the category keeps its ID. An unknown icon name is dropped.
+- Categories that still fail validation, or that repeat an earlier ID or normalized name, are
+  removed and listed in `removed` as `{ id, name }`, each `null` when not a string. Categories past
+  the 254 limit are removed the same way.
+- Unparseable JSON becomes an empty version-2 document.
+- `changed` is `false` when the stored value is already canonical. A real run still rewrites and
+  republishes it, which also replaces a stale or invalid `PUBLISHED_GLOBAL_CONFIG` copy.
+- `dryRun: true` computes the same response without writing.
+- No stored document returns `404 { error: "not_found" }`; use `categories:populate` instead.
+
+```sh
+pnpm run categories:fix -- --env=local --dry-run
+pnpm run categories:fix -- --env=local
+```
+
+Use the same commands with `--env=dev` or `--env=production`. After a fix, run
+`categories:populate` and then `categories:cleanup` to converge on the current seed taxonomy.
 
 ## Default Taxonomy And Evaluation
 

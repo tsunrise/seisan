@@ -8,7 +8,7 @@ const CATEGORY_DESCRIPTION_MAX_LENGTH = 1_000;
 const CATEGORY_CLASSIFICATION_NAME_MAX_LENGTH = 200;
 const CATEGORY_CLASSIFICATION_TOP_K_MAX = 20;
 /** clef-flash accepts at most 255 choice options, and one is reserved for "Others". */
-const CATEGORY_MAX_COUNT = 254;
+export const CATEGORY_MAX_COUNT = 254;
 
 /** Display name of the built-in fallback; also the classifier's "none of these" option. */
 export const OTHERS_CATEGORY_NAME = "Others";

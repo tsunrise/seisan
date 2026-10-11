@@ -7,6 +7,7 @@ import {
 } from "../worker/category";
 import { CATEGORY_CLASSIFIER_MODEL } from "../worker/category/clef";
 import { sha256Hex } from "../worker/crypto";
+import { GLOBAL_CONFIG_STORE_NAME } from "../worker/globalConfig";
 import type { IconName } from "../shared/icon-names";
 import {
   adminDispatch,
@@ -689,6 +690,130 @@ describe("category classification", () => {
     } finally {
       releaseFirstPut.resolve();
     }
+  });
+
+  it("fixes a stored category document the current schema rejects and republishes it", async () => {
+    const { env: testEnv } = makeEnv();
+    const stub = testEnv.GLOBAL_CONFIG.getByName(GLOBAL_CONFIG_STORE_NAME);
+
+    const missing = await adminDispatch("/categories/fix", testEnv, jsonBody("POST", {}));
+    expect(missing.status).toBe(404);
+    const invalidBody = await adminDispatch(
+      "/categories/fix",
+      testEnv,
+      jsonBody("POST", { dryRun: "yes" }),
+    );
+    expect(invalidBody.status).toBe(400);
+
+    const restaurantId = crypto.randomUUID();
+    const petsId = crypto.randomUUID();
+    const duplicateId = crypto.randomUUID();
+    const legacyDocument = {
+      version: 1,
+      vectorNamespace: "categories-legacy",
+      categories: [
+        {
+          id: restaurantId,
+          name: "Restaurant",
+          normalizedName: "restaurant",
+          description: "Prepared meals",
+          icon: "restaurant",
+          createdAt: 1_000,
+          updatedAt: 1_001,
+          documentText: "title: Restaurant | text: Prepared meals",
+          vectorId: "vector-restaurant",
+        },
+        {
+          id: petsId,
+          name: "Pets",
+          normalizedName: "pets",
+          description: "",
+          icon: "retired-icon",
+          createdAt: 1_000,
+          updatedAt: 1_000,
+          documentText: "title: Pets",
+          vectorId: "vector-pets",
+        },
+        { id: "not-a-uuid", name: "Broken", normalizedName: "broken", description: "" },
+        {
+          id: duplicateId,
+          name: "restaurant",
+          normalizedName: "restaurant",
+          description: "",
+          createdAt: 1_000,
+          updatedAt: 1_000,
+        },
+      ],
+    };
+    await stub.listCategories();
+    await runInDurableObject(stub, async (_instance, state) => {
+      state.storage.sql.exec(
+        `INSERT INTO global_config (key, value)
+         VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        CATEGORY_CONFIG_KEY,
+        JSON.stringify(legacyDocument),
+      );
+    });
+    expect((await adminDispatch("/categories", testEnv)).status).toBe(500);
+
+    const expectedFix = {
+      categories: [
+        {
+          id: petsId,
+          name: "Pets",
+          normalizedName: "pets",
+          description: "",
+          createdAt: 1_000,
+          updatedAt: 1_000,
+        },
+        {
+          id: restaurantId,
+          name: "Restaurant",
+          normalizedName: "restaurant",
+          description: "Prepared meals",
+          icon: "restaurant",
+          createdAt: 1_000,
+          updatedAt: 1_001,
+        },
+      ],
+      removed: [
+        { id: "not-a-uuid", name: "Broken" },
+        { id: duplicateId, name: "restaurant" },
+      ],
+      changed: true,
+    };
+
+    const dryRun = await adminDispatch(
+      "/categories/fix",
+      testEnv,
+      jsonBody("POST", { dryRun: true }),
+    );
+    expect(dryRun.status).toBe(200);
+    expect(await dryRun.json()).toEqual(expectedFix);
+    await expect(stub.listCategories()).resolves.toEqual({ ok: false, error: "invalid_value" });
+
+    const fixed = await adminDispatch("/categories/fix", testEnv, jsonBody("POST", {}));
+    expect(fixed.status).toBe(200);
+    expect(await fixed.json()).toEqual(expectedFix);
+    await expect(stub.listCategories()).resolves.toEqual({
+      ok: true,
+      document: { version: 2, categories: expectedFix.categories },
+    });
+    await expect(
+      waitForPublishedCategories(testEnv, (document) => document?.categories.length === 2),
+    ).resolves.toEqual({ version: 2, categories: expectedFix.categories });
+
+    const publicList = await dispatch("/categories", testEnv);
+    expect(publicList.status).toBe(200);
+    expect(await publicList.json()).toEqual({ categories: expectedFix.categories });
+
+    const rerun = await adminDispatch("/categories/fix", testEnv, jsonBody("POST", {}));
+    expect(await rerun.json()).toEqual({
+      categories: expectedFix.categories,
+      removed: [],
+      changed: false,
+    });
   });
 
   it("reports malformed GlobalConfig values and does not fail writes on async KV publish failure", async () => {

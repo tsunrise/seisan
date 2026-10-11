@@ -1,5 +1,7 @@
 import {
+  CATEGORY_MAX_COUNT,
   CategoriesDocument,
+  Category,
   CategoryDescription,
   CategoryIconName,
   CategoryId,
@@ -17,6 +19,12 @@ export interface CategoryDocumentWriteInput {
   description?: string;
   icon?: CategoryIconName;
   nowMs: number;
+}
+
+/** A stored category entry dropped by `repairCategoriesDocument`, identified as far as possible. */
+export interface RemovedCategory {
+  id: string | null;
+  name: string | null;
 }
 
 /** Storage codec that validates documents and gives category arrays canonical ordering. */
@@ -47,6 +55,48 @@ export function normalizeCategoriesDocument(
 ): CategoriesDocumentValue | null {
   const parsed = CategoriesDocument.safeParse(document);
   return parsed.success ? withSortedCategories(parsed.data) : null;
+}
+
+/**
+ * Rebuilds a stored document of any shape as the current version. Each category keeps only the
+ * fields the current schema defines, an unknown icon is dropped, and categories that still fail
+ * validation or duplicate an earlier ID or normalized name are removed. Unparseable JSON becomes an
+ * empty document.
+ */
+export function repairCategoriesDocument(value: string): {
+  document: CategoriesDocumentValue;
+  removed: RemovedCategory[];
+} {
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(value);
+  } catch {
+    decoded = null;
+  }
+
+  const entries: unknown[] =
+    isRecord(decoded) && Array.isArray(decoded.categories) ? decoded.categories : [];
+  const categories: CategoryValue[] = [];
+  const removed: RemovedCategory[] = [];
+  const seenIds = new Set<string>();
+  const seenNormalizedNames = new Set<string>();
+  for (const entry of entries) {
+    const category = salvageCategory(entry);
+    if (
+      !category ||
+      seenIds.has(category.id) ||
+      seenNormalizedNames.has(category.normalizedName) ||
+      categories.length >= CATEGORY_MAX_COUNT
+    ) {
+      removed.push(describeRemovedCategory(entry));
+      continue;
+    }
+    seenIds.add(category.id);
+    seenNormalizedNames.add(category.normalizedName);
+    categories.push(category);
+  }
+
+  return { document: withSortedCategories({ version: 2, categories }), removed };
 }
 
 /** Creates or updates a category while preserving identity fields across updates. */
@@ -137,6 +187,34 @@ function buildCategory(input: {
     createdAt: input.createdAt ?? input.nowMs,
     updatedAt: input.nowMs,
   };
+}
+
+function salvageCategory(entry: unknown): CategoryValue | null {
+  if (!isRecord(entry)) {
+    return null;
+  }
+  const icon = CategoryIconName.safeParse(entry.icon);
+  const parsed = Category.safeParse({
+    id: entry.id,
+    name: entry.name,
+    normalizedName: entry.normalizedName,
+    description: entry.description,
+    ...(icon.success ? { icon: icon.data } : {}),
+    createdAt: entry.createdAt,
+    updatedAt: entry.updatedAt,
+  });
+  return parsed.success ? parsed.data : null;
+}
+
+function describeRemovedCategory(entry: unknown): RemovedCategory {
+  return {
+    id: isRecord(entry) && typeof entry.id === "string" ? entry.id : null,
+    name: isRecord(entry) && typeof entry.name === "string" ? entry.name : null,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function categoryById(document: CategoriesDocumentValue, id: string): CategoryValue | null {

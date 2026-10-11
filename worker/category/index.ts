@@ -2,7 +2,7 @@ import type { GlobalConfig } from "../do/GlobalConfig";
 import { GLOBAL_CONFIG_STORE_NAME, PublishedGlobalConfigKvStore } from "../globalConfig";
 import type { ErrorResultOf, Result } from "../result";
 import { ClefCategoryClassifier, type ClefCategoryCandidate } from "./clef";
-import { CATEGORY_CONFIG_KEY } from "./document";
+import { CATEGORY_CONFIG_KEY, type RemovedCategory } from "./document";
 import {
   CategoryClassificationName,
   CategoryClassificationTopK,
@@ -12,7 +12,7 @@ import {
   type Category as CategoryValue,
 } from "./schema";
 
-export { CATEGORY_CONFIG_KEY } from "./document";
+export { CATEGORY_CONFIG_KEY, type RemovedCategory } from "./document";
 export {
   CategoriesDocument,
   Category,
@@ -96,6 +96,27 @@ export class CategoryClassifier {
       return mapGlobalConfigDeleteError(deleted);
     }
     return { ok: true };
+  }
+
+  /** Rewrites the stored document in the current version, removing incompatible categories. */
+  async repairCategories(options: {
+    dryRun: boolean;
+  }): Promise<
+    Result<
+      { categories: CategoryValue[]; removed: RemovedCategory[]; changed: boolean },
+      "not_found"
+    >
+  > {
+    const repaired = await this.globalConfig().repairCategories(options);
+    if (!repaired.ok) {
+      return repaired;
+    }
+    return {
+      ok: true,
+      categories: repaired.document.categories,
+      removed: repaired.removed,
+      changed: repaired.changed,
+    };
   }
 
   /** Classifies against the published KV snapshot, so new categories apply once published. */

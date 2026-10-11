@@ -63,6 +63,12 @@ export interface CategoryListResponse {
   categories: Category[];
 }
 
+export interface CategoryFixResponse {
+  categories: Category[];
+  removed: Array<{ id: string | null; name: string | null }>;
+  changed: boolean;
+}
+
 export class ApiError extends Error {
   readonly response: Response;
   readonly responseBody: string;
@@ -188,6 +194,14 @@ export class SeisanClient {
         body: input,
       },
     );
+  }
+
+  async categoryFix(input: { dryRun: boolean }): Promise<CategoryFixResponse> {
+    return this.requestJson<CategoryFixResponse>("POST", "/api/admin/categories/fix", {
+      auth: false,
+      cloudflareAccess: true,
+      body: input,
+    });
   }
 
   async categoryRemove(id: string): Promise<void> {

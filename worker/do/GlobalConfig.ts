@@ -12,9 +12,11 @@ import {
   createEmptyCategoriesDocument,
   deleteCategoryFromDocument,
   normalizeCategoriesDocument,
+  repairCategoriesDocument,
   upsertCategoryInDocument,
   CATEGORY_CONFIG_KEY,
   type CategoryDocumentWriteInput,
+  type RemovedCategory,
 } from "../category/document";
 import { CategoriesDocument, type Category } from "../category/schema";
 import {
@@ -127,6 +129,30 @@ export class GlobalConfig extends DurableObject<Env> {
 
     this.writeKey(CATEGORY_CONFIG_KEY, next.document);
     return next;
+  }
+
+  /**
+   * Rewrites the stored category document in the current version, dropping categories the current
+   * schema no longer accepts. A real run republishes even an unchanged document so a stale or
+   * invalid published copy is replaced too.
+   */
+  repairCategories(options: {
+    dryRun: boolean;
+  }): Result<
+    { document: CategoriesDocument; removed: RemovedCategory[]; changed: boolean },
+    "not_found"
+  > {
+    const row = this.readConfigRow(CATEGORY_CONFIG_KEY);
+    if (!row) {
+      return { ok: false, error: "not_found" };
+    }
+
+    const { document, removed } = repairCategoriesDocument(row.value);
+    const changed = GlobalConfigValueCodec.serialize(CATEGORY_CONFIG_KEY, document) !== row.value;
+    if (!options.dryRun) {
+      this.writeKey(CATEGORY_CONFIG_KEY, document);
+    }
+    return { ok: true, document, removed, changed };
   }
 
   private readCategoriesDocument(): Result<{ document: CategoriesDocument }, "invalid_value"> {

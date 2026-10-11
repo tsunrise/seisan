@@ -39,6 +39,12 @@ const CategoryWriteBody = z
   })
   .strict();
 
+const RepairCategoriesBody = z
+  .object({
+    dryRun: z.boolean().optional().default(false),
+  })
+  .strict();
+
 const ClassifyCategoryBody = z
   .object({
     name: CategoryClassificationName,
@@ -204,6 +210,28 @@ adminCategoryApp.post("/", async (context) => {
   return context.json({ category: result.category }, 201);
 });
 
+// Repairs a stored document that no longer parses, which otherwise makes every category route,
+// including the other admin routes, return 500.
+adminCategoryApp.post("/fix", async (context) => {
+  const parsed = await parseJson(context, RepairCategoriesBody);
+  if (!parsed.ok) {
+    return ErrorResponse.invalidRequest();
+  }
+
+  const result = await new CategoryClassifier(context.env).repairCategories({
+    dryRun: parsed.data.dryRun,
+  });
+  if (!result.ok) {
+    return mapRepairError(result);
+  }
+
+  return context.json({
+    categories: result.categories,
+    removed: result.removed,
+    changed: result.changed,
+  });
+});
+
 adminCategoryApp.put("/:id", async (context) => {
   const id = CategoryId.safeParse(context.req.param("id"));
   if (!id.success) {
@@ -261,6 +289,13 @@ function mapUpsertError(result: ErrorResultOf<CategoryClassifier["upsertCategory
       return ErrorResponse.conflict("category_exists");
     case "config_read_failed":
       return ErrorResponse.internalServerError();
+  }
+}
+
+function mapRepairError(result: ErrorResultOf<CategoryClassifier["repairCategories"]>) {
+  switch (result.error) {
+    case "not_found":
+      return ErrorResponse.notFound();
   }
 }
 
